@@ -23,7 +23,7 @@ docker / dockerfile := {
   new Dockerfile {
     from("openjdk:8-jre")
     add(artifact, artifactTargetPath)
-    entryPoint("java", "-jar", artifactTargetPath)
+    entryPoint("java", "-jar", "-Xms8G", "-Xmx8G", artifactTargetPath)
   }
 }
 
