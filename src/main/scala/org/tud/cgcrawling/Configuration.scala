@@ -18,7 +18,7 @@ package org.tud.cgcrawling
 
 import akka.stream.ThrottleMode
 import org.neo4j.driver.{AuthTokens, Driver, GraphDatabase}
-import org.opalj.tac.cg.{AbstractCallGraphKey, TypeBasedPointsToCallGraphKey, XTACallGraphKey}
+import org.opalj.tac.cg.{AbstractCallGraphKey, XTACallGraphKey}
 
 import java.net.URI
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
@@ -33,9 +33,9 @@ class Configuration {
   val limit : Int = 100
   val throttle : Throttle = Throttle(5, 1 second, 5, ThrottleMode.shaping)
 
-  val graphDatabaseUrl: String = "bolt://ls5vs016.cs.tu-dortmund.de:8080"
+  val graphDatabaseUrl: String = "<changeme>"
   val graphDatabaseUser: String = "neo4j"
-  val graphDatabasePassword: String = "=Ue3y!H"
+  val graphDatabasePassword: String = "<changeme>"
 
   val graphDatabaseDriver: Driver = {
     val driver = GraphDatabase.driver(graphDatabaseUrl, AuthTokens.basic(graphDatabaseUser, graphDatabasePassword))
