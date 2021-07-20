@@ -7,10 +7,12 @@ import akka.routing.SmallestMailboxPool
 import akka.stream.scaladsl.Sink
 import akka.stream.{ActorMaterializer, Materializer}
 import akka.util.Timeout
+import org.opalj.log.{GlobalLogContext, OPALLogger}
 import org.tud.cgcrawling.discovery.maven.{IndexProcessing, MavenIdentifier}
 import org.tud.cgcrawling.download.{MavenDownloadActor, MavenDownloadActorResponse}
 import org.tud.cgcrawling.graphgeneration.{CallGraphActor, CallGraphActorResponse, OPALLogAdapter}
-import org.tud.cgcrawling.storage.{CallGraphStorageActor, CallGraphStorageActorResponse, CallGraphStorageQueries}
+import org.tud.cgcrawling.storage.{CallGraphStorageActor, CallGraphStorageActorResponse, CallGraphStorageQueries, ErrorStorageActor}
+import org.tud.cgcrawling.utils.StreamingSignals.{Ack, StreamFailure}
 
 import scala.collection.mutable
 import scala.concurrent.duration.DurationInt
@@ -24,6 +26,9 @@ class CallGraphCrawler(val configuration: Configuration)
   val downloaderPool: ActorRef =
     system.actorOf(SmallestMailboxPool(configuration.numberOfDownloadThreads).props(MavenDownloadActor.props))
 
+  val errorStoragePool: ActorRef =
+    system.actorOf(SmallestMailboxPool(configuration.numberOfStorageThreads).props(ErrorStorageActor.props(configuration)))
+
   val cgGeneratorPool: ActorRef =
     system.actorOf(SmallestMailboxPool(configuration.numberOfCgThreads).props(CallGraphActor.props(configuration)))
 
@@ -34,27 +39,52 @@ class CallGraphCrawler(val configuration: Configuration)
 
     implicit val materializer: Materializer = ActorMaterializer()
     implicit val logger: LoggingAdapter = log
-    implicit val timeout: Timeout = Timeout(30 minutes)
+    implicit val timeout: Timeout = Timeout(120 minutes)
 
-    val identifierSource =
+    val identifierSource = {
+      // Create source from Lucene index reader
       createSource(configuration.mavenRepoBase)
-        .filter(identifier => !artifactGAVExistsInDb(identifier.toString))
+        // Filter for identifiers not yet present in DB
+        .filter(identifier => {
+          val keep = !artifactGAVExistsInDb(identifier.toString)
+
+          if(!keep){
+            log.info(s"Not processing ${identifier.toString}, already in DB")
+          }
+
+          keep
+        })
+        // Compensate for lag
         .filter(identifier => {
           val hasBeenSeen = artifactsSeen.contains(identifier)
           if(!hasBeenSeen) artifactsSeen.add(identifier)
           !hasBeenSeen
         })
+        // Throttle production of new identifiers
         .throttle(configuration.throttle.element, configuration.throttle.per)
+    }
 
     identifierSource
+      // Download POM and JAR for all identifiers
       .mapAsyncUnordered(configuration.numberOfDownloadThreads)(identifier => (downloaderPool ? identifier)
         .mapTo[MavenDownloadActorResponse])
-      .filter(response => !response.jarDownloadFailed && response.artifact.isDefined)
+      // Pipe through error storage actor, which will store any download-related errors
+      .mapAsyncUnordered(configuration.numberOfStorageThreads)(response => (errorStoragePool ? response)
+        .mapTo[MavenDownloadActorResponse])
+      // Filter for successful downloads
+      .filter(response => !response.jarDownloadFailed && response.artifact.isDefined && response.artifact.get.jarFile.isDefined)
+      // Generate Callgraphs for all JAR files
       .mapAsyncUnordered(configuration.numberOfCgThreads)(downloadResponse => (cgGeneratorPool ? downloadResponse.artifact.get)
         .mapTo[CallGraphActorResponse])
+      // Pipe through error storage actor, which will store any callgraph-related errors
+      .mapAsyncUnordered(configuration.numberOfStorageThreads)(response => (errorStoragePool ? response)
+        .mapTo[CallGraphActorResponse])
+      // Filter for successful cg generations
       .filter(response => response.success)
+      // Pipe through storage actor to store callgraphs
       .mapAsyncUnordered(configuration.numberOfStorageThreads)(cgResponse => (storagePool ? cgResponse)
         .mapTo[CallGraphStorageActorResponse])
+      // Dispose elements at this point
       .to(Sink.ignore)
       .run()
     log.info("Done")
@@ -67,6 +97,8 @@ object CallGraphCrawler {
 
   def main(args: Array[String]) = {
     val theConfig = new Configuration()
+
+    OPALLogger.updateLogger(GlobalLogContext, OPALLogAdapter)
 
     val theApp = new CallGraphCrawler(theConfig)(theSystem)
 

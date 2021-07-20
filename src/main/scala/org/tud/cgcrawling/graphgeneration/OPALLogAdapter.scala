@@ -16,7 +16,7 @@
 
 package org.tud.cgcrawling.graphgeneration
 
-import org.opalj.log.{DevNullLogger, LogContext, LogMessage, OPALLogger, StandardLogContext}
+import org.opalj.log.{GlobalLogContext, LogContext, LogMessage, OPALLogger, StandardLogContext}
 import org.slf4j.LoggerFactory
 
 object OPALLogAdapter extends OPALLogger  {
@@ -25,29 +25,29 @@ object OPALLogAdapter extends OPALLogger  {
 
   override def log(message: LogMessage)(implicit ctx: LogContext): Unit = {
     message.level match {
-      case org.opalj.log.Info => l.info(message.message)
-      case org.opalj.log.Warn => l.warn(message.message)
       case org.opalj.log.Error => l.error(message.message)
+      case _ =>
 
     }
   }
 
-
   private var emptyLogContextRegistered = false
   private val _emptyLogContext = new StandardLogContext()
 
-  val emptyLogger: OPALLogger = DevNullLogger
+  val errorOnlyLogger: OPALLogger = this
 
   // Provide access to an empty log context that is associated to an empty logger
   // This is meant for cases where you do not want OPAL to log anything
   lazy val emptyLogContext: LogContext = {
     if(!emptyLogContextRegistered){
-      OPALLogger.register(_emptyLogContext, emptyLogger)
+      OPALLogger.register(_emptyLogContext, errorOnlyLogger)
       emptyLogContextRegistered = true
     }
 
     _emptyLogContext
   }
+
+  OPALLogger.updateLogger(GlobalLogContext, errorOnlyLogger)
 
 }
 

@@ -10,11 +10,23 @@ trait CallGraphStorageQueries {
 
   def artifactGAVExistsInDb(gav: String): Boolean = withSession { session =>
 
-    session.run("MATCH (m: Method {Artifact: $gav}) RETURN COUNT(m) AS cnt",
+    val failures = session.run("MATCH (f: Failure {gav: $gav}) RETURN COUNT(f) AS cnt",
       parameters("gav", gav))
       .single()
       .get("cnt")
-      .asInt() > 0
+      .asInt()
+
+    if(failures > 0) return true
+
+    val methods = session.run("MATCH (m: Method {Artifact: $gav}) RETURN COUNT(m) AS cnt",
+      parameters("gav", gav))
+      .single()
+      .get("cnt")
+      .asInt()
+
+
+
+    methods > 0
   }
 
   private def withSession[T](implicit theFunction: Session => T): T = {

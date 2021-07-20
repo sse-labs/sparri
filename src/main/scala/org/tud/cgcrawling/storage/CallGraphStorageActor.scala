@@ -7,8 +7,10 @@ import org.opalj.br.{DeclaredMethod, VirtualDeclaredMethod}
 import org.opalj.br.analyses.Project
 import org.opalj.tac.cg.CallGraph
 import org.tud.cgcrawling.{AppLogging, Configuration}
-import org.tud.cgcrawling.discovery.maven.MavenArtifact
+import org.tud.cgcrawling.discovery.maven.{MavenArtifact, MavenIdentifier}
+import org.tud.cgcrawling.download.MavenDownloadActorResponse
 import org.tud.cgcrawling.graphgeneration.CallGraphActorResponse
+import org.tud.cgcrawling.utils.StreamingSignals.Ack
 
 import java.net.URL
 import scala.collection.JavaConverters.seqAsJavaListConverter
@@ -28,7 +30,16 @@ class CallGraphStorageActor(configuration: Configuration) extends Actor
       val duration = System.currentTimeMillis() - start
       log.info(s"Finished storing CallGraph in $duration ms")
       sender() ! CallGraphStorageActorResponse(artifact, success)
+
+
+
+    case x =>
+      log.error(s"Unknown message in storage actor: $x")
   }
+
+
+
+
 
   private def storeCallGraph(artifact: MavenArtifact, cg: CallGraph, project: Project[URL]): Boolean = {
     val session: Session = configuration.graphDatabaseDriver.session()

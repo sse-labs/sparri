@@ -102,7 +102,7 @@ trait ClassStreamReader {
 
 
 
-    Project(projectClasses, libraryClasses, true, Traversable.empty)(config, OPALLogAdapter.emptyLogger)
+    Project(projectClasses, libraryClasses, true, Traversable.empty)(config, OPALLogAdapter.errorOnlyLogger)
   }
 }
 
