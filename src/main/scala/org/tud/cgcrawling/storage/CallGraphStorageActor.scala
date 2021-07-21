@@ -7,10 +7,8 @@ import org.opalj.br.{DeclaredMethod, VirtualDeclaredMethod}
 import org.opalj.br.analyses.Project
 import org.opalj.tac.cg.CallGraph
 import org.tud.cgcrawling.{AppLogging, Configuration}
-import org.tud.cgcrawling.discovery.maven.{MavenArtifact, MavenIdentifier}
-import org.tud.cgcrawling.download.MavenDownloadActorResponse
+import org.tud.cgcrawling.discovery.maven.MavenArtifact
 import org.tud.cgcrawling.graphgeneration.CallGraphActorResponse
-import org.tud.cgcrawling.utils.StreamingSignals.Ack
 
 import java.net.URL
 import scala.collection.JavaConverters.seqAsJavaListConverter
@@ -55,21 +53,8 @@ class CallGraphStorageActor(configuration: Configuration) extends Actor
 
       if(isExternalMethod(method, project)){
         externalMethods.add(Array(artifact.identifier.toString, method.toJava, method.name, uid))
-        /*session.run(CallGraphStorageActor.neo4jExternMethodCreationQuery, parameters(
-          "art", artifact.identifier.toString,
-          "fn", method.toJava,
-          "sn", method.name,
-          "un", uid
-        ))*/
       } else {
         internalMethods.add(Array(artifact.identifier.toString, method.toJava, method.name, uid, if(method.definedMethod.isPublic) java.lang.Boolean.TRUE else java.lang.Boolean.FALSE))
-        /*session.run(CallGraphStorageActor.neo4jMethodCreationQuery, parameters(
-          "art", artifact.identifier.toString,
-          "fn", method.toJava,
-          "sn", method.name,
-          "un", uid,
-          "pub", if(method.definedMethod.isPublic) java.lang.Boolean.TRUE else java.lang.Boolean.FALSE
-        ))*/
       }
     }
 
@@ -109,12 +94,4 @@ case class CallGraphStorageActorResponse(artifact: MavenArtifact,
 
 object CallGraphStorageActor {
   def props(config: Configuration): Props = Props(new CallGraphStorageActor(config))
-
-  private val neo4jExternMethodCreationQuery: String =
-    "CREATE (m:Method :ExternMethod {Artifact: $art, FullName: $fn, SimpleName: $sn, UniqueName: $un})"
-
-  private val neo4jMethodCreationQuery: String =
-    "CREATE (m:Method :LibraryMethod {Artifact: $art, FullName: $fn, SimpleName: $sn, UniqueName: $un, IsPublic: $pub})"
-
-
 }

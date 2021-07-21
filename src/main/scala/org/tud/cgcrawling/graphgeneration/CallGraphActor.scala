@@ -19,9 +19,15 @@ class CallGraphActor(config: Configuration) extends Actor with AppLogging with C
       Try(reifyProject(artifact, true)) match {
         case Success(project) =>
           log.info(s"Successfully initialized OPAL project for ${artifact.identifier.toString}")
-          val callgraph = project.get(config.CallGraphAlgorithm)
-          log.info(s"Successfully generated Callgraph for ${artifact.identifier.toString}")
-          sender() ! CallGraphActorResponse(artifact, true, Some(callgraph), Some(project))
+
+          Try(project.get(config.CallGraphAlgorithm)) match {
+            case Success(callgraph) =>
+              log.info(s"Successfully generated Callgraph for ${artifact.identifier.toString}")
+              sender() ! CallGraphActorResponse(artifact, true, Some(callgraph), Some(project))
+            case Failure(ex) =>
+              log.error(s"Failed to generate Callgraph for ${artifact.identifier.toString}", ex)
+              sender() ! CallGraphActorResponse(artifact, false, None, None)
+          }
         case Failure(exception) =>
           log.error(s"Error while analyzing JAR for artifact ${artifact.identifier.toString}", exception)
           exception.printStackTrace()

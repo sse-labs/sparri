@@ -11,16 +11,25 @@ import org.tud.cgcrawling.graphgeneration.CallGraphActorResponse
 class ErrorStorageActor(configuration: Configuration) extends Actor with AppLogging{
   override def receive: Receive = {
     case x: MavenDownloadActorResponse =>
-      if(x.jarDownloadFailed || x.artifact.isEmpty || x.artifact.get.jarFile.isEmpty){
-        storeFailedDownloadForIdentifier(x.identifier)
+      // Make sure errors while storing failures do never affect program execution!
+      try{
+        if(x.jarDownloadFailed || x.artifact.isEmpty || x.artifact.get.jarFile.isEmpty){
+          storeFailedDownloadForIdentifier(x.identifier)
+        }
+      } finally {
+        sender() ! x
       }
-      sender() ! x
 
     case x: CallGraphActorResponse =>
-      if(!x.success || x.callgraph.isEmpty || x.callgraph.get.reachableMethods().isEmpty || x.project.isEmpty){
-        storeCGErrorForIdentifier(x.artifact.identifier)
+      try{
+        if(!x.success || x.callgraph.isEmpty || x.callgraph.get.reachableMethods().isEmpty || x.project.isEmpty){
+          storeCGErrorForIdentifier(x.artifact.identifier)
+        }
+      } finally {
+        sender() ! x
       }
-      sender() ! x
+
+
   }
 
   private def storeFailedDownloadForIdentifier(identifier: MavenIdentifier): Unit = {
