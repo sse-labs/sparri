@@ -3,9 +3,9 @@ package org.tud.cgcrawling
 import akka.actor.{ActorRef, ActorSystem}
 import akka.event.LoggingAdapter
 import akka.pattern.ask
-import akka.routing.SmallestMailboxPool
+import akka.routing.{RoundRobinPool, SmallestMailboxPool}
 import akka.stream.scaladsl.Sink
-import akka.stream.{ActorMaterializer, Materializer}
+import akka.stream.{ActorMaterializer, Materializer, OverflowStrategy}
 import akka.util.Timeout
 import org.opalj.log.{GlobalLogContext, OPALLogger}
 import org.tud.cgcrawling.discovery.maven.{IndexProcessing, MavenIdentifier}
@@ -23,21 +23,27 @@ class CallGraphCrawler(val configuration: Configuration)
 
   private val artifactsSeen  = mutable.HashSet[MavenIdentifier]()
 
+  private val storageRouter = SmallestMailboxPool(configuration.numberOfStorageThreads)
+
   val downloaderPool: ActorRef =
-    system.actorOf(SmallestMailboxPool(configuration.numberOfDownloadThreads).props(MavenDownloadActor.props))
+    //system.actorOf(SmallestMailboxPool(configuration.numberOfDownloadThreads).props(MavenDownloadActor.props))
+    system.actorOf(MavenDownloadActor.props.withRouter(SmallestMailboxPool(configuration.numberOfDownloadThreads)), name = "download-pool")
 
   val errorStoragePool: ActorRef =
-    system.actorOf(SmallestMailboxPool(configuration.numberOfStorageThreads).props(ErrorStorageActor.props(configuration)))
+    //system.actorOf(SmallestMailboxPool(configuration.numberOfStorageThreads).props(ErrorStorageActor.props(configuration)))
+    system.actorOf(ErrorStorageActor.props(configuration).withRouter(SmallestMailboxPool(configuration.numberOfStorageThreads*2)), name = "error-storage-pool")
 
   val cgGeneratorPool: ActorRef =
-    system.actorOf(SmallestMailboxPool(configuration.numberOfCgThreads).props(CallGraphActor.props(configuration)))
+    //system.actorOf(SmallestMailboxPool(configuration.numberOfCgThreads).props(CallGraphActor.props(configuration)))
+    system.actorOf(CallGraphActor.props(configuration)
+      .withRouter(SmallestMailboxPool(configuration.numberOfCgThreads)), name = "cg-generator-pool")
 
   val storagePool: ActorRef =
-    system.actorOf(SmallestMailboxPool(configuration.numberOfStorageThreads).props(CallGraphStorageActor.props(configuration)))
-
+    //system.actorOf(SmallestMailboxPool(configuration.numberOfStorageThreads).props(CallGraphStorageActor.props(configuration)))
+    system.actorOf(CallGraphStorageActor.props(configuration).withRouter(storageRouter), name = "cg-storage-pool")
   def doCrawling() = {
 
-    implicit val materializer: Materializer = ActorMaterializer()
+    //implicit val materializer: Materializer = ActorMaterializer()
     implicit val logger: LoggingAdapter = log
     implicit val timeout: Timeout = Timeout(120 minutes)
 
@@ -85,8 +91,8 @@ class CallGraphCrawler(val configuration: Configuration)
       .mapAsyncUnordered(configuration.numberOfStorageThreads)(cgResponse => (storagePool ? cgResponse)
         .mapTo[CallGraphStorageActorResponse])
       // Dispose elements at this point
-      .to(Sink.ignore)
-      .run()
+      .runWith(Sink.ignore)
+
     log.info("Done")
   }
 

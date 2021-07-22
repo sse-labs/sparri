@@ -36,7 +36,6 @@ val opalVersion = "4.0.0"
 libraryDependencies ++= Seq(
   "de.opal-project" % "common_2.12" % opalVersion,
   "de.opal-project" % "framework_2.12" % opalVersion,
-  "de.opal-project" % "hermes_2.12" % opalVersion
 )
 
 val akkaVersion = "2.6.15"
@@ -46,9 +45,6 @@ libraryDependencies ++= Seq(
   "com.typesafe.akka" %% "akka-actor" % akkaVersion,
   "com.typesafe.akka" %% "akka-testkit" % akkaVersion % Test,
   "com.typesafe.akka" %% "akka-stream" % akkaVersion,
-  "com.typesafe.akka" %% "akka-stream-testkit" % akkaVersion % Test,
-  "com.typesafe.akka" %% "akka-slf4j" % akkaVersion,
-  "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion,
   "com.typesafe.akka" %% "akka-http" % akkaHttpVersion
 )
 
@@ -57,9 +53,10 @@ libraryDependencies += "joda-time" % "joda-time" % "2.10.10"
 libraryDependencies += "org.neo4j.driver" % "neo4j-java-driver" % "4.3.1"
 
 libraryDependencies += "org.apache.maven.indexer" % "indexer-reader" % "6.0.0"
-libraryDependencies += "org.apache.maven.indexer" % "indexer-core" % "6.0.0"
 
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"
+
+libraryDependencies += "org.mongodb.scala" % "mongo-scala-driver_2.12" % "4.2.3"
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % Test
 libraryDependencies += "org.scalamock" %% "scalamock" % "5.1.0" % Test

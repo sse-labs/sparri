@@ -13,6 +13,7 @@ import org.tud.cgcrawling.graphgeneration.CallGraphActorResponse
 import java.net.URL
 import scala.collection.JavaConverters.seqAsJavaListConverter
 import scala.collection.mutable
+import scala.util.{Failure, Success, Try}
 
 class CallGraphStorageActor(configuration: Configuration) extends Actor
   with AppLogging{
@@ -24,7 +25,15 @@ class CallGraphStorageActor(configuration: Configuration) extends Actor
     case CallGraphActorResponse(artifact, true, Some(cg), Some(project)) =>
       val start = System.currentTimeMillis()
       log.info(s"Storing CallGraph for artifact ${artifact.identifier.toString}")
-      val success = storeCallGraph(artifact, cg, project)
+      val success = Try(storeCallGraph(artifact, cg, project)) match {
+        case Success(false) =>
+          log.error(s"There was an unexpected failure while storing CallGraph for ${artifact.identifier.toString}")
+          false
+        case Failure(ex) =>
+          log.error(ex, s"Error while storing CallGraph for ${artifact.identifier.toString}")
+          false
+        case _ => true
+      }
       val duration = System.currentTimeMillis() - start
       log.info(s"Finished storing CallGraph in $duration ms")
       sender() ! CallGraphStorageActorResponse(artifact, success)
@@ -42,7 +51,7 @@ class CallGraphStorageActor(configuration: Configuration) extends Actor
   private def storeCallGraph(artifact: MavenArtifact, cg: CallGraph, project: Project[URL]): Boolean = {
     val session: Session = configuration.graphDatabaseDriver.session()
 
-    val allMethods = cg.reachableMethods().toList
+    val allMethods = cg.reachableMethods().toList.distinct
 
     val externalMethods = new mutable.HashSet[Array[Any]]
     val internalMethods = new mutable.HashSet[Array[Any]]
