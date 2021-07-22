@@ -38,9 +38,11 @@ class CallGraphCrawler(val configuration: Configuration)
     system.actorOf(CallGraphActor.props(configuration)
       .withRouter(SmallestMailboxPool(configuration.numberOfCgThreads)), name = "cg-generator-pool")
 
-  val storagePool: ActorRef =
+  val storagePool: ActorRef = {
     //system.actorOf(SmallestMailboxPool(configuration.numberOfStorageThreads).props(CallGraphStorageActor.props(configuration)))
-    system.actorOf(CallGraphStorageActor.props(configuration).withRouter(storageRouter), name = "cg-storage-pool")
+    system.actorOf(CallGraphStorageActor.props(configuration).withRouter(storageRouter).withDispatcher("storage-dispatcher"), name = "cg-storage-pool")
+  }
+
   def doCrawling() = {
 
     //implicit val materializer: Materializer = ActorMaterializer()
