@@ -16,6 +16,7 @@ class CallGraphActor(config: Configuration) extends Actor with AppLogging with C
 
   override def receive: Receive = {
     case artifact: MavenArtifact =>
+      Try(artifact.pomFile.is.close())
       Try(reifyProject(artifact, true)) match {
         case Success(project) =>
           log.info(s"Successfully initialized OPAL project for ${artifact.identifier.toString}")

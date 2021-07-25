@@ -18,13 +18,19 @@ package org.tud.cgcrawling.download
 
 import java.util.Locale
 import akka.actor.{Actor, ActorSystem, Props}
+import akka.util.Timeout
 import org.joda.time.format.DateTimeFormat
 import org.tud.cgcrawling.AppLogging
 import org.tud.cgcrawling.discovery.maven.{JarFile, MavenArtifact, MavenIdentifier, PomFile}
 
+import scala.concurrent.Await
+import scala.concurrent.duration.DurationInt
+import scala.language.postfixOps
 import scala.util.{Failure, Success, Try}
 
 class MavenDownloadActor extends Actor with AppLogging {
+
+  private implicit val shutdownTimeout: Timeout = Timeout(20 seconds)
 
   override def receive: Receive = {
     case m : MavenIdentifier =>
@@ -51,12 +57,14 @@ class MavenDownloadActor extends Actor with AppLogging {
 
           downloader.downloadFromUri(m.toJarLocation.toString) match {
             case Success(jar) =>
+              Await.ready(downloader.httpExt.shutdownAllConnectionPools(), shutdownTimeout.duration)
               sender() ! MavenDownloadActorResponse(
                 m,
                 Some(MavenArtifact(m, Some(JarFile(jar, m.toJarLocation.toURL)), PomFile(pomStream), pomPublicationDate)),
                 dateParsingFailed = pomPublicationDate.isEmpty)
             case Failure(ex) =>
               log.warning(s"Failed to download jar file for $m")
+              Await.ready(downloader.httpExt.shutdownAllConnectionPools(), shutdownTimeout.duration)
               sender() ! MavenDownloadActorResponse(
                 m,
                 Some(MavenArtifact(m, None, PomFile(pomStream), pomPublicationDate)),
@@ -67,6 +75,7 @@ class MavenDownloadActor extends Actor with AppLogging {
           }
 
         case Failure(ex) =>
+          Await.ready(downloader.httpExt.shutdownAllConnectionPools(), shutdownTimeout.duration)
           log.error(s"Failed to download pom file for $m with message: ${ex.getMessage}")
           sender() ! MavenDownloadActorResponse(m, None, pomDownloadFailed = true, errorMessage = ex.getMessage)
       }

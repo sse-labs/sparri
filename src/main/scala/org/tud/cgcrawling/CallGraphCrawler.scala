@@ -15,7 +15,9 @@ import org.tud.cgcrawling.storage.{CallGraphStorageActor, CallGraphStorageActorR
 import org.tud.cgcrawling.utils.StreamingSignals.{Ack, StreamFailure}
 
 import scala.collection.mutable
+import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
+import scala.language.postfixOps
 
 class CallGraphCrawler(val configuration: Configuration)
                       (implicit system: ActorSystem)
@@ -43,7 +45,7 @@ class CallGraphCrawler(val configuration: Configuration)
     system.actorOf(CallGraphStorageActor.props(configuration).withRouter(storageRouter).withDispatcher("storage-dispatcher"), name = "cg-storage-pool")
   }
 
-  def doCrawling() = {
+  def doCrawling(): Unit = {
 
     //implicit val materializer: Materializer = ActorMaterializer()
     implicit val logger: LoggingAdapter = log
@@ -103,13 +105,16 @@ class CallGraphCrawler(val configuration: Configuration)
 object CallGraphCrawler {
   val theSystem: ActorSystem = ActorSystem("opal-cg-crawler")
 
-  def main(args: Array[String]) = {
+  def main(args: Array[String]): Unit = {
     val theConfig = new Configuration()
+    val shutdownTimeout = Timeout(1 minutes)
 
     OPALLogger.updateLogger(GlobalLogContext, OPALLogAdapter)
 
     val theApp = new CallGraphCrawler(theConfig)(theSystem)
 
     theApp.doCrawling()
+
+    Await.result(theSystem.terminate(), shutdownTimeout.duration)
   }
 }

@@ -17,9 +17,8 @@
 package org.tud.cgcrawling.download
 
 import java.io.{ByteArrayInputStream, InputStream}
-
 import akka.actor.ActorSystem
-import akka.http.scaladsl.Http
+import akka.http.scaladsl.{Http, HttpExt}
 import akka.http.scaladsl.model.{HttpHeader, HttpRequest, HttpResponse, StatusCodes}
 import akka.stream.ActorMaterializer
 import akka.util.ByteString
@@ -33,9 +32,11 @@ class HttpDownloader(implicit val system: ActorSystem) {
   implicit val materializer = ActorMaterializer()
   implicit val ec = system.dispatcher
 
+  val httpExt: HttpExt = Http()
+
   def downloadFromUri(requestedUri: String): Try[InputStream] = {
     val responseFuture: Future[HttpResponse] =
-      Http().singleRequest(HttpRequest(uri = requestedUri))
+      httpExt.singleRequest(HttpRequest(uri = requestedUri))
 
 
     Await.result(responseFuture, Duration.Inf) match {
@@ -49,7 +50,7 @@ class HttpDownloader(implicit val system: ActorSystem) {
 
   def downloadFromUriWithHeaders(requestedUri: String): Try[(InputStream, Seq[HttpHeader])] = {
     val responseFuture: Future[HttpResponse] =
-      Http().singleRequest(HttpRequest(uri = requestedUri))
+      httpExt.singleRequest(HttpRequest(uri = requestedUri))
 
 
     Await.result(responseFuture, Duration.Inf) match {
