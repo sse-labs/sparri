@@ -1,5 +1,6 @@
 package org.tud.cgcrawling
 
+import akka.Done
 import akka.actor.{ActorRef, ActorSystem}
 import akka.event.LoggingAdapter
 import akka.pattern.ask
@@ -15,7 +16,7 @@ import org.tud.cgcrawling.storage.{CallGraphStorageActor, CallGraphStorageActorR
 import org.tud.cgcrawling.utils.StreamingSignals.{Ack, StreamFailure}
 
 import scala.collection.mutable
-import scala.concurrent.Await
+import scala.concurrent.{Await, Future}
 import scala.concurrent.duration.DurationInt
 import scala.language.postfixOps
 
@@ -45,7 +46,7 @@ class CallGraphCrawler(val configuration: Configuration)
     system.actorOf(CallGraphStorageActor.props(configuration).withRouter(storageRouter).withDispatcher("storage-dispatcher"), name = "cg-storage-pool")
   }
 
-  def doCrawling(): Unit = {
+  def doCrawling(): Future[Done] = {
 
     //implicit val materializer: Materializer = ActorMaterializer()
     implicit val logger: LoggingAdapter = log
@@ -96,8 +97,6 @@ class CallGraphCrawler(val configuration: Configuration)
         .mapTo[CallGraphStorageActorResponse])
       // Dispose elements at this point
       .runWith(Sink.ignore)
-
-    log.info("Done")
   }
 
 }
@@ -113,8 +112,10 @@ object CallGraphCrawler {
 
     val theApp = new CallGraphCrawler(theConfig)(theSystem)
 
-    theApp.doCrawling()
+    theApp.doCrawling().onComplete{ _ =>
+      Await.result(theSystem.terminate(), shutdownTimeout.duration)
+    }(theSystem.dispatcher)
 
-    Await.result(theSystem.terminate(), shutdownTimeout.duration)
+
   }
 }
