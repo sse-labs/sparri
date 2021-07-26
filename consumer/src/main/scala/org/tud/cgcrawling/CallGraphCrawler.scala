@@ -69,7 +69,7 @@ class CallGraphCrawler(val configuration: Configuration)
       case Failure(ex) =>
         log.error(s"Failed to read versions for library $groupId:$artifactId", ex)
         downloader.shutdown()
-        Future.failed(ex)
+        Future(GraphDbStorageResult(theCallGraphEvolution.libraryName, success = false))(system.dispatcher)
     }
 
   }

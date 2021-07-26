@@ -58,7 +58,7 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) ext
       throw new RuntimeException(s"Release has already been applied to CallGraphEvolution: $release")
     }
 
-    log.info(s"New release $release:")
+    log.info(s"Processing new release $release for $libraryName")
     releaseList.append(release)
 
     val methods = callgraph.reachableMethods().toSet
@@ -87,8 +87,6 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) ext
             if(setInvocationActiveInRelease(ident, release)) invocationCnt += 1
           }
       }
-    log.info(s"---New methods in release: $cnt")
-    log.info(s"---New invocations in release: $invocationCnt")
   }
 
   private def setInvocationActiveInRelease(identifier: MethodInvocationIdentifier, release: String): Boolean = {
