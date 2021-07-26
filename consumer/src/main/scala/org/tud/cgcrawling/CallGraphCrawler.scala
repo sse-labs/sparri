@@ -29,12 +29,12 @@ class CallGraphCrawler(val configuration: Configuration)
     createSource(configuration)
       .map { libraryIdentifier =>
         log.info(s"Got library identifier from queue: $libraryIdentifier")
-        /*val parts = libraryIdentifier.split(":")
+        val parts = libraryIdentifier.split(":")
         val storageResult = Await.result(processLibrary(parts(0),parts(1)), processingTimeout.duration)
 
         if(!storageResult.success){
           log.error(s"Failed to store library callgraph ${storageResult.libraryName}")
-        }*/
+        }
       }
       .run()
   }
