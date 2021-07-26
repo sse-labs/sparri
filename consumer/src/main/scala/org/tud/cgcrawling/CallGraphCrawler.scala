@@ -18,6 +18,7 @@ import scala.concurrent.duration.DurationInt
 import scala.language.postfixOps
 import scala.util.{Failure, Success}
 
+//TODO: Check for existing artifacts in db
 class CallGraphCrawler(val configuration: Configuration)
                       (implicit system: ActorSystem)
   extends LibraryArtifactProcessing with MqIdentifierProcessing {

@@ -3,7 +3,7 @@ package org.tud.cgcrawling.storage
 import akka.actor.ActorSystem
 import org.neo4j.driver.Values.parameters
 import org.tud.cgcrawling.{AppLogging, Configuration}
-import org.tud.cgcrawling.model.LibraryCallGraphEvolution
+import org.tud.cgcrawling.model.{LibraryCallGraphEvolution, MethodEvolution, MethodIdentifier}
 
 import scala.collection.JavaConverters.asJavaIterableConverter
 import scala.collection.mutable
@@ -29,10 +29,18 @@ class GraphDbStorageHandler(configuration: Configuration)(implicit system: Actor
   private def storeCgEvolution(cgEvolution: LibraryCallGraphEvolution): Unit = {
     val libIdent = cgEvolution.libraryName
 
+    def getMethodUid(identifier: MethodIdentifier) = {
+      if(identifier.isExternal)
+        s"$libIdent:${identifier.fullSignature}--EXTERN"
+      else
+        s"$libIdent:${identifier.fullSignature}"
+    }
+
     val allMethodData = new mutable.HashSet[Array[Any]]
 
     for(methodEvolution <- cgEvolution.methodEvolutions()){
-      val uid = s"$libIdent:${methodEvolution.identifier.fullSignature}"
+      val uid = getMethodUid(methodEvolution.identifier)
+
       val name = methodEvolution.identifier.simpleName
       val releases = methodEvolution.isActiveIn.toArray
       val signature = methodEvolution.identifier.fullSignature
@@ -44,8 +52,8 @@ class GraphDbStorageHandler(configuration: Configuration)(implicit system: Actor
     val allInvocationData = new mutable.HashSet[Array[Any]]
 
     for(invocationEvolution <- cgEvolution.methodInvocationEvolutions()){
-      val callerUid = s"$libIdent:${invocationEvolution.invocationIdent.calleeIdent.fullSignature}"
-      val calleeUid = s"$libIdent:${invocationEvolution.invocationIdent.callerIdent.fullSignature}"
+      val callerUid = getMethodUid(invocationEvolution.invocationIdent.callerIdent)
+      val calleeUid = getMethodUid(invocationEvolution.invocationIdent.calleeIdent)
       val releases = invocationEvolution.isActiveIn.toArray
 
       allInvocationData.add(Array(callerUid, calleeUid, releases))
@@ -63,8 +71,6 @@ class GraphDbStorageHandler(configuration: Configuration)(implicit system: Actor
       parameters("gid", cgEvolution.groupId, "aid", cgEvolution.artifactId, "r", cgEvolution.releases().toArray))
 
     session.close()
-
-
   }
 
 }
