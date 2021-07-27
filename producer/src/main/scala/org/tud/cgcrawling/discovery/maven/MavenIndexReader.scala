@@ -24,29 +24,39 @@ class MavenIndexReader(base: URL) {
 
   lazy val cr = ir.iterator().next().iterator()
 
+
   def read(): Option[MavenIdentifier] = {
 
     def readInternal(kvp: util.Map[String, String]) = {
-      val kvpU = kvp.get("u")
-      val identifierAttempt = Try(kvpU.split("|".toCharArray))
+      val kvpU = Option(kvp.get("u"))
 
-      identifierAttempt match {
-        case Success(identifier) => {
-          val mavenId = MavenIdentifier(base.toString, identifier(0), identifier(1), identifier(2))
+      if(kvpU.isEmpty){
+        None
+      } else {
+        val identifierAttempt = Try(kvpU.get.split("|".toCharArray))
 
-          Some(mavenId)
-        }
-        case Failure(e) => {
-          log.warn(s"While processing index we received the following u-value that we could not split $kvpU. Full kvp is $kvp. Exception was $e.")
-          None
+        identifierAttempt match {
+          case Success(identifier) => {
+            val mavenId = MavenIdentifier(base.toString, identifier(0), identifier(1), identifier(2))
+
+            Some(mavenId)
+          }
+          case Failure(e) => {
+            log.warn(s"While processing index we received the following u-value that we could not split $kvpU. Full kvp is $kvp. Exception was $e.")
+            None
+          }
         }
       }
     }
 
-    cr.hasNext() match {
-      case true => Iterator.continually(readInternal(cr.next())).takeWhile(result => cr.hasNext()).collectFirst[MavenIdentifier]({ case Some(x) => x})
-      case false => None
+    while(cr.hasNext){
+      readInternal(cr.next()) match {
+        case Some(x) => return Some(x)
+        case _ =>
+      }
     }
+
+    None
   }
 
   def close() = {
@@ -61,7 +71,7 @@ trait IndexProcessing {
   def createSource(base: URI): Source[MavenIdentifier, NotUsed] = {
     log.info("Creating source")
 
-    RestartSource.withBackoff(
+    RestartSource.onFailuresWithBackoff(
       minBackoff = 30.seconds,
       maxBackoff = 90.seconds,
       randomFactor = 0.2, // adds 20% "noise" to vary the intervals slightly

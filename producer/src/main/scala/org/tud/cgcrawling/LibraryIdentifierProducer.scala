@@ -2,6 +2,7 @@ package org.tud.cgcrawling
 
 import akka.Done
 import akka.actor.ActorSystem
+import akka.stream.scaladsl.Sink
 import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.discovery.maven.IndexProcessing
 import org.tud.cgcrawling.storage.MessageQueuePublisher
