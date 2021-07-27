@@ -14,7 +14,7 @@ trait MqIdentifierProcessing extends AppLogging{
 
   def createSource(configuration: Configuration) (implicit system: ActorSystem): Source[String, NotUsed] = {
 
-    RestartSource.withBackoff(minBackoff = 30.seconds,
+    RestartSource.onFailuresWithBackoff(minBackoff = 30.seconds,
       maxBackoff = 120.seconds,
       randomFactor = 0.2,
       maxRestarts = 50){ () => {

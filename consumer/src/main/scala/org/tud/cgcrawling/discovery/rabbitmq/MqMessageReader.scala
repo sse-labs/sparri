@@ -29,7 +29,6 @@ class MqMessageReader(configuration: Configuration)(implicit system: ActorSystem
       if (queueResponse == null) {
         throw new RuntimeException("No Response from queue")
       } else {
-        val props = queueResponse.getProps
         val messageBody = new String(queueResponse.getBody)
         val messageTag = queueResponse.getEnvelope.getDeliveryTag
 
@@ -44,14 +43,21 @@ class MqMessageReader(configuration: Configuration)(implicit system: ActorSystem
       }
     } match {
       case Success(libraryIdent) => Some(libraryIdent)
+      case Failure(ex: java.lang.RuntimeException) if ex.getMessage.toLowerCase.contains("no response from queue") =>
+        log.info("No more messages from queue")
+        // Returning None will tell the surrounding RestartSource that this stream has completed
+        shutdown()
+        None
       case Failure(ex) =>
         log.error(ex, "Failed to pull library identifier from queue")
-        None
+        shutdown()
+        // Rethrow so surrounding RestartSource can handle ie connection aborts
+        throw ex
     }
   }
 
 
-  def shutdown(): Unit = {
+  def shutdown(): Unit = Try {
     channel.close()
     connection.close()
   }

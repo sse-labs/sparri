@@ -67,7 +67,7 @@ class GraphDbStorageHandler(configuration: Configuration)(implicit system: Actor
     session.run("UNWIND $i AS invocation MATCH (caller: Method {UniqueName: invocation[0]}) MATCH (callee: Method {UniqueName: invocation[1]}) CREATE (caller)-[:INVOKES {Releases: invocation[2]}]->(callee)",
       parameters("i", allInvocationData.toList.asJava))
 
-    session.run("CREATE (l: MavenLibrary{groupId: $gid, artifactId: $aid, releases: $r})",
+    session.run("CREATE (l: MavenLibrary{groupId: $gid, artifactId: $aid, Releases: $r})",
       parameters("gid", cgEvolution.groupId, "aid", cgEvolution.artifactId, "r", cgEvolution.releases().toArray))
 
     session.close()

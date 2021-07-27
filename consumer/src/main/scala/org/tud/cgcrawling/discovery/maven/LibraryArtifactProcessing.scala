@@ -16,7 +16,7 @@ import scala.xml.XML
 
 trait LibraryArtifactProcessing extends AppLogging {
 
-  private val shutdownTimeout: Timeout = new Timeout(10 seconds)
+  private val shutdownTimeout: Timeout = new Timeout(20 seconds)
 
   val repoUri: URI
 
@@ -31,9 +31,7 @@ trait LibraryArtifactProcessing extends AppLogging {
   }
 
   private def getVersions(groupId: String, artifactId: String)
-                         (implicit system: ActorSystem): Try[Iterable[String]] = {
-
-    val downloader = new HttpDownloader()
+                         (implicit system: ActorSystem): Try[Iterable[String]] = withHttpDownloader(system) { downloader =>
 
     val versionListUri: URI = repoUri.resolve(relativeVersionListUrl(groupId, artifactId))
 
@@ -44,16 +42,24 @@ trait LibraryArtifactProcessing extends AppLogging {
 
         val result = Try((xml \\ "metadata" \\ "versioning" \\ "versions" \\ "version").map(_.text).toList)
 
-        Await.ready(downloader.httpExt.shutdownAllConnectionPools(), shutdownTimeout.duration)
-
         result
       case Failure(x: HttpException) =>
-        log.error(x, s"Failed to download version list with code ${x.code}")
+        log.error( s"Failed to download version list with code ${x.code}")
         Failure(x)
       case Failure(ex) =>
         log.error(ex, "Failed to read version list")
         Failure(ex)
     }
+  }
+
+  private def withHttpDownloader[T](system: ActorSystem)(implicit function: HttpDownloader => T): T = {
+    val downloader = new HttpDownloader()(system)
+
+    val result: T = function.apply(downloader)
+
+    Await.ready(downloader.httpExt.shutdownAllConnectionPools(), shutdownTimeout.duration)
+
+    result
   }
 
   private def relativeVersionListUrl(groupId: String, artifactId: String): String = {

@@ -21,7 +21,7 @@ class MavenJarDownloader(implicit val system: ActorSystem) extends AppLogging {
         log.info(s"Downloaded ${ident.toString}")
         MavenJarDownloadResult(ident, Some(JarFile(jar, ident.toJarLocation.toURL)))
       case Failure(ex) =>
-        log.error(ex, s"Failed to download JAR file ${ident.toString}")
+        log.error(s"Failed to download JAR file ${ident.toString}: ${ex.getMessage}")
         MavenJarDownloadResult(ident, None)
     }
   }
