@@ -1,18 +1,17 @@
 package org.tud.cgcrawling.model
 
-import akka.actor.ActorSystem
 import org.opalj.br.{DeclaredMethod, VirtualDeclaredMethod}
 import org.opalj.br.analyses.Project
 import org.opalj.tac.cg.CallGraph
-import org.tud.cgcrawling.{AppLogging, CallGraphCrawler}
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.net.URL
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
-class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) extends AppLogging {
+class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
 
-  implicit val system: ActorSystem = CallGraphCrawler.theSystem
+  private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
   private val methodEvolutionMap: mutable.Map[MethodIdentifier, MethodEvolution] = new mutable.HashMap()
   private val invocationEvolutionMap: mutable.Map[MethodInvocationIdentifier, MethodInvocationEvolution] =
@@ -53,7 +52,7 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) ext
       .toList
   }
 
-  def applyNewRelease(callgraph: CallGraph, project: Project[URL], release: String) = {
+  def applyNewRelease(callgraph: CallGraph, project: Project[URL], release: String): Unit = {
     if(releaseList.contains(release)){
       throw new RuntimeException(s"Release has already been applied to CallGraphEvolution: $release")
     }

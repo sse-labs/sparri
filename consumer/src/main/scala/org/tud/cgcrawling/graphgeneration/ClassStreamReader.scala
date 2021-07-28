@@ -36,9 +36,16 @@ import scala.concurrent.{Await, Future}
  */
 trait ClassStreamReader {
 
-  private val libraryClasses: List[(ClassFile, URL)] = readClassFiles(new JarInputStream
-  (new FileInputStream(org.opalj.bytecode.RTJar)), Project.JavaLibraryClassFileReader)
-    .map { case (classFile, _) => (classFile, org.opalj.bytecode.RTJar.toURI.toURL) }
+  private val libraryClasses = {
+    val is = new JarInputStream(new FileInputStream(org.opalj.bytecode.RTJar))
+
+    val list = readClassFiles(is, Project.JavaLibraryClassFileReader)
+
+    is.close()
+
+    list.map { case (classFile, _) => (classFile, org.opalj.bytecode.RTJar.toURI.toURL) }
+  }
+
 
 
   /**

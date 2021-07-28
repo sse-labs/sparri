@@ -4,7 +4,7 @@ import akka.NotUsed
 import akka.actor.ActorSystem
 import akka.stream.scaladsl.Source
 import akka.util.Timeout
-import org.tud.cgcrawling.AppLogging
+import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.download.{HttpDownloader, HttpException}
 
 import java.net.URI
@@ -14,9 +14,10 @@ import scala.language.postfixOps
 import scala.util.{Failure, Success, Try}
 import scala.xml.XML
 
-trait LibraryArtifactProcessing extends AppLogging {
+trait LibraryArtifactProcessing {
 
   private val shutdownTimeout: Timeout = new Timeout(20 seconds)
+  private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
   val repoUri: URI
 
@@ -47,7 +48,7 @@ trait LibraryArtifactProcessing extends AppLogging {
         log.error( s"Failed to download version list with code ${x.code}")
         Failure(x)
       case Failure(ex) =>
-        log.error(ex, "Failed to read version list")
+        log.error("Failed to read version list", ex)
         Failure(ex)
     }
   }

@@ -1,12 +1,14 @@
 package org.tud.cgcrawling.discovery.rabbitmq
 
-import akka.actor.ActorSystem
 import com.rabbitmq.client.{Channel, Connection, ConnectionFactory}
-import org.tud.cgcrawling.{AppLogging, Configuration}
+import org.slf4j.{Logger, LoggerFactory}
+import org.tud.cgcrawling.Configuration
 
 import scala.util.{Failure, Success, Try}
 
-class MqMessageReader(configuration: Configuration)(implicit system: ActorSystem) extends AppLogging {
+class MqMessageReader(configuration: Configuration) {
+
+  private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
   lazy val connection: Connection = {
     val factory = new ConnectionFactory
@@ -49,7 +51,7 @@ class MqMessageReader(configuration: Configuration)(implicit system: ActorSystem
         shutdown()
         None
       case Failure(ex) =>
-        log.error(ex, "Failed to pull library identifier from queue")
+        log.error("Failed to pull library identifier from queue", ex)
         shutdown()
         // Rethrow so surrounding RestartSource can handle ie connection aborts
         throw ex

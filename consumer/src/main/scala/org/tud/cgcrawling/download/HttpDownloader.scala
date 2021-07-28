@@ -20,16 +20,18 @@ import java.io.{ByteArrayInputStream, InputStream}
 import akka.actor.ActorSystem
 import akka.http.scaladsl.{Http, HttpExt}
 import akka.http.scaladsl.model.{HttpHeader, HttpRequest, HttpResponse, StatusCodes}
-import akka.stream.ActorMaterializer
-import akka.util.ByteString
+import akka.util.{ByteString, Timeout}
 
-import scala.concurrent.duration.Duration
+import scala.concurrent.duration.{Duration, DurationInt}
 import scala.concurrent.{Await, Future}
+import scala.language.postfixOps
 import scala.util.{Failure, Try}
 
 class HttpDownloader(implicit val system: ActorSystem) {
 
-  implicit val ec = system.dispatcher
+  private val downloadTimeout = Timeout(3 minutes)
+
+  private val ec = system.dispatcher
 
   val httpExt: HttpExt = Http()
 
@@ -38,9 +40,9 @@ class HttpDownloader(implicit val system: ActorSystem) {
       httpExt.singleRequest(HttpRequest(uri = requestedUri))
 
 
-    Await.result(responseFuture, Duration.Inf) match {
-      case HttpResponse(StatusCodes.OK, headers, entity, _) =>
-        Try(new ByteArrayInputStream(Await.result(entity.withoutSizeLimit().dataBytes.runFold(ByteString.empty)(_ ++ _).map(_.toArray), Duration.Inf)))
+    Await.result(responseFuture, downloadTimeout.duration) match {
+      case HttpResponse(StatusCodes.OK, _, entity, _) =>
+        Try(new ByteArrayInputStream(Await.result(entity.withoutSizeLimit().dataBytes.runFold(ByteString.empty)(_ ++ _).map(_.toArray)(ec), downloadTimeout.duration)))
       case resp@HttpResponse(code, _, _, _) =>
         resp.discardEntityBytes()
         Failure(new HttpException(code))
@@ -52,10 +54,10 @@ class HttpDownloader(implicit val system: ActorSystem) {
       httpExt.singleRequest(HttpRequest(uri = requestedUri))
 
 
-    Await.result(responseFuture, Duration.Inf) match {
+    Await.result(responseFuture, downloadTimeout.duration) match {
       case HttpResponse(StatusCodes.OK, headers, entity, _) =>
         Try((
-          new ByteArrayInputStream(Await.result(entity.withoutSizeLimit().dataBytes.runFold(ByteString.empty)(_ ++ _).map(_.toArray), Duration.Inf)),
+          new ByteArrayInputStream(Await.result(entity.withoutSizeLimit().dataBytes.runFold(ByteString.empty)(_ ++ _).map(_.toArray)(ec), downloadTimeout.duration)),
           headers))
       case resp@HttpResponse(code, _, _, _) =>
         resp.discardEntityBytes()

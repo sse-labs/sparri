@@ -1,17 +1,19 @@
 package org.tud.cgcrawling.graphgeneration
 
-import akka.actor.ActorSystem
 import org.opalj.br.analyses.Project
 import org.opalj.tac.cg.CallGraph
+import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 import org.tud.cgcrawling.download.MavenJarDownloadResult
-import org.tud.cgcrawling.{AppLogging, Configuration}
+import org.tud.cgcrawling.Configuration
 
 import java.net.URL
 import java.util.jar.JarInputStream
 import scala.util.{Failure, Success, Try}
 
-class CallGraphBuilder(config: Configuration)(implicit system: ActorSystem) extends ClassStreamReader with AppLogging {
+class CallGraphBuilder(config: Configuration) extends ClassStreamReader {
+
+  private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
   def buildCallgraph(jarFile: MavenJarDownloadResult): CallGraphBuilderResult = {
     Try(reifyProject(jarFile, true)) match {
@@ -23,19 +25,29 @@ class CallGraphBuilder(config: Configuration)(implicit system: ActorSystem) exte
             log.info(s"Successfully generated Callgraph for ${jarFile.identifier.toString}")
             CallGraphBuilderResult(jarFile.identifier, success = true, Some(callgraph), Some(project))
           case Failure(ex) =>
-            log.error(ex,s"Failed to generate Callgraph for ${jarFile.identifier.toString}")
+            log.error(s"Failed to generate Callgraph for ${jarFile.identifier.toString}", ex)
             CallGraphBuilderResult(jarFile.identifier, success = false, None, None)
         }
       case Failure(ex) =>
-        log.error(ex, s"Error while analyzing JAR for artifact ${jarFile.identifier.toString}")
+        log.error(s"Error while analyzing JAR for artifact ${jarFile.identifier.toString}", ex)
         CallGraphBuilderResult(jarFile.identifier, success = false, None, None)
     }
   }
 
   private def reifyProject(m: MavenJarDownloadResult, loadAsLibraryProject: Boolean): Project[URL] = {
+    val jarIs = new JarInputStream(m.jarFile.get.is)
+
     val project = createProject(m.identifier.toJarLocation.toURL,
-      new JarInputStream(m.jarFile.get.is), loadAsLibraryProject)
-    Try(m.jarFile.get.is.close())
+      jarIs, loadAsLibraryProject)
+
+    Try{
+      jarIs.close()
+      m.jarFile.get.is.close()
+    } match {
+      case Failure(ex) => log.error("Failed to close input streams", ex)
+      case _ =>
+    }
+
     project
   }
 

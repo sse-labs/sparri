@@ -1,15 +1,17 @@
 package org.tud.cgcrawling.storage
 
-import akka.actor.ActorSystem
 import org.neo4j.driver.Values.parameters
-import org.tud.cgcrawling.{AppLogging, Configuration}
-import org.tud.cgcrawling.model.{LibraryCallGraphEvolution, MethodEvolution, MethodIdentifier}
+import org.slf4j.{Logger, LoggerFactory}
+import org.tud.cgcrawling.Configuration
+import org.tud.cgcrawling.model.{LibraryCallGraphEvolution, MethodIdentifier}
 
 import scala.collection.JavaConverters.asJavaIterableConverter
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
-class GraphDbStorageHandler(configuration: Configuration)(implicit system: ActorSystem) extends AppLogging{
+class GraphDbStorageHandler(configuration: Configuration) {
+
+  private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
   def storeCallGraphEvolution(cgEvolution: LibraryCallGraphEvolution): GraphDbStorageResult = {
     val start = System.currentTimeMillis()
@@ -21,7 +23,7 @@ class GraphDbStorageHandler(configuration: Configuration)(implicit system: Actor
         log.info(s"Finished storing CallGraph in $duration ms")
         GraphDbStorageResult(cgEvolution.libraryName, success = true)
       case Failure(ex) =>
-        log.error(ex, s"Failed to store callgraph for library ${cgEvolution.libraryName}")
+        log.error(s"Failed to store callgraph for library ${cgEvolution.libraryName}", ex)
         GraphDbStorageResult(cgEvolution.libraryName, success = false)
     }
   }

@@ -2,7 +2,7 @@ package org.tud.cgcrawling.download
 
 import akka.actor.ActorSystem
 import akka.util.Timeout
-import org.tud.cgcrawling.AppLogging
+import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.discovery.maven.{JarFile, MavenIdentifier}
 
 import scala.concurrent.Await
@@ -10,8 +10,10 @@ import scala.concurrent.duration.DurationInt
 import scala.language.postfixOps
 import scala.util.{Failure, Success}
 
-class MavenJarDownloader(implicit val system: ActorSystem) extends AppLogging {
+class MavenJarDownloader(implicit val system: ActorSystem) {
 
+
+  private val log: Logger = LoggerFactory.getLogger(this.getClass)
   private val downloader: HttpDownloader = new HttpDownloader()
   private val shutdownTimeout: Timeout = Timeout(30 seconds)
 
