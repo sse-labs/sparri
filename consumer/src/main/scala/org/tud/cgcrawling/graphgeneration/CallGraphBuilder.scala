@@ -1,7 +1,7 @@
 package org.tud.cgcrawling.graphgeneration
 
 import org.opalj.br.analyses.Project
-import org.opalj.tac.cg.CallGraph
+import org.opalj.tac.cg.{CallGraph, RTACallGraphKey}
 import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 import org.tud.cgcrawling.download.MavenJarDownloadResult
@@ -20,7 +20,14 @@ class CallGraphBuilder(config: Configuration) extends ClassStreamReader {
       case Success(project) =>
         log.info(s"Successfully initialized OPAL project for ${jarFile.identifier.toString}")
 
-        Try(project.get(config.CallGraphAlgorithm)) match {
+        val callGraphAlgorithmKey = if(project.codeSize > config.codeSizeCgCutoffBytes){
+          log.warn(s"Falling back to RTA because of JAR code size <${project.codeSize}> exceeding limit of <${config.codeSizeCgCutoffBytes}>")
+          RTACallGraphKey
+        } else {
+          config.CallGraphAlgorithm
+        }
+
+        Try(project.get(callGraphAlgorithmKey)) match {
           case Success(callgraph) =>
             log.info(s"Successfully generated Callgraph for ${jarFile.identifier.toString}")
             CallGraphBuilderResult(jarFile.identifier, success = true, Some(callgraph), Some(project))

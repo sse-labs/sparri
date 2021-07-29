@@ -62,5 +62,7 @@ class Configuration {
   val numberOfCgThreads: Int = 2
   val numberOfStorageThreads: Int = 2
 
+  val codeSizeCgCutoffBytes: Int = 1500000
+
   case class Throttle(element : Int, per : FiniteDuration, maxBurst : Int, mode : ThrottleMode)
 }
