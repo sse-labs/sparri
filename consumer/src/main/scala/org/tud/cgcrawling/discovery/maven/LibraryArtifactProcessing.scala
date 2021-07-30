@@ -23,12 +23,13 @@ trait LibraryArtifactProcessing {
 
   def createIdentifierSource(groupId: String, artifactId: String)
                             (implicit system: ActorSystem): Try[Source[MavenIdentifier, NotUsed]] = {
-    val sourceTry = getVersions(groupId, artifactId)
-      .map(versions =>
-        versions.map(version => new MavenIdentifier(repoUri.toString, groupId, artifactId, version)))
-      .map(it => Source.fromIterator(() => it.iterator))
 
-    sourceTry
+    createIdentifierIterator(groupId, artifactId).map(i => Source.fromIterator(() => i.iterator))
+  }
+
+  def createIdentifierIterator(groupId: String, artifactId: String)(implicit system: ActorSystem): Try[Iterable[MavenIdentifier]] = {
+    getVersions(groupId, artifactId)
+      .map(versions => versions.map(version => new MavenIdentifier(repoUri.toString, groupId, artifactId, version)))
   }
 
   private def getVersions(groupId: String, artifactId: String)

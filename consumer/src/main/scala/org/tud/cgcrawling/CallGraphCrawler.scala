@@ -23,14 +23,14 @@ class CallGraphCrawler(val configuration: Configuration)
   extends LibraryArtifactProcessing with MqIdentifierProcessing {
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
-  private val processingTimeout: Timeout = Timeout(24 hours)
+  //private val processingTimeout: Timeout = Timeout(24 hours)
 
   def startProcessing(): Future[Done]= {
     createSource(configuration)
       .map { libraryIdentifier =>
         log.info(s"Got library identifier from queue: $libraryIdentifier")
         val parts = libraryIdentifier.split(":")
-        val storageResult = Await.result(processLibrary(parts(0),parts(1)), processingTimeout.duration)
+        val storageResult = processLibrary(parts(0),parts(1))
 
         if(!storageResult.success){
           log.error(s"Failed to store library callgraph ${storageResult.libraryName}")
@@ -39,37 +39,36 @@ class CallGraphCrawler(val configuration: Configuration)
       .run()
   }
 
-  def processLibrary(groupId: String, artifactId: String): Future[GraphDbStorageResult] = {
+  def processLibrary(groupId: String, artifactId: String): GraphDbStorageResult = {
     val theCallGraphEvolution = new LibraryCallGraphEvolution(groupId, artifactId)
     val downloader = new MavenJarDownloader()
     val cgBuilder = new CallGraphBuilder(configuration, system)
     val cgStorageHandler = new GraphDbStorageHandler(configuration)
-    createIdentifierSource(groupId, artifactId) match {
+    createIdentifierIterator(groupId, artifactId) match {
 
-      case Success(identifierSource) =>
-        val processing = identifierSource
-          .map(downloader.downloadJarFile)
-          .filter(_.jarFile.isDefined)
-          .map(cgBuilder.buildCallgraph)
-          .filter(_.success)
-          .runForeach{ result =>
-            theCallGraphEvolution.applyNewRelease(result.callgraph.get,
-              result.project.get, result.identifier.version)
+      case Success(identifierIterable) =>
+        for(identifier <- identifierIterable){
+          val downloadResponse = downloader.downloadJarFile(identifier)
+
+          if(downloadResponse.jarFile.isDefined){
+            val cgResponse = cgBuilder.buildCallgraph(downloadResponse)
+
+            if(cgResponse.success) {
+              theCallGraphEvolution.applyNewRelease(cgResponse.callgraph.get, cgResponse.project.get,
+                cgResponse.identifier.version)
+            }
           }
+        }
 
-        processing
-          .map { _ =>
-            downloader.shutdown()
-            log.info(s"Finished building CG evolution for ${theCallGraphEvolution.libraryName}.")
-            log.info(s"Got a total of ${theCallGraphEvolution.releases().size} releases with ${theCallGraphEvolution.numberOfMethodEvolutions()} methods and ${theCallGraphEvolution.numberOfInvocationEvolutions()} invocations")
-            cgStorageHandler.storeCallGraphEvolution(theCallGraphEvolution)
-          }(system.dispatcher)
-
+        downloader.shutdown()
+        log.info(s"Finished building CG evolution for ${theCallGraphEvolution.libraryName}.")
+        log.info(s"Got a total of ${theCallGraphEvolution.releases().size} releases with ${theCallGraphEvolution.numberOfMethodEvolutions()} methods and ${theCallGraphEvolution.numberOfInvocationEvolutions()} invocations")
+        cgStorageHandler.storeCallGraphEvolution(theCallGraphEvolution)
 
       case Failure(ex) =>
         log.error(s"Failed to read versions for library $groupId:$artifactId", ex)
         downloader.shutdown()
-        Future(GraphDbStorageResult(theCallGraphEvolution.libraryName, success = false))(system.dispatcher)
+        GraphDbStorageResult(theCallGraphEvolution.libraryName, success = false)
     }
 
   }
