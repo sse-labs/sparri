@@ -28,4 +28,6 @@ class Configuration {
   val mqPort: Int = 8080
   val mqQueueName: String = "library-identifiers"
 
+  val highPriorityPrefixes = List("com.typesafe.akka", "org.apache", "io.dropwizard")
+
 }

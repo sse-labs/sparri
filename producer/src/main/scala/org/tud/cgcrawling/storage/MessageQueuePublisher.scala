@@ -1,10 +1,11 @@
 package org.tud.cgcrawling.storage
 
-import com.rabbitmq.client.{Channel, Connection, ConnectionFactory, MessageProperties}
+import com.rabbitmq.client.{AMQP, Channel, Connection, ConnectionFactory, MessageProperties}
 import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.Configuration
 
 import scala.util.{Failure, Success, Try}
+import scala.collection.JavaConverters._
 
 class MessageQueuePublisher(configuration: Configuration) {
 
@@ -29,8 +30,10 @@ class MessageQueuePublisher(configuration: Configuration) {
 
   def initialize(): Unit =  {
     Try{
+      val args = Map[String, Object]("x-max-priority" -> 10.asInstanceOf[Object]).asJava
+
       channel.exchangeDeclare(exchangeName, "direct", true)
-      channel.queueDeclare(configuration.mqQueueName, true, false, false, null)
+      channel.queueDeclare(configuration.mqQueueName, true, false, false, args)
       channel.queueBind(configuration.mqQueueName, exchangeName, routingKey)
     } match {
       case Success(_) =>
@@ -42,9 +45,23 @@ class MessageQueuePublisher(configuration: Configuration) {
   }
 
   def publishLibraryIdentifier(identifier: String): Unit = {
+
+    val priority =
+      if(configuration.highPriorityPrefixes.exists(prefix => identifier.startsWith(prefix))){
+        9
+      } else {
+        0
+      }
+
+    val props = new AMQP.BasicProperties.Builder()
+      .contentType("text/plain")
+      .deliveryMode(2)
+      .priority(priority)
+      .build()
+
     channel.basicPublish(exchangeName,
       routingKey,
-      MessageProperties.PERSISTENT_TEXT_PLAIN,
+      props,
       identifier.getBytes)
   }
 
