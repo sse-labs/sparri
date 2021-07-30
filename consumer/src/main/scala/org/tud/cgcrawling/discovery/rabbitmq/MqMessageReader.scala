@@ -10,7 +10,7 @@ class MqMessageReader(configuration: Configuration) {
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
-  lazy val connection: Connection = {
+  val connection: Connection = {
     val factory = new ConnectionFactory
 
     factory.setUsername(configuration.mqUsername)
@@ -22,7 +22,7 @@ class MqMessageReader(configuration: Configuration) {
     factory.newConnection("incremental-cg-crawler-consumer")
   }
 
-  lazy val channel: Channel = connection.createChannel()
+  val channel: Channel = connection.createChannel()
 
   def readNext(): Option[String] = {
     Try {

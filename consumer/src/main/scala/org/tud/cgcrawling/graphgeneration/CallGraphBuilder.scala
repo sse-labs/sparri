@@ -1,5 +1,6 @@
 package org.tud.cgcrawling.graphgeneration
 
+import akka.actor.ActorSystem
 import org.opalj.br.analyses.Project
 import org.opalj.tac.cg.{CallGraph, RTACallGraphKey}
 import org.slf4j.{Logger, LoggerFactory}
@@ -11,7 +12,7 @@ import java.net.URL
 import java.util.jar.JarInputStream
 import scala.util.{Failure, Success, Try}
 
-class CallGraphBuilder(config: Configuration) extends ClassStreamReader {
+class CallGraphBuilder(val config: Configuration, val system: ActorSystem) extends ClassStreamReader {
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 

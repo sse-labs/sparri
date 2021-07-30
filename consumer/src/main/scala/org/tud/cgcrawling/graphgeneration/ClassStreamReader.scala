@@ -16,6 +16,8 @@
 
 package org.tud.cgcrawling.graphgeneration
 
+import akka.actor.ActorSystem
+
 import java.io._
 import java.net.URL
 import java.util.jar.{JarEntry, JarInputStream}
@@ -36,7 +38,9 @@ import scala.concurrent.{Await, Future}
  */
 trait ClassStreamReader {
 
-  private val libraryClasses = {
+  val system: ActorSystem
+
+  val libraryClasses: Seq[(ClassFile, URL)] = {
     val is = new JarInputStream(new FileInputStream(org.opalj.bytecode.RTJar))
 
     val list = readClassFiles(is, Project.JavaLibraryClassFileReader)
@@ -56,7 +60,7 @@ trait ClassStreamReader {
    */
   def readClassFiles(in: => JarInputStream,
                      reader: Java8LibraryFramework = Project.JavaClassFileReader(OPALLogAdapter.emptyLogContext, org.opalj.br.BaseConfig))
-  : List[(ClassFile, String)] = org.opalj.io.process(in) { in =>
+  : List[(ClassFile, String)] = {
     var je: JarEntry = in.getNextJarEntry()
 
     var futures: List[Future[List[(ClassFile, String)]]] = Nil
@@ -80,12 +84,14 @@ trait ClassStreamReader {
         futures ::= Future[List[(ClassFile, String)]] {
           val cfs = reader.ClassFile(new DataInputStream(new ByteArrayInputStream(entryBytes)))
           cfs map { cf => (cf, entryName) }
-        }(org.opalj.concurrent.OPALUnboundedExecutionContext)
+        }(system.dispatcher)
       }
       je = in.getNextJarEntry()
     }
 
     val result = futures.flatMap(f => Await.result(f, 2 minutes))
+
+    in.close()
 
     result
   }
@@ -112,4 +118,6 @@ trait ClassStreamReader {
     Project(projectClasses, libraryClasses, true, Traversable.empty)(config, OPALLogAdapter.errorOnlyLogger)
   }
 }
+
+
 

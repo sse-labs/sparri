@@ -41,7 +41,7 @@ trait LibraryArtifactProcessing {
         val xml = XML.load(versionListInputStream)
         versionListInputStream.close()
 
-        val result = Try((xml \\ "metadata" \\ "versioning" \\ "versions" \\ "version").map(_.text).toList)
+        val result = Try((xml \\ "metadata" \\ "versioning" \\ "versions" \\ "version").map(_.text))
 
         result
       case Failure(x: HttpException) =>

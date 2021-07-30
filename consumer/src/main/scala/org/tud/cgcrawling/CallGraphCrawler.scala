@@ -42,7 +42,7 @@ class CallGraphCrawler(val configuration: Configuration)
   def processLibrary(groupId: String, artifactId: String): Future[GraphDbStorageResult] = {
     val theCallGraphEvolution = new LibraryCallGraphEvolution(groupId, artifactId)
     val downloader = new MavenJarDownloader()
-    val cgBuilder = new CallGraphBuilder(configuration)
+    val cgBuilder = new CallGraphBuilder(configuration, system)
     val cgStorageHandler = new GraphDbStorageHandler(configuration)
     createIdentifierSource(groupId, artifactId) match {
 
@@ -81,7 +81,7 @@ object CallGraphCrawler {
 
   implicit val theSystem: ActorSystem = ActorSystem("opal-cg-crawler")
 
-  def main(args: Array[String]) = {
+  def main(args: Array[String]): Unit = {
     val theConfig = new Configuration()
     val shutdownTimeout = Timeout(1 minutes)
 
