@@ -5,11 +5,12 @@ import akka.actor.ActorSystem
 import akka.util.Timeout
 import org.opalj.log.{GlobalLogContext, OPALLogger}
 import org.slf4j.{Logger, LoggerFactory}
+import org.tud.cgcrawling.dependencies.PomFileDependencyExtractor
 import org.tud.cgcrawling.discovery.maven.LibraryArtifactProcessing
 import org.tud.cgcrawling.discovery.rabbitmq.MqIdentifierProcessing
 import org.tud.cgcrawling.download.MavenJarDownloader
 import org.tud.cgcrawling.graphgeneration.{CallGraphBuilder, OPALLogAdapter}
-import org.tud.cgcrawling.model.LibraryCallGraphEvolution
+import org.tud.cgcrawling.model.{DependencyIdentifier, LibraryCallGraphEvolution}
 import org.tud.cgcrawling.storage.{GraphDbStorageHandler, GraphDbStorageResult}
 
 import java.net.URI
@@ -23,7 +24,6 @@ class CallGraphCrawler(val configuration: Configuration)
   extends LibraryArtifactProcessing with MqIdentifierProcessing {
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
-  //private val processingTimeout: Timeout = Timeout(24 hours)
 
   def startProcessing(): Future[Done]= {
     createSource(configuration)
@@ -41,28 +41,39 @@ class CallGraphCrawler(val configuration: Configuration)
 
   def processLibrary(groupId: String, artifactId: String): GraphDbStorageResult = {
     val theCallGraphEvolution = new LibraryCallGraphEvolution(groupId, artifactId)
+
+
     val downloader = new MavenJarDownloader()
+    val dependencyExtractor = new PomFileDependencyExtractor(configuration)
     val cgBuilder = new CallGraphBuilder(configuration, system)
     val cgStorageHandler = new GraphDbStorageHandler(configuration)
     createIdentifierIterator(groupId, artifactId) match {
 
       case Success(identifierIterable) =>
         for(identifier <- identifierIterable){
-          val downloadResponse = downloader.downloadJarFile(identifier)
+          val downloadResponse = downloader.downloadJar(identifier)
+
+          val dependencies = dependencyExtractor.resolveDependencies(identifier) match {
+            case Success(dependencies) =>
+              dependencies.toSet
+            case Failure(ex) =>
+              log.error(s"Failed to extract dependencies for release ${identifier.version} of library ${theCallGraphEvolution.libraryName}", ex)
+              Set.empty[DependencyIdentifier]
+          }
 
           if(downloadResponse.jarFile.isDefined){
             val cgResponse = cgBuilder.buildCallgraph(downloadResponse)
 
             if(cgResponse.success) {
               theCallGraphEvolution.applyNewRelease(cgResponse.callgraph.get, cgResponse.project.get,
-                cgResponse.identifier.version)
+                dependencies, identifier.version)
             }
           }
         }
 
         downloader.shutdown()
         log.info(s"Finished building CG evolution for ${theCallGraphEvolution.libraryName}.")
-        log.info(s"Got a total of ${theCallGraphEvolution.releases().size} releases with ${theCallGraphEvolution.numberOfMethodEvolutions()} methods and ${theCallGraphEvolution.numberOfInvocationEvolutions()} invocations")
+        log.info(s"Got a total of ${theCallGraphEvolution.numberOfDependencyEvolutions()} dependencies, ${theCallGraphEvolution.releases().size} releases with ${theCallGraphEvolution.numberOfMethodEvolutions()} methods and ${theCallGraphEvolution.numberOfInvocationEvolutions()} invocations")
         cgStorageHandler.storeCallGraphEvolution(theCallGraphEvolution)
 
       case Failure(ex) =>

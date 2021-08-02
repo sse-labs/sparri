@@ -17,6 +17,8 @@ class GraphDbStorageHandler(configuration: Configuration) {
     val start = System.currentTimeMillis()
     log.info(s"Storing CallGraph for library ${cgEvolution.libraryName}")
 
+    //TODO: Store dependencies
+
     Try(storeCgEvolution(cgEvolution)) match {
       case Success(_) =>
         val duration = System.currentTimeMillis() - start

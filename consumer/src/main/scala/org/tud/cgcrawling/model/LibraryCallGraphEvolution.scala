@@ -16,6 +16,8 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
   private val methodEvolutionMap: mutable.Map[MethodIdentifier, MethodEvolution] = new mutable.HashMap()
   private val invocationEvolutionMap: mutable.Map[MethodInvocationIdentifier, MethodInvocationEvolution] =
     new mutable.HashMap()
+  private val dependencyEvolutionMap: mutable.Map[DependencyIdentifier, DependencyEvolution] = new mutable.HashMap()
+
 
   private val releaseList: mutable.ListBuffer[String] = new ListBuffer[String]
 
@@ -24,9 +26,20 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
   def releases(): List[String] = releaseList.toList
   def methodEvolutions(): Iterable[MethodEvolution] = methodEvolutionMap.values
   def methodInvocationEvolutions(): Iterable[MethodInvocationEvolution] = invocationEvolutionMap.values
+  def dependencyEvolutions(): Iterable[DependencyEvolution] = dependencyEvolutionMap.values
 
   def numberOfMethodEvolutions(): Int = methodEvolutionMap.size
   def numberOfInvocationEvolutions(): Int = invocationEvolutionMap.size
+  def numberOfDependencyEvolutions(): Int = dependencyEvolutionMap.size
+
+  def dependenciesAt(release: String): Iterable[DependencyIdentifier] = {
+    if(!releaseList.contains(release))
+      throw new RuntimeException(s"Unknown release $release")
+
+    dependencyEvolutions()
+      .filter(_.isActiveIn.contains(release))
+      .map(_.identifier)
+  }
 
   def methodsAt(release: String): Iterable[MethodIdentifier] = {
     if(!releaseList.contains(release))
@@ -52,7 +65,11 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
       .toList
   }
 
-  def applyNewRelease(callgraph: CallGraph, project: Project[URL], release: String): Unit = {
+  def applyNewRelease(callgraph: CallGraph,
+                      project: Project[URL],
+                      dependencies: Set[DependencyIdentifier],
+                      release: String): Unit = {
+
     if(releaseList.contains(release)){
       throw new RuntimeException(s"Release has already been applied to CallGraphEvolution: $release")
     }
@@ -60,18 +77,16 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
     log.info(s"Processing new release $release for $libraryName")
     releaseList.append(release)
 
+    dependencies.foreach(setDependencyActiveInRelease(_, release))
+
     val methods = callgraph.reachableMethods().toSet
-    var cnt: Int = 0
-    var invocationCnt: Int = 0
 
     methods
       .foreach { method =>
         val isExternal: Boolean = isExternalMethod(method, project)
         val callerIdent = MethodIdentifier.fromOpalMethod(method, isExternal)
 
-        if(setMethodActiveInRelease(callerIdent, release)){
-          cnt += 1
-        }
+        setMethodActiveInRelease(callerIdent, release)
 
         callgraph
           .calleesOf(method)
@@ -80,38 +95,35 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
           .toList
           .distinct
           .foreach{ calleeIdent =>
-            if(setMethodActiveInRelease(calleeIdent, release)) cnt += 1
+            setMethodActiveInRelease(calleeIdent, release)
 
             val ident = new MethodInvocationIdentifier(callerIdent, calleeIdent)
-            if(setInvocationActiveInRelease(ident, release)) invocationCnt += 1
+            setInvocationActiveInRelease(ident, release)
           }
       }
   }
 
-  private def setInvocationActiveInRelease(identifier: MethodInvocationIdentifier, release: String): Boolean = {
-    var wasNewInvocation = false
+  private def setDependencyActiveInRelease(identifier: DependencyIdentifier, release: String): Unit = {
+    if(!dependencyEvolutionMap.contains(identifier)){
+      dependencyEvolutionMap.put(identifier, new DependencyEvolution(identifier))
+    }
 
+    dependencyEvolutionMap(identifier).addActiveRelease(release)
+  }
+
+  private def setInvocationActiveInRelease(identifier: MethodInvocationIdentifier, release: String): Unit = {
     if(!invocationEvolutionMap.contains(identifier)){
       invocationEvolutionMap.put(identifier, new MethodInvocationEvolution(identifier))
-      wasNewInvocation = true
     }
 
     invocationEvolutionMap(identifier).addActiveRelease(release)
-
-    wasNewInvocation
   }
 
-  private def setMethodActiveInRelease(identifier: MethodIdentifier, release: String): Boolean = {
-    var wasNewMethod = false
-
+  private def setMethodActiveInRelease(identifier: MethodIdentifier, release: String): Unit = {
     if(!methodEvolutionMap.contains(identifier)){
       methodEvolutionMap.put(identifier, new MethodEvolution(identifier))
-      wasNewMethod = true
     }
-
     methodEvolutionMap(identifier).addActiveRelease(release)
-
-    wasNewMethod
   }
 
   private def isExternalMethod(method: DeclaredMethod, project: Project[URL]): Boolean = {

@@ -5,7 +5,7 @@ import org.opalj.br.analyses.Project
 import org.opalj.tac.cg.{CallGraph, RTACallGraphKey}
 import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
-import org.tud.cgcrawling.download.MavenJarDownloadResult
+import org.tud.cgcrawling.download.MavenDownloadResult
 import org.tud.cgcrawling.Configuration
 
 import java.net.URL
@@ -16,7 +16,7 @@ class CallGraphBuilder(val config: Configuration, val system: ActorSystem) exten
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
-  def buildCallgraph(jarFile: MavenJarDownloadResult): CallGraphBuilderResult = {
+  def buildCallgraph(jarFile: MavenDownloadResult): CallGraphBuilderResult = {
     Try(reifyProject(jarFile, true)) match {
       case Success(project) =>
         log.info(s"Successfully initialized OPAL project for ${jarFile.identifier.toString}")
@@ -42,7 +42,7 @@ class CallGraphBuilder(val config: Configuration, val system: ActorSystem) exten
     }
   }
 
-  private def reifyProject(m: MavenJarDownloadResult, loadAsLibraryProject: Boolean): Project[URL] = {
+  private def reifyProject(m: MavenDownloadResult, loadAsLibraryProject: Boolean): Project[URL] = {
     val jarIs = new JarInputStream(m.jarFile.get.is)
 
     val project = createProject(m.identifier.toJarLocation.toURL,

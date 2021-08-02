@@ -21,7 +21,7 @@ docker / dockerfile := {
   val artifactTargetPath = s"/app/${artifact.name}"
 
   new Dockerfile {
-    from("openjdk:8-jre-alpine")
+    from("openjdk:8-jre")
     add(artifact, artifactTargetPath)
     entryPoint("java", "-jar", "-Xms8G", "-Xmx8G", artifactTargetPath)
   }
@@ -42,21 +42,27 @@ val akkaVersion = "2.6.15"
 val akkaHttpVersion = "10.1.11"
 
 libraryDependencies ++= Seq(
-  "com.typesafe.akka" %% "akka-actor" % akkaVersion,
-  "com.typesafe.akka" %% "akka-testkit" % akkaVersion % Test,
   "com.typesafe.akka" %% "akka-stream" % akkaVersion,
   "com.typesafe.akka" %% "akka-http" % akkaHttpVersion
 )
 
-libraryDependencies += "joda-time" % "joda-time" % "2.10.10"
-
 libraryDependencies += "org.neo4j.driver" % "neo4j-java-driver" % "4.3.1"
-
-libraryDependencies += "org.apache.maven.indexer" % "indexer-reader" % "6.0.0"
 
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"
 
 libraryDependencies += "com.rabbitmq" % "amqp-client" % "5.13.0"
 
-libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % Test
-libraryDependencies += "org.scalamock" %% "scalamock" % "5.1.0" % Test
+
+val aetherVersion = "1.1.0"
+libraryDependencies ++= Seq(
+  "org.eclipse.aether" % "aether-api" % aetherVersion,
+  "org.eclipse.aether" % "aether-impl" % aetherVersion,
+  "org.eclipse.aether" % "aether-transport-http" % aetherVersion,
+  "org.eclipse.aether" % "aether-transport-file" % aetherVersion,
+  "org.eclipse.aether" % "aether-connector-basic" % aetherVersion
+)
+
+libraryDependencies ++= Seq(
+  "org.apache.maven" % "maven-aether-provider" % "3.1.0",
+  "org.apache.maven" % "maven-artifact" % "3.8.1"
+)
