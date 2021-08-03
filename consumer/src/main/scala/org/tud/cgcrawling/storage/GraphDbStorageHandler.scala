@@ -17,8 +17,6 @@ class GraphDbStorageHandler(configuration: Configuration) {
     val start = System.currentTimeMillis()
     log.info(s"Storing CallGraph for library ${cgEvolution.libraryName}")
 
-    //TODO: Store dependencies
-
     Try(storeCgEvolution(cgEvolution)) match {
       case Success(_) =>
         val duration = System.currentTimeMillis() - start
@@ -63,6 +61,17 @@ class GraphDbStorageHandler(configuration: Configuration) {
       allInvocationData.add(Array(callerUid, calleeUid, releases))
     }
 
+    val allDependenciesData = cgEvolution.dependencyEvolutions()
+      .map{ depEvo =>
+        Array(depEvo.identifier.identifier.toString,
+          s"${depEvo.identifier.identifier.groupId}:${depEvo.identifier.identifier.artifactId}",
+          depEvo.identifier.identifier.version,
+          depEvo.identifier.scope,
+          depEvo.isActiveIn.toArray)
+      }
+      .toList
+      .asJava
+
     val session = configuration.graphDatabaseDriver.session()
 
     session.run("UNWIND $m AS method CREATE (m:Method {Library: method[0], UniqueName: method[1], SimpleName: method[2], Signature: method[3], Releases: method[4], IsExtern: method[5]})",
@@ -71,8 +80,13 @@ class GraphDbStorageHandler(configuration: Configuration) {
     session.run("UNWIND $i AS invocation MATCH (caller: Method {UniqueName: invocation[0]}) MATCH (callee: Method {UniqueName: invocation[1]}) CREATE (caller)-[:INVOKES {Releases: invocation[2]}]->(callee)",
       parameters("i", allInvocationData.toList.asJava))
 
-    session.run("CREATE (l: MavenLibrary{groupId: $gid, artifactId: $aid, Releases: $r})",
-      parameters("gid", cgEvolution.groupId, "aid", cgEvolution.artifactId, "r", cgEvolution.releases().toArray))
+    session.run("CREATE (l: MavenLibrary{LibraryId: $lid, GroupId: $gid, ArtifactId: $aid, Releases: $r})",
+      parameters("lid", cgEvolution.libraryName ,"gid", cgEvolution.groupId, "aid", cgEvolution.artifactId, "r", cgEvolution.releases().toArray))
+
+    session.run("MATCH (l: MavenLibrary {LibraryId: $lid}) UNWIND $d AS dependency " +
+      "MERGE (d: MavenDependency{FullName: dependency[0], LibraryId: dependency[1], Version: dependency[2]}) " +
+      "CREATE (l)-[:DEPENDS_ON {Scope: dependency[3], Releases: dependency[4]}]->(d)",
+      parameters("lid", cgEvolution.libraryName, "d", allDependenciesData))
 
     session.close()
   }
