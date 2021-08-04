@@ -40,12 +40,10 @@ trait ClassStreamReader {
 
   val system: ActorSystem
 
-  val libraryClasses: Seq[(ClassFile, URL)] = {
+  private def getLibraryClasses: Seq[(ClassFile, URL)] = {
     val is = new JarInputStream(new FileInputStream(org.opalj.bytecode.RTJar))
 
     val list = readClassFiles(is, Project.JavaLibraryClassFileReader)
-
-    is.close()
 
     list.map { case (classFile, _) => (classFile, org.opalj.bytecode.RTJar.toURI.toURL) }
   }
@@ -58,12 +56,13 @@ trait ClassStreamReader {
    * @param in An input stream of a JAR file
    * @return A list of named reified class files including bodies
    */
-  def readClassFiles(in: => JarInputStream,
+  def readClassFiles(in: JarInputStream,
                      reader: Java8LibraryFramework = Project.JavaClassFileReader(OPALLogAdapter.emptyLogContext, org.opalj.br.BaseConfig))
   : List[(ClassFile, String)] = {
     var je: JarEntry = in.getNextJarEntry()
 
-    var futures: List[Future[List[(ClassFile, String)]]] = Nil
+    //var futures: List[Future[List[(ClassFile, String)]]] = Nil
+    var classFiles: List[(ClassFile, String)] = List()
 
     while (je != null) {
       val entryName = je.getName
@@ -81,19 +80,22 @@ trait ClassStreamReader {
           baos.toByteArray
         }
 
-        futures ::= Future[List[(ClassFile, String)]] {
+        classFiles = classFiles ++ reader.ClassFile(new DataInputStream(new ByteArrayInputStream(entryBytes)))
+          .map(cf => (cf, entryName)).toList
+
+        /*futures ::= Future[List[(ClassFile, String)]] {
           val cfs = reader.ClassFile(new DataInputStream(new ByteArrayInputStream(entryBytes)))
           cfs map { cf => (cf, entryName) }
-        }(system.dispatcher)
+        }(system.dispatcher)*/
       }
       je = in.getNextJarEntry()
     }
 
-    val result = futures.flatMap(f => Await.result(f, 2 minutes))
+    //val result = futures.flatMap(f => Await.result(f, 2 minutes))
 
     in.close()
 
-    result
+    classFiles
   }
 
   /**
@@ -115,7 +117,7 @@ trait ClassStreamReader {
 
 
 
-    Project(projectClasses, libraryClasses, true, Traversable.empty)(config, OPALLogAdapter.errorOnlyLogger)
+    Project(projectClasses, getLibraryClasses, true, Traversable.empty)(config, OPALLogAdapter.errorOnlyLogger)
   }
 }
 

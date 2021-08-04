@@ -27,7 +27,7 @@ class CallGraphCrawler(val configuration: Configuration)
 
   def startProcessing(): Future[Done]= {
     createSource(configuration)
-      .map { libraryIdentifier =>
+      .runForeach { libraryIdentifier =>
         log.info(s"Got library identifier from queue: $libraryIdentifier")
         val parts = libraryIdentifier.split(":")
         val storageResult = processLibrary(parts(0),parts(1))
@@ -36,7 +36,6 @@ class CallGraphCrawler(val configuration: Configuration)
           log.error(s"Failed to store library callgraph ${storageResult.libraryName}")
         }
       }
-      .run()
   }
 
   def processLibrary(groupId: String, artifactId: String): GraphDbStorageResult = {
@@ -45,8 +44,6 @@ class CallGraphCrawler(val configuration: Configuration)
 
     val downloader = new MavenJarDownloader()
     val dependencyExtractor = new PomFileDependencyExtractor(configuration)
-    val cgBuilder = new CallGraphBuilder(configuration, system)
-    val cgStorageHandler = new GraphDbStorageHandler(configuration)
     createIdentifierIterator(groupId, artifactId) match {
 
       case Success(identifierIterable) =>
@@ -62,7 +59,7 @@ class CallGraphCrawler(val configuration: Configuration)
           }
 
           if(downloadResponse.jarFile.isDefined){
-            val cgResponse = cgBuilder.buildCallgraph(downloadResponse)
+            val cgResponse = new CallGraphBuilder(configuration, system).buildCallgraph(downloadResponse)
 
             if(cgResponse.success) {
               theCallGraphEvolution.applyNewRelease(cgResponse.callgraph.get, cgResponse.project.get,
@@ -74,6 +71,7 @@ class CallGraphCrawler(val configuration: Configuration)
         downloader.shutdown()
         log.info(s"Finished building CG evolution for ${theCallGraphEvolution.libraryName}.")
         log.info(s"Got a total of ${theCallGraphEvolution.numberOfDependencyEvolutions()} dependencies, ${theCallGraphEvolution.releases().size} releases with ${theCallGraphEvolution.numberOfMethodEvolutions()} methods and ${theCallGraphEvolution.numberOfInvocationEvolutions()} invocations")
+        val cgStorageHandler = new GraphDbStorageHandler(configuration)
         cgStorageHandler.storeCallGraphEvolution(theCallGraphEvolution)
 
       case Failure(ex) =>

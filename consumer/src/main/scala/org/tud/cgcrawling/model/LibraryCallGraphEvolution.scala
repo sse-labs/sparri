@@ -93,7 +93,6 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
           .flatMap(_._2)
           .map(m => MethodIdentifier.fromOpalMethod(m, isExternalMethod(m, project)))
           .toList
-          .distinct
           .foreach{ calleeIdent =>
             setMethodActiveInRelease(calleeIdent, release)
 
