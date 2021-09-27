@@ -11,7 +11,7 @@ import org.tud.cgcrawling.discovery.rabbitmq.MqIdentifierProcessing
 import org.tud.cgcrawling.download.MavenJarDownloader
 import org.tud.cgcrawling.graphgeneration.{CallGraphBuilder, OPALLogAdapter}
 import org.tud.cgcrawling.model.{DependencyIdentifier, LibraryCallGraphEvolution}
-import org.tud.cgcrawling.storage.{GraphDbStorageHandler, GraphDbStorageResult}
+import org.tud.cgcrawling.storage.{GraphDbStorageHandler, GraphDbStorageResult, HybridElasticAndGraphDbStorageHandler, StorageHandler}
 
 import java.net.URI
 import scala.concurrent.{Await, Future}
@@ -24,6 +24,7 @@ class CallGraphCrawler(val configuration: Configuration)
   extends LibraryArtifactProcessing with MqIdentifierProcessing {
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
+  private val storageHandler: StorageHandler = new HybridElasticAndGraphDbStorageHandler(configuration)
 
   def startProcessing(): Future[Done]= {
     createSource(configuration)
@@ -71,8 +72,7 @@ class CallGraphCrawler(val configuration: Configuration)
         downloader.shutdown()
         log.info(s"Finished building CG evolution for ${theCallGraphEvolution.libraryName}.")
         log.info(s"Got a total of ${theCallGraphEvolution.numberOfDependencyEvolutions()} dependencies, ${theCallGraphEvolution.releases().size} releases with ${theCallGraphEvolution.numberOfMethodEvolutions()} methods and ${theCallGraphEvolution.numberOfInvocationEvolutions()} invocations")
-        val cgStorageHandler = new GraphDbStorageHandler(configuration)
-        cgStorageHandler.storeCallGraphEvolution(theCallGraphEvolution)
+        storageHandler.storeCallGraphEvolution(theCallGraphEvolution)
 
       case Failure(ex) =>
         log.error(s"Failed to read versions for library $groupId:$artifactId", ex)

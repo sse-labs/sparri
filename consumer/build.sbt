@@ -48,6 +48,12 @@ libraryDependencies ++= Seq(
 
 libraryDependencies += "org.neo4j.driver" % "neo4j-java-driver" % "4.3.1"
 
+val elastic4sVersion = "7.14.1"
+libraryDependencies ++= Seq(
+  "com.sksamuel.elastic4s" %% "elastic4s-client-esjava" % elastic4sVersion,
+  "com.sksamuel.elastic4s" %% "elastic4s-client-akka" % elastic4sVersion
+)
+
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"
 
 libraryDependencies += "com.rabbitmq" % "amqp-client" % "5.13.0"

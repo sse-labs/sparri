@@ -9,11 +9,10 @@ import scala.collection.JavaConverters.asJavaIterableConverter
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
-class GraphDbStorageHandler(configuration: Configuration) {
+class GraphDbStorageHandler(configuration: Configuration) extends StorageHandler {
 
-  private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
-  def storeCallGraphEvolution(cgEvolution: LibraryCallGraphEvolution): GraphDbStorageResult = {
+  override def storeCallGraphEvolution(cgEvolution: LibraryCallGraphEvolution): GraphDbStorageResult = {
     val start = System.currentTimeMillis()
     log.info(s"Storing CallGraph for library ${cgEvolution.libraryName}")
 
@@ -93,4 +92,4 @@ class GraphDbStorageHandler(configuration: Configuration) {
 
 }
 
-case class GraphDbStorageResult(libraryName: String, success: Boolean)
+
