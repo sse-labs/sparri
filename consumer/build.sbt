@@ -72,3 +72,5 @@ libraryDependencies ++= Seq(
   "org.apache.maven" % "maven-aether-provider" % "3.1.0",
   "org.apache.maven" % "maven-artifact" % "3.8.1"
 )
+
+libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % "test"

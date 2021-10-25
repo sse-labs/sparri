@@ -42,6 +42,7 @@ class Configuration {
 
   val elasticClientUri: String = "localhost:9200"
   val elasticMethodIndexName: String = "methods"
+  val elasticDependencyIndexName: String = "dependencies"
 
   val graphDatabaseUrl: String = "bolt://localhost:7687"//"bolt://ls5vs016.cs.tu-dortmund.de:8080"
   val graphDatabaseUser: String = "neo4j"
