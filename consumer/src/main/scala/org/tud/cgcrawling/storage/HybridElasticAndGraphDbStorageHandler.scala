@@ -48,6 +48,8 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
     val batch = mutable.Map[String, Future[Response[IndexResponse]]]()
     val responses = mutable.Map[String, Response[IndexResponse]]()
 
+    log.info("Starting to store method data in ES ...")
+
     for(methodEvolution <- cgEvolution.methodEvolutions()){
       batch.put(
         methodEvolution.identifier.fullSignature, elasticClient.execute{
@@ -77,11 +79,15 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
         .foreach(tuple => responses.put(tuple._1, tuple._2))
     }
 
+    log.info("Finished storing method data.")
+
 
     responses.values.filter(_.isError).foreach(r => log.error("ES ERROR:" + r.body.get))
     var elasticErrorsExist: Boolean = responses.values.count(_.isError) > 0
 
     val methodElasticIdLookup: Map[String, String] = responses.toMap.mapValues(_.result.id)
+
+    log.info("Starting to store method relations in Neo4j..")
 
     //---STORE METHOD NODES AND INVOCATIONS IN NEO4J
     val session = config.graphDatabaseDriver.session()
@@ -108,6 +114,9 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
         log.error("Failed to store CG", ex)
         elasticErrorsExist = true
     }
+    session.close()
+
+    log.info("Finished storing method relations. Starting to store dependencies in ES..")
 
     elasticClient.execute{
       indexInto(config.elasticDependencyIndexName).fields(
@@ -122,9 +131,9 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
           )
         }
       )
-    }
+    }.await
 
-    session.close()
+    log.info("Finished storing dependencies in ES.")
 
     GraphDbStorageResult(cgEvolution.libraryName, !elasticErrorsExist)
   }
