@@ -2,25 +2,26 @@ package org.tud.cgcrawling.storage
 
 import akka.actor.ActorSystem
 import com.sksamuel.elastic4s.akka.{AkkaHttpClient, AkkaHttpClientSettings}
-import com.sksamuel.elastic4s.{ElasticClient, Response}
+import com.sksamuel.elastic4s.ElasticClient
 import org.tud.cgcrawling.Configuration
-import org.tud.cgcrawling.model.LibraryCallGraphEvolution
+import org.tud.cgcrawling.model.{LibraryCallGraphEvolution, MethodIdentifier}
 import com.sksamuel.elastic4s.ElasticDsl._
-import com.sksamuel.elastic4s.fields.{BooleanField, NestedField, ObjectField, TextField}
-import com.sksamuel.elastic4s.requests.indexes.IndexResponse
+import com.sksamuel.elastic4s.fields.{BooleanField, NestedField, TextField}
+import org.neo4j.driver.Session
 import org.neo4j.driver.Values.parameters
 
 import scala.collection.JavaConverters.asJavaIterableConverter
-import scala.collection.mutable
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.{ExecutionContext, Future}
+import scala.concurrent.ExecutionContext
 import scala.language.postfixOps
 import scala.util.{Failure, Success, Try}
 
 class HybridElasticAndGraphDbStorageHandler(config: Configuration)
                                            (implicit system: ActorSystem) extends StorageHandler {
 
-  private val maxConcurrentEsRequests = 500
+  private val maxConcurrentEsRequests = 10
+  private val neo4jMethodInsertBatchSize = 500
+  private val neo4jMethodInvocationInsertBatchSize = 250
 
   private val isExternFieldName = "IsExtern"
   private val isPublicFieldName = "IsPublic"
@@ -29,7 +30,6 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   private val libraryFieldName = "Library"
   private val releasesFieldName = "Releases"
 
-  private val fullNameFieldName = "FullName"
   private val versionFieldName = "Version"
   private val scopeFieldName = "Scope"
   private val dependenciesFieldName = "Dependencies"
@@ -45,47 +45,36 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
 
     implicit val ec: ExecutionContext = system.dispatcher
 
-    val batch = mutable.Map[String, Future[Response[IndexResponse]]]()
-    val responses = mutable.Map[String, Response[IndexResponse]]()
+    def elasticIdLookup(methodIdent: MethodIdentifier): String =
+      { String.valueOf(cgEvolution.libraryName.hashCode()) + String.valueOf(methodIdent.hashCode()) }
 
     log.info("Starting to store method data in ES ...")
 
-    for(methodEvolution <- cgEvolution.methodEvolutions()){
-      batch.put(
-        methodEvolution.identifier.fullSignature, elasticClient.execute{
-          indexInto(config.elasticMethodIndexName)
-            .fields(
-              isExternFieldName -> methodEvolution.identifier.isExternal,
-              isPublicFieldName-> methodEvolution.identifier.isPublic,
-              nameFieldName -> methodEvolution.identifier.simpleName,
-              signatureFieldName -> methodEvolution.identifier.fullSignature,
-              libraryFieldName -> cgEvolution.libraryName,
-              releasesFieldName -> methodEvolution.isActiveIn.toArray
-            )
-        }
-      )
-
-      if(batch.size >= maxConcurrentEsRequests){
-        batch
-          .mapValues(_.await(duration = 5 minutes))
-          .foreach(tuple => responses.put(tuple._1, tuple._2))
-        batch.clear()
+    var elasticErrorsExist = cgEvolution
+      .methodEvolutions()
+      .grouped(maxConcurrentEsRequests)
+      .map { batch =>
+        elasticClient.execute {
+          bulk(
+            batch.map { methodEvolution =>
+              indexInto(config.elasticMethodIndexName)
+                .id(elasticIdLookup(methodEvolution.identifier))
+                .fields(
+                  isExternFieldName -> methodEvolution.identifier.isExternal,
+                  isPublicFieldName -> methodEvolution.identifier.isPublic,
+                  nameFieldName -> methodEvolution.identifier.simpleName,
+                  signatureFieldName -> methodEvolution.identifier.fullSignature,
+                  libraryFieldName -> cgEvolution.libraryName,
+                  releasesFieldName -> methodEvolution.isActiveIn.toArray
+                )
+            }
+          )
+        }.await(10 minutes)
       }
-    }
-
-    if(batch.nonEmpty){
-      batch
-        .mapValues(_.await(duration = 5 minutes))
-        .foreach(tuple => responses.put(tuple._1, tuple._2))
-    }
+      .exists(res => res.isError || res.result.hasFailures)
 
     log.info("Finished storing method data.")
 
-
-    responses.values.filter(_.isError).foreach(r => log.error("ES ERROR:" + r.body.get))
-    var elasticErrorsExist: Boolean = responses.values.count(_.isError) > 0
-
-    val methodElasticIdLookup: Map[String, String] = responses.toMap.mapValues(_.result.id)
 
     log.info("Starting to store method relations in Neo4j..")
 
@@ -93,21 +82,26 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
     val session = config.graphDatabaseDriver.session()
 
     Try{
-      val idArray = methodElasticIdLookup.values.toList.asJava
-      session.run("UNWIND $ids AS id CREATE (m: Method {ElasticId: id, Library: $lib})",
-        parameters("ids", idArray, "lib", cgEvolution.libraryName))
+      cgEvolution
+        .methodEvolutions()
+        .map(evo => elasticIdLookup(evo.identifier))
+        .grouped(neo4jMethodInsertBatchSize)
+        .foreach{ batch =>
+          session.run("UNWIND $ids AS id CREATE (m: Method {ElasticId: id, Library: $lib})",
+            parameters("ids", batch.toList.asJava, "lib", cgEvolution.libraryName))
+        }
 
-      val invocationData = cgEvolution
+      cgEvolution
         .methodInvocationEvolutions()
         .map{ invocation =>
-          Array(methodElasticIdLookup(invocation.invocationIdent.callerIdent.fullSignature),
-            methodElasticIdLookup(invocation.invocationIdent.calleeIdent.fullSignature), invocation.isActiveIn.toArray)
+          Array(elasticIdLookup(invocation.invocationIdent.callerIdent),
+            elasticIdLookup(invocation.invocationIdent.calleeIdent), invocation.isActiveIn.toArray)
         }
-        .toList
-        .asJava
-
-      session.run("UNWIND $i AS invocation MATCH (caller: Method {ElasticId: invocation[0]}) MATCH (callee: Method {ElasticId: invocation[1]}) CREATE (caller)-[:INVOKES {Releases: invocation[2]}]->(callee)",
-        parameters("i", invocationData))
+        .grouped(neo4jMethodInvocationInsertBatchSize)
+        .foreach{ batch =>
+          session.run("UNWIND $i AS invocation MATCH (caller: Method {ElasticId: invocation[0]}) MATCH (callee: Method {ElasticId: invocation[1]}) CREATE (caller)-[:INVOKES {Releases: invocation[2]}]->(callee)",
+            parameters("i", batch.toList.asJava))
+        }
     } match {
       case Success(_) =>
       case Failure(ex) =>
@@ -139,6 +133,19 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   }
 
   private def setupIndex(): Unit = {
+
+    val session: Session = config.graphDatabaseDriver.session()
+
+    Try{
+      session.run("CREATE CONSTRAINT unique_es IF NOT EXISTS ON (m:Method) ASSERT m.ElasticId IS UNIQUE")
+    } match {
+      case Failure(ex) =>
+        log.error("Error while ensuring Neo4j constraints are present!", ex)
+      case _ =>
+        log.info("Neo4j indices are present.")
+    }
+
+    session.close()
 
     def indexPresent(indexName: String): Boolean = elasticClient
       .execute(indexExists(indexName))
