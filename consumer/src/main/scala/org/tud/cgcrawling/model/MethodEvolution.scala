@@ -17,7 +17,7 @@ class MethodIdentifier(val simpleName: String, val fullSignature: String, val is
     }
   }
 
-  override def hashCode(): Int = fullSignature.hashCode + 5 * isExternal.hashCode()
+  override def hashCode(): Int = fullSignature.hashCode + 5 * isExternal.hashCode() + 3 * isPublic.hashCode()
 }
 
 object MethodIdentifier {
