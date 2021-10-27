@@ -11,7 +11,7 @@ import org.tud.cgcrawling.discovery.rabbitmq.MqIdentifierProcessing
 import org.tud.cgcrawling.download.MavenJarDownloader
 import org.tud.cgcrawling.graphgeneration.{CallGraphBuilder, OPALLogAdapter}
 import org.tud.cgcrawling.model.{DependencyIdentifier, LibraryCallGraphEvolution}
-import org.tud.cgcrawling.storage.{GraphDbStorageHandler, GraphDbStorageResult, HybridElasticAndGraphDbStorageHandler, StorageHandler}
+import org.tud.cgcrawling.storage.{GraphDbStorageResult, HybridElasticAndGraphDbStorageHandler, StorageHandler}
 
 import java.net.URI
 import scala.concurrent.{Await, Future}
@@ -30,11 +30,16 @@ class CallGraphCrawler(val configuration: Configuration)
     createSource(configuration)
       .runForeach { libraryIdentifier =>
         log.info(s"Got library identifier from queue: $libraryIdentifier")
-        val parts = libraryIdentifier.split(":")
-        val storageResult = processLibrary(parts(0),parts(1))
 
-        if(!storageResult.success){
-          log.error(s"Failed to store library callgraph ${storageResult.libraryName}")
+        if(storageHandler.libraryExists(libraryIdentifier).getOrElse(false)){
+          log.warn(s"Not processing $libraryIdentifier, as it is already in the database")
+        } else {
+          val parts = libraryIdentifier.split(":")
+          val storageResult = processLibrary(parts(0),parts(1))
+
+          if(!storageResult.success){
+            log.error(s"Failed to store library callgraph ${storageResult.libraryName}")
+          }
         }
       }
   }

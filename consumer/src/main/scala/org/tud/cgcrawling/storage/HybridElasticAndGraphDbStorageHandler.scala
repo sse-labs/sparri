@@ -48,9 +48,9 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
     def elasticIdLookup(methodIdent: MethodIdentifier): String =
       { String.valueOf(cgEvolution.libraryName.hashCode()) + String.valueOf(methodIdent.hashCode()) }
 
-    log.info("Starting to store method data in ES ...")
+    log.info("Starting to store data in ES ...")
 
-    var elasticErrorsExist = cgEvolution
+    val elasticErrorsExist = cgEvolution
       .methodEvolutions()
       .grouped(maxConcurrentEsRequests)
       .map { batch =>
@@ -71,9 +71,23 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
           )
         }.await(10 minutes)
       }
-      .exists(res => res.isError || res.result.hasFailures)
+      .exists(res => res.isError || res.result.hasFailures) ||
+      elasticClient.execute{
+        indexInto(config.elasticDependencyIndexName).fields(
+          libraryFieldName -> cgEvolution.libraryName,
+          releasesFieldName -> cgEvolution.releases(),
+          dependenciesFieldName -> cgEvolution.dependencyEvolutions().map{ dep =>
+            Map(
+              libraryFieldName -> s"${dep.identifier.identifier.groupId}:${dep.identifier.identifier.artifactId}",
+              versionFieldName -> dep.identifier.identifier.version,
+              releasesFieldName -> dep.isActiveIn,
+              scopeFieldName -> dep.identifier.scope
+            )
+          }
+        )
+      }.await.isError
 
-    log.info("Finished storing method data.")
+    log.info("Finished storing data in ES.")
 
 
     log.info("Starting to store method relations in Neo4j..")
@@ -81,7 +95,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
     //---STORE METHOD NODES AND INVOCATIONS IN NEO4J
     val session = config.graphDatabaseDriver.session()
 
-    Try{
+    val neo4jErrorsExist = Try{
       cgEvolution
         .methodEvolutions()
         .map(evo => elasticIdLookup(evo.identifier))
@@ -104,32 +118,26 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
         }
     } match {
       case Success(_) =>
+        false
       case Failure(ex) =>
         log.error("Failed to store CG", ex)
-        elasticErrorsExist = true
+        true
     }
     session.close()
 
-    log.info("Finished storing method relations. Starting to store dependencies in ES..")
+    log.info("Finished storing method relations.")
 
+    GraphDbStorageResult(cgEvolution.libraryName, !elasticErrorsExist && !neo4jErrorsExist)
+  }
+
+  override def libraryExists(libName: String): Option[Boolean] = {
     elasticClient.execute{
-      indexInto(config.elasticDependencyIndexName).fields(
-        libraryFieldName -> cgEvolution.libraryName,
-        releasesFieldName -> cgEvolution.releases(),
-        dependenciesFieldName -> cgEvolution.dependencyEvolutions().map{ dep =>
-          Map(
-            libraryFieldName -> s"${dep.identifier.identifier.groupId}:${dep.identifier.identifier.artifactId}",
-            versionFieldName -> dep.identifier.identifier.version,
-            releasesFieldName -> dep.isActiveIn,
-            scopeFieldName -> dep.identifier.scope
-          )
-        }
-      )
+      search(config.elasticDependencyIndexName).query(fuzzyQuery(libraryFieldName, libName).fuzziness("0"))
     }.await
-
-    log.info("Finished storing dependencies in ES.")
-
-    GraphDbStorageResult(cgEvolution.libraryName, !elasticErrorsExist)
+      .toOption
+      .map{ response =>
+        response.totalHits > 0
+      }
   }
 
   private def setupIndex(): Unit = {
@@ -189,6 +197,4 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
       }.await
     }
   }
-
-
 }

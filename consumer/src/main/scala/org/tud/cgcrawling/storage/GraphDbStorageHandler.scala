@@ -90,6 +90,9 @@ class GraphDbStorageHandler(configuration: Configuration) extends StorageHandler
     session.close()
   }
 
+  override def libraryExists(libName: String): Option[Boolean] = {
+    ??? //TODO:
+  }
 }
 
 
