@@ -10,20 +10,20 @@ import org.opalj.br.DeclaredMethod;
 import org.opalj.br.ObjectType;
 import org.opalj.br.analyses.Project;
 import org.opalj.tac.cg.CallGraph;
+import org.opalj.tac.cg.RTACallGraphKey$;
 import org.opalj.tac.cg.XTACallGraphKey$;
 
 import scala.collection.JavaConverters;
 
 import java.io.BufferedWriter;
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.URL;
 import java.nio.file.Paths;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @Mojo( name = "detect-exits", requiresDependencyResolution = ResolutionScope.RUNTIME, requiresDependencyCollection = ResolutionScope.RUNTIME, defaultPhase = LifecyclePhase.PREPARE_PACKAGE)
 public class ExitDetectionPlugin extends OPALBasedAnalysisPlugin {
@@ -107,9 +107,31 @@ public class ExitDetectionPlugin extends OPALBasedAnalysisPlugin {
             addAllCallees(entry, theCg, allMethods);
         }
 
+        // TODO: Maybe test for methods instead of project types?
         List<String> externalMethodCallNames = allMethods
                 .stream()
-                .filter( method -> !allProjectInternalTypes.contains(method.declaringClassType()))
+                .flatMap( method -> {
+                    if(this.opalProjectWrapper.isProjectType(method.declaringClassType())){
+
+                        List<DeclaredMethod> thirdPartyInvocations =  JavaConverters.seqAsJavaList(theCg.calleesOf(method).flatMap( m -> m._2)
+                                .filter( m ->
+                                    (this.loadThirdPartyLibraries && this.opalProjectWrapper.isThirdPartyType(m.declaringClassType())) ||
+                                            (!this.loadThirdPartyLibraries && !allProjectInternalTypes.contains(m.declaringClassType()))
+                                ).toSeq());
+
+                        if(thirdPartyInvocations.size() > 0){
+                            log.info("Project method '" + method.toJava() + "' invokes " + thirdPartyInvocations.size() + " 3rd party methods: " + thirdPartyInvocations.get(0).toJava());
+                        }
+
+                        return thirdPartyInvocations.stream();
+                    } else {
+                        return Stream.empty();
+                    }
+                })
+                .distinct()
+                //.filter( method -> (!this.loadThirdPartyLibraries && !allProjectInternalTypes.contains(method.declaringClassType())) ||
+                //        (this.loadThirdPartyLibraries && this.opalProjectWrapper.isThirdPartyType(method.declaringClassType())))
+                //.filter( m -> this.opalProjectWrapper.isThirdPartyType(m.declaringClassType()))
                 .map(DeclaredMethod::toJava)
                 .collect(Collectors.toList());
 

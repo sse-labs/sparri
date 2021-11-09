@@ -7,7 +7,7 @@ import org.apache.maven.project.MavenProject;
 
 import org.opalj.br.analyses.Project;
 
-import tools.OPALProjectHelper;
+import tools.MavenOPALProjectWrapper;
 
 import java.io.*;
 
@@ -30,17 +30,23 @@ public abstract class OPALBasedAnalysisPlugin extends AbstractMojo {
     @Parameter(defaultValue = "false")
     protected Boolean isLibrary;
 
+    @Parameter(defaultValue = "true")
+    protected Boolean completelyLoadLibraries;
+
+    @Parameter(defaultValue = "true")
+    protected Boolean loadThirdPartyLibraries;
+
 
 
     protected Log log;
 
     private Project<URL> theOPALProjectInstance = null;
 
-    private final OPALProjectHelper opalHelper;
+    protected final MavenOPALProjectWrapper opalProjectWrapper;
 
     public OPALBasedAnalysisPlugin(){
         this.log = getLog();
-        this.opalHelper = new OPALProjectHelper(this.log);
+        this.opalProjectWrapper = new MavenOPALProjectWrapper(() -> this.project, this.log);
     }
 
     protected List<String> getAllDependencyNames(){
@@ -64,8 +70,15 @@ public abstract class OPALBasedAnalysisPlugin extends AbstractMojo {
     }
 
     protected Project<URL> getOPALProjectWithClassSources() {
+
         if(theOPALProjectInstance == null){
-            this.theOPALProjectInstance = this.opalHelper.buildOpalProject(getClassSourceDirectory(), this.isLibrary);
+            log.debug("Initializing OPAL with the following configuration:");
+            log.debug("\t- Root project is libary: " + this.isLibrary);
+            log.debug("\t- Completely load libraries: " + this.completelyLoadLibraries);
+            log.debug("\t- Load 3rd party libraries: " + this.loadThirdPartyLibraries);
+
+            this.opalProjectWrapper.initializeOPALProject(getClassSourceDirectory(), this.isLibrary, this.completelyLoadLibraries, this.loadThirdPartyLibraries);
+            this.theOPALProjectInstance = this.opalProjectWrapper.getOPALProject();
         }
 
         return theOPALProjectInstance;
