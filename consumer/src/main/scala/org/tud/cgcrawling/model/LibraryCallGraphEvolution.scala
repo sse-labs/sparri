@@ -4,6 +4,7 @@ import org.opalj.br.{DeclaredMethod, VirtualDeclaredMethod}
 import org.opalj.br.analyses.Project
 import org.opalj.tac.cg.CallGraph
 import org.slf4j.{Logger, LoggerFactory}
+import org.tud.cgcrawling.opal.OPALProjectHelper
 
 import java.net.URL
 import scala.collection.mutable
@@ -79,12 +80,14 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
 
     dependencies.foreach(setDependencyActiveInRelease(_, release))
 
-    val methods = callgraph.reachableMethods().toSet
+    val projectMethods = callgraph
+      .reachableMethods()
+      .filter(m => !isExternalMethod(m, project))
+      .toSet
 
-    methods
+    projectMethods
       .foreach { method =>
-        val isExternal: Boolean = isExternalMethod(method, project)
-        val callerIdent = MethodIdentifier.fromOpalMethod(method, isExternal)
+        val callerIdent = MethodIdentifier.fromOpalMethod(method, false)
 
         setMethodActiveInRelease(callerIdent, release)
 
@@ -126,8 +129,7 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
   }
 
   private def isExternalMethod(method: DeclaredMethod, project: Project[URL]): Boolean = {
-    method.isInstanceOf[VirtualDeclaredMethod] ||
-      !project.allProjectClassFiles.map(_.thisType).contains(method.declaringClassType)
+    OPALProjectHelper.isThirdPartyMethod(project, method)
   }
 }
 

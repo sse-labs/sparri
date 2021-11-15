@@ -36,7 +36,7 @@ package object storage extends LibraryArtifactProcessing{
           }
 
           if(downloadResponse.jarFile.isDefined){
-            val cgResponse = new CallGraphBuilder(configuration, system).buildCallgraph(downloadResponse)
+            val cgResponse = new CallGraphBuilder(configuration, system).buildCallgraph(downloadResponse, List.empty)
 
             if(cgResponse.success) {
               theCallGraphEvolution.applyNewRelease(cgResponse.callgraph.get, cgResponse.project.get,

@@ -74,3 +74,6 @@ libraryDependencies ++= Seq(
 )
 
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % "test"
+
+libraryDependencies += "com.squareup.tools.build" % "maven-archeologist" % "0.0.10"
+libraryDependencies += "dev.jeka" % "jeka-core" % "0.9.15.RELEASE"

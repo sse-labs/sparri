@@ -1,35 +1,28 @@
 package org.tud.cgcrawling.dependencies
 
-import org.eclipse.aether.artifact.DefaultArtifact
-import org.eclipse.aether.resolution.ArtifactDescriptorRequest
+import com.squareup.tools.maven.resolution.ArtifactResolver
 import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 import org.tud.cgcrawling.model.DependencyIdentifier
 
-import scala.collection.JavaConverters.{asScalaBufferConverter, seqAsJavaListConverter}
-import scala.util.Try
+import scala.collection.JavaConverters.asScalaBufferConverter
+import scala.util.{Failure, Success, Try}
 
-class PomFileDependencyExtractor(configuration: Configuration) {
+class PomFileDependencyExtractor(configuration: Configuration) extends DependencyExtractor {
 
-  def resolveDependencies(identifier: MavenIdentifier): Try[Seq[DependencyIdentifier]] = {
+  private val theResolver = new ArtifactResolver()
 
-    val resolverRequest = new ArtifactDescriptorRequest()
-    resolverRequest.setArtifact(new DefaultArtifact(identifier.toString))
-    resolverRequest.setRepositories(List(AetherRepositoryProvider.centralRepository).asJava)
+  override def resolveDependencies(identifier: MavenIdentifier): Try[Dependencies] = Try {
 
-    Try{
-      val result = AetherRepositoryProvider.repoSystem
-        .readArtifactDescriptor(AetherRepositoryProvider.repoSession, resolverRequest)
+    val theArtifact = theResolver.artifactFor(identifier.toString)
+    val resolvedArtifact = theResolver.resolve(theArtifact)
 
-      result
-        .getDependencies
-        .asScala
-        .map { dependency =>
-          val ident = new MavenIdentifier(configuration.mavenRepoBase.toString, dependency.getArtifact.getGroupId,
-            dependency.getArtifact.getArtifactId, dependency.getArtifact.getVersion)
+    resolvedArtifact.component2().getModel.getDependencies.asScala.map { dependency =>
+      val ident = new MavenIdentifier(configuration.mavenRepoBase.toString, dependency.getGroupId,
+        dependency.getArtifactId, dependency.getVersion)
 
-          new DependencyIdentifier(ident, dependency.getScope)
-        }
+      new DependencyIdentifier(ident, dependency.getScope)
     }
   }
+
 }

@@ -1,28 +1,31 @@
 package org.tud.cgcrawling.graphgeneration
 
 import akka.actor.ActorSystem
+import org.opalj.br.ClassFile
 import org.opalj.br.analyses.Project
-import org.opalj.tac.cg.{CallGraph, RTACallGraphKey}
+import org.opalj.tac.cg.{CHACallGraphKey, CallGraph, RTACallGraphKey}
 import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 import org.tud.cgcrawling.download.MavenDownloadResult
 import org.tud.cgcrawling.Configuration
+import org.tud.cgcrawling.opal.OPALProjectHelper
+import org.tud.cgcrawling.opal.OPALProjectHelper.ClassList
 
 import java.net.URL
 import java.util.jar.JarInputStream
 import scala.util.{Failure, Success, Try}
 
-class CallGraphBuilder(val config: Configuration, val system: ActorSystem) extends ClassStreamReader {
+class CallGraphBuilder(val config: Configuration, val system: ActorSystem) {
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
-  def buildCallgraph(jarFile: MavenDownloadResult): CallGraphBuilderResult = {
-    Try(reifyProject(jarFile, true)) match {
+  def buildCallgraph(jarFile: MavenDownloadResult, thirdPartyClasses: ClassList): CallGraphBuilderResult = {
+    Try(reifyProject(jarFile, thirdPartyClasses)) match {
       case Success(project) =>
         log.info(s"Successfully initialized OPAL project for ${jarFile.identifier.toString}")
-
-        val callGraphAlgorithmKey = if(project.codeSize > config.codeSizeCgCutoffBytes){
-          log.warn(s"Falling back to RTA because of JAR code size <${project.codeSize}> exceeding limit of <${config.codeSizeCgCutoffBytes}>")
+        val codeSize = project.allProjectClassFiles.map(_.methodBodies.sum(_.codeSize)).sum
+        val callGraphAlgorithmKey = if(codeSize > config.codeSizeCgCutoffBytes){
+          log.warn(s"Falling back to RTA because of JAR code size <${codeSize}> exceeding limit of <${config.codeSizeCgCutoffBytes}>")
           RTACallGraphKey
         } else {
           config.CallGraphAlgorithm
@@ -42,17 +45,13 @@ class CallGraphBuilder(val config: Configuration, val system: ActorSystem) exten
     }
   }
 
-  private def reifyProject(m: MavenDownloadResult, loadAsLibraryProject: Boolean): Project[URL] = {
-    val jarIs = new JarInputStream(m.jarFile.get.is)
+  private def reifyProject(m: MavenDownloadResult, thirdPartyClasses: ClassList): Project[URL] = {
 
-    val project = createProject(m.identifier.toJarLocation.toURL,
-      jarIs, loadAsLibraryProject)
+    val projectClasses = OPALProjectHelper.readClassesFromJarStream(m.jarFile.get.is, m.identifier.toJarLocation.toURL).get
+    val project = OPALProjectHelper.buildOPALProject(projectClasses, thirdPartyClasses)
 
-    Try{
-      jarIs.close()
-      m.jarFile.get.is.close()
-    } match {
-      case Failure(ex) => log.error("Failed to close input streams", ex)
+    Try(m.jarFile.get.is.close()) match {
+      case Failure(ex) => log.error("Failed to close input stream", ex)
       case _ =>
     }
 

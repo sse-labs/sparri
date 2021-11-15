@@ -40,15 +40,15 @@ class Configuration {
   val mqPort: Int = 8080
   val mqQueueName: String = "library-identifiers"
 
-  val elasticClientUri: String = "localhost:9200"
+  val elasticClientUri: String = "ls5vs016.cs.tu-dortmund.de:9200"
   val elasticMethodIndexName: String = "methods"
   val elasticDependencyIndexName: String = "dependencies"
 
-  val graphDatabaseUrl: String = "bolt://localhost:7687"//"bolt://ls5vs016.cs.tu-dortmund.de:8080"
+  val graphDatabaseUrl: String = "bolt://ls5vs029.cs.tu-dortmund.de:9200"//"bolt://ls5vs016.cs.tu-dortmund.de:8080"
   val graphDatabaseUser: String = "neo4j"
-  val graphDatabasePassword: String = "=Ue3y!H"
+  val graphDatabasePassword: String = "neo8j"
 
-  val graphDatabaseDriver: Driver = {
+  lazy val graphDatabaseDriver: Driver = {
 
     val config = Config.builder()
       .withLogging(Logging.none())
