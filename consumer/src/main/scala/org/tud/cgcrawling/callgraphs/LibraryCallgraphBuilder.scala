@@ -6,7 +6,6 @@ import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.dependencies.JekaDependencyExtractor
 import org.tud.cgcrawling.discovery.maven.{LibraryArtifactProcessing, MavenIdentifier}
 import org.tud.cgcrawling.download.MavenJarDownloader
-import org.tud.cgcrawling.graphgeneration.CallGraphBuilder
 import org.tud.cgcrawling.model.{DependencyIdentifier, LibraryCallGraphEvolution}
 import org.tud.cgcrawling.opal.OPALProjectHelper
 import org.tud.cgcrawling.opal.OPALProjectHelper.ClassList
@@ -33,6 +32,8 @@ class LibraryCallgraphBuilder(groupId: String,
 
       case Success(identifierIterable) =>
         identifierIterable.foreach(i => processIdentifier(i, theCallGraphEvolution))
+
+        log.info(s"Got cache hit rate of ${classFileCache.hitRate()} for library $groupId:$artifactId")
 
         Success(theCallGraphEvolution)
 

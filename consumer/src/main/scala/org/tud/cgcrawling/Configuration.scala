@@ -34,19 +34,19 @@ class Configuration {
   val limit : Int = 100
   val throttle : Throttle = Throttle(5, 1 second, 5, ThrottleMode.shaping)
 
-  val mqUsername: String = "my-user"
-  val mqPassword: String = "abc439"
-  val mqHost: String = "ls5vs029.cs.tu-dortmund.de"
+  val mqUsername: String = "<CHANGEME>"
+  val mqPassword: String = "<CHANGEME>"
+  val mqHost: String = "<CHANGEME>"
   val mqPort: Int = 8080
   val mqQueueName: String = "library-identifiers"
 
-  val elasticClientUri: String = "ls5vs016.cs.tu-dortmund.de:9200"
+  val elasticClientUri: String = "<CHANGEME>"
   val elasticMethodIndexName: String = "methods"
   val elasticDependencyIndexName: String = "dependencies"
 
-  val graphDatabaseUrl: String = "bolt://ls5vs029.cs.tu-dortmund.de:9200"//"bolt://ls5vs016.cs.tu-dortmund.de:8080"
+  val graphDatabaseUrl: String = "<CHANGEME>"
   val graphDatabaseUser: String = "neo4j"
-  val graphDatabasePassword: String = "neo8j"
+  val graphDatabasePassword: String = "<CHANGEME>"
 
   lazy val graphDatabaseDriver: Driver = {
 

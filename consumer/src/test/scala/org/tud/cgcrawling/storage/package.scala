@@ -2,10 +2,10 @@ package org.tud.cgcrawling
 
 import akka.actor.ActorSystem
 import org.slf4j.Logger
+import org.tud.cgcrawling.callgraphs.CallGraphBuilder
 import org.tud.cgcrawling.dependencies.PomFileDependencyExtractor
 import org.tud.cgcrawling.discovery.maven.LibraryArtifactProcessing
 import org.tud.cgcrawling.download.MavenJarDownloader
-import org.tud.cgcrawling.graphgeneration.CallGraphBuilder
 import org.tud.cgcrawling.model.{DependencyIdentifier, LibraryCallGraphEvolution}
 
 import java.net.URI

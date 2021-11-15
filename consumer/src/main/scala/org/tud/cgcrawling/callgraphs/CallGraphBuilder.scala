@@ -1,18 +1,16 @@
-package org.tud.cgcrawling.graphgeneration
+package org.tud.cgcrawling.callgraphs
 
 import akka.actor.ActorSystem
-import org.opalj.br.ClassFile
 import org.opalj.br.analyses.Project
-import org.opalj.tac.cg.{CHACallGraphKey, CallGraph, RTACallGraphKey}
+import org.opalj.tac.cg.{CallGraph, RTACallGraphKey}
 import org.slf4j.{Logger, LoggerFactory}
+import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 import org.tud.cgcrawling.download.MavenDownloadResult
-import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.opal.OPALProjectHelper
 import org.tud.cgcrawling.opal.OPALProjectHelper.ClassList
 
 import java.net.URL
-import java.util.jar.JarInputStream
 import scala.util.{Failure, Success, Try}
 
 class CallGraphBuilder(val config: Configuration, val system: ActorSystem) {
@@ -25,7 +23,7 @@ class CallGraphBuilder(val config: Configuration, val system: ActorSystem) {
         log.info(s"Successfully initialized OPAL project for ${jarFile.identifier.toString}")
         val codeSize = project.allProjectClassFiles.map(_.methodBodies.sum(_.codeSize)).sum
         val callGraphAlgorithmKey = if(codeSize > config.codeSizeCgCutoffBytes){
-          log.warn(s"Falling back to RTA because of JAR code size <${codeSize}> exceeding limit of <${config.codeSizeCgCutoffBytes}>")
+          log.warn(s"Falling back to RTA because of JAR code size <$codeSize> exceeding limit of <${config.codeSizeCgCutoffBytes}>")
           RTACallGraphKey
         } else {
           config.CallGraphAlgorithm
