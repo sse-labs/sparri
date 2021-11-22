@@ -29,9 +29,10 @@ class LibraryCallgraphBuilderTest extends AnyFlatSpec with must.Matchers {
       println(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
       assert(evolution.releases().nonEmpty)
 
-      println("External: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod))
-      evolution.methodEvolutions().filter(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod).foreach(a => println(a.identifier.fullSignature))
-
+      println("Project: " + evolution.methodEvolutions().count(mEvo => !mEvo.identifier.isExternal))
+      println("JRE: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.isExternal && mEvo.identifier.isJREMethod))
+      println("3rd party: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod))
+      println("With defining Artifact: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.definingArtifact.isDefined))
 
       builder.shutdown()
     } match {

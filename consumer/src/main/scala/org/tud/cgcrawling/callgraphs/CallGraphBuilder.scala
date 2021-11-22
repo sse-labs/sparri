@@ -72,9 +72,11 @@ class CallGraphBuilder(val config: Configuration, val system: ActorSystem) {
    * will yield console warnings, but the callgraph will be constructed regardless.
    *
    * @param project OPAL project instance with JRE implementations and 3rd party interfaces included
+   * @param projectIdent MavenIdentifier of the current project
+   * @param classFqnToIdentMap Map for associating Classfile FQNs with their corresponding MavenIdentifier. Allows mapping 3rd party methods to their library
    * @return A LibraryCallgraph instance
    */
-  private[callgraphs] def buildCgObjectModel(project: Project[URL]): LibraryCallgraph = {
+  private[callgraphs] def buildCgObjectModel(project: Project[URL], projectIdent: MavenIdentifier, classFqnToIdentMap: Map[String, MavenIdentifier]): LibraryCallgraph = {
 
     // The set of entry points. The project configuration set in the OPALProjectHelper enforces usage of the
     // LibraryEntryPointsFinder
@@ -95,7 +97,7 @@ class CallGraphBuilder(val config: Configuration, val system: ActorSystem) {
      */
     def handleMethod(method: Method): Unit = {
       // This method is only invoked for project methods, so we can fix 'isExternal=false'
-      callgraph.addMethod(method, isExternal = false)
+      callgraph.addMethod(method, isExternal = false, Some(projectIdent))
     }
 
     /**
@@ -107,7 +109,10 @@ class CallGraphBuilder(val config: Configuration, val system: ActorSystem) {
      */
     def handleEdge(caller: Method, callee: Method): Unit = {
       // We know that 'caller' has been processed already. Callee may be external or not
-      callgraph.addEdge(caller, callee, calleeIsExternal = !project.isProjectType(callee.classFile.thisType))
+      val isExternal = !project.isProjectType(callee.classFile.thisType)
+      val definingArtifact = if (isExternal) classFqnToIdentMap.get(callee.classFile.fqn) else Some(projectIdent)
+
+      callgraph.addEdge(caller, callee, isExternal, definingArtifact)
     }
 
     /**
@@ -142,7 +147,7 @@ class CallGraphBuilder(val config: Configuration, val system: ActorSystem) {
     callgraph
   }
 
-  def buildCallgraph(jarFile: MavenDownloadResult, thirdPartyClasses: ClassList): CallGraphBuilderResult = {
+  def buildCallgraph(jarFile: MavenDownloadResult, thirdPartyClasses: ClassList, classFqnToIdentMap: Map[String, MavenIdentifier]): CallGraphBuilderResult = {
 
     val projectClasses =
       OPALProjectHelper.readClassesFromJarStream(jarFile.jarFile.get.is, jarFile.identifier.toJarLocation.toURL, loadImplementation = true).get
@@ -154,7 +159,7 @@ class CallGraphBuilder(val config: Configuration, val system: ActorSystem) {
       case Success(project) =>
         log.info(s"Successfully initialized OPAL project for ${jarFile.identifier.toString}")
 
-        Try(buildCgObjectModel(project)) match {
+        Try(buildCgObjectModel(project, jarFile.identifier, classFqnToIdentMap)) match {
           case Success(callgraph) =>
             log.info(s"Successfully generated Callgraph with ${callgraph.numberOfReachableMethods()} reachable methods for ${jarFile.identifier.toString}")
             CallGraphBuilderResult(jarFile.identifier, success = true, Some(callgraph))

@@ -29,7 +29,10 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   private val nameFieldName = "Name"
   private val signatureFieldName = "Signature"
   private val libraryFieldName = "Library"
+  private val analyzedLibraryFieldName = "AnalyzedLibrary"
+  private val definingLibraryFieldName = "DefiningLibrary"
   private val releasesFieldName = "Releases"
+  private val isJreFieldName = "IsJRE"
 
   private val versionFieldName = "Version"
   private val scopeFieldName = "Scope"
@@ -64,8 +67,10 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
                   isPublicFieldName -> methodEvolution.identifier.isPublic,
                   nameFieldName -> methodEvolution.identifier.simpleName,
                   signatureFieldName -> methodEvolution.identifier.fullSignature,
-                  libraryFieldName -> cgEvolution.libraryName,
-                  releasesFieldName -> methodEvolution.isActiveIn.toArray
+                  analyzedLibraryFieldName -> cgEvolution.libraryName,
+                  definingLibraryFieldName -> methodEvolution.identifier.definingArtifact.map(i => s"${i.groupId}:${i.artifactId}").getOrElse("<none>"),
+                  releasesFieldName -> methodEvolution.isActiveIn.toArray,
+                  isJreFieldName -> methodEvolution.identifier.isJREMethod
                 )
             }
           )
@@ -187,7 +192,8 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
             BooleanField(isExternFieldName),
             TextField(nameFieldName),
             TextField(signatureFieldName),
-            TextField(libraryFieldName),
+            TextField(analyzedLibraryFieldName),
+            TextField(definingLibraryFieldName),
             BooleanField(isPublicFieldName),
             TextField(releasesFieldName)
           ))

@@ -32,6 +32,8 @@ object OPALProjectHelper {
   private val fullClassFileReader = Project.JavaClassFileReader(projectLogCtx, BaseConfig)
   private val interfaceClassFileReader = Java16LibraryFramework
 
+  lazy val jreClassFqns: List[String] = jreClasses.map(_._1.fqn)
+
   lazy val jreClasses: ClassList = {
 
     def getJarFilesRecursive(directory: File): List[File] = {
