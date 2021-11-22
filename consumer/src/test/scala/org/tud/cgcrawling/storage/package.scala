@@ -3,7 +3,7 @@ package org.tud.cgcrawling
 import akka.actor.ActorSystem
 import org.slf4j.Logger
 import org.tud.cgcrawling.callgraphs.CallGraphBuilder
-import org.tud.cgcrawling.dependencies.PomFileDependencyExtractor
+import org.tud.cgcrawling.dependencies.{JekaDependencyExtractor, PomFileDependencyExtractor}
 import org.tud.cgcrawling.discovery.maven.LibraryArtifactProcessing
 import org.tud.cgcrawling.download.MavenJarDownloader
 import org.tud.cgcrawling.model.{DependencyIdentifier, LibraryCallGraphEvolution}
@@ -20,7 +20,7 @@ package object storage extends LibraryArtifactProcessing{
 
 
     val downloader = new MavenJarDownloader()
-    val dependencyExtractor = new PomFileDependencyExtractor(configuration)
+    val dependencyExtractor = new JekaDependencyExtractor(configuration)
     createIdentifierIterator(groupId, artifactId) match {
 
       case Success(identifierIterable) =>
@@ -39,8 +39,7 @@ package object storage extends LibraryArtifactProcessing{
             val cgResponse = new CallGraphBuilder(configuration, system).buildCallgraph(downloadResponse, List.empty)
 
             if(cgResponse.success) {
-              theCallGraphEvolution.applyNewRelease(cgResponse.callgraph.get, cgResponse.project.get,
-                dependencies, identifier.version)
+              theCallGraphEvolution.applyNewRelease(cgResponse.callgraph.get, dependencies, identifier.version)
             }
           }
         }

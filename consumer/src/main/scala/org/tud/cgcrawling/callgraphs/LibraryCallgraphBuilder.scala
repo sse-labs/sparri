@@ -21,9 +21,9 @@ class LibraryCallgraphBuilder(groupId: String,
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
-  private val classFileCache: ArtifactClassfileCache = new ArtifactClassfileCache(20)
-  private val downloader: MavenJarDownloader = new MavenJarDownloader()
-  private val dependencyExtractor: JekaDependencyExtractor = new JekaDependencyExtractor(config)
+  private[callgraphs] val classFileCache: ArtifactClassfileCache = new ArtifactClassfileCache(20)
+  private[callgraphs] val downloader: MavenJarDownloader = new MavenJarDownloader()
+  private[callgraphs] val dependencyExtractor: JekaDependencyExtractor = new JekaDependencyExtractor(config)
 
   def buildCallgraphEvolution(): Try[LibraryCallGraphEvolution] = {
     val theCallGraphEvolution = new LibraryCallGraphEvolution(groupId, artifactId)
@@ -65,13 +65,12 @@ class LibraryCallgraphBuilder(groupId: String,
 
       // Apply the callgraph to the library  evolution object if successful
       if(cgResponse.success) {
-        evolution.applyNewRelease(cgResponse.callgraph.get, cgResponse.project.get,
-          dependencies, identifier.version)
+        evolution.applyNewRelease(cgResponse.callgraph.get, dependencies, identifier.version)
       }
     }
   }
 
-  private[callgraphs] def getAllThirdPartyClassesWithCache(identifier: MavenIdentifier): ClassList = {
+  private[callgraphs] def getAllThirdPartyClassesWithCache(identifier: MavenIdentifier, loadImplementation: Boolean = false): ClassList = {
     dependencyExtractor.resolveAllDependencies(identifier)._1 match {
       case Success(allDependencies) =>
         allDependencies
@@ -81,7 +80,7 @@ class LibraryCallgraphBuilder(groupId: String,
             classFileCache.getEntry(ident).getOrElse{
               val response = downloader.downloadJar(ident)
               if(response.jarFile.isDefined){
-                val classes = OPALProjectHelper.readClassesFromJarStream(response.jarFile.get.is, ident.toJarLocation.toURL) match {
+                val classes = OPALProjectHelper.readClassesFromJarStream(response.jarFile.get.is, ident.toJarLocation.toURL, loadImplementation) match {
                   case Success(cfs) => cfs
                   case Failure(ex) =>
                     log.error("Failed to read class files from JAR " + ident.toString + ": " + ex.getMessage)

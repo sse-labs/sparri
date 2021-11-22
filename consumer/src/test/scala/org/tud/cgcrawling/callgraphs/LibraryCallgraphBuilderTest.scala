@@ -21,16 +21,43 @@ class LibraryCallgraphBuilderTest extends AnyFlatSpec with must.Matchers {
     val system = ActorSystem("test-lib-cg-builder")
 
     Try{
-      val builder = new LibraryCallgraphBuilder(identifier2.groupId, identifier2.artifactId, config)(system)
+      val builder = new LibraryCallgraphBuilder(identifier1.groupId, identifier1.artifactId, config)(system)
 
-      val evolution = new LibraryCallGraphEvolution(identifier2.groupId, identifier2.artifactId)
-      builder.processIdentifier(identifier2, evolution)
+      val evolution = new LibraryCallGraphEvolution(identifier1.groupId, identifier1.artifactId)
+      builder.processIdentifier(identifier1, evolution)
 
       println(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
       assert(evolution.releases().nonEmpty)
 
-      println("External:")
-      evolution.methodEvolutions().filter(mEvo => mEvo.identifier.isExternal).foreach(mEvo => println(mEvo.identifier.fullSignature))
+      println("External: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod))
+      evolution.methodEvolutions().filter(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod).foreach(a => println(a.identifier.fullSignature))
+
+
+      builder.shutdown()
+    } match {
+      case Failure(ex) =>
+        system.terminate()
+        throw ex
+      case _ =>
+    }
+  }
+
+  "The library callgraph builder" must "process entire libraries" in {
+    val system = ActorSystem("test-lib-cg-builder")
+
+    Try{
+      val builder = new LibraryCallgraphBuilder(identifier1.groupId, identifier1.artifactId, config)(system)
+      val evolutionTry = builder.buildCallgraphEvolution()
+
+      assert(evolutionTry.isSuccess)
+      val evolution = evolutionTry.get
+
+      println(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
+      assert(evolution.releases().nonEmpty)
+
+      println("External: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod))
+      evolution.methodEvolutions().filter(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod).foreach(a => println(a.identifier.fullSignature))
+
 
       builder.shutdown()
     } match {

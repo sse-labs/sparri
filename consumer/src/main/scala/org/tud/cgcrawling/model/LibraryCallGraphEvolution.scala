@@ -1,8 +1,7 @@
 package org.tud.cgcrawling.model
 
-import org.opalj.br.{DeclaredMethod, VirtualDeclaredMethod}
+import org.opalj.br.DeclaredMethod
 import org.opalj.br.analyses.Project
-import org.opalj.tac.cg.CallGraph
 import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.opal.OPALProjectHelper
 
@@ -66,8 +65,7 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
       .toList
   }
 
-  def applyNewRelease(callgraph: CallGraph,
-                      project: Project[URL],
+  def applyNewRelease(callgraph: LibraryCallgraph,
                       dependencies: Set[DependencyIdentifier],
                       release: String): Unit = {
 
@@ -80,26 +78,18 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
 
     dependencies.foreach(setDependencyActiveInRelease(_, release))
 
-    val projectMethods = callgraph
-      .reachableMethods()
-      .filter(m => !isExternalMethod(m, project))
-      .toSet
-
-    projectMethods
+    callgraph
+      .allMethods
       .foreach { method =>
-        val callerIdent = MethodIdentifier.fromOpalMethod(method, false)
 
-        setMethodActiveInRelease(callerIdent, release)
+        setMethodActiveInRelease(method.identifier, release)
 
         callgraph
           .calleesOf(method)
-          .flatMap(_._2)
-          .map(m => MethodIdentifier.fromOpalMethod(m, isExternalMethod(m, project)))
-          .toList
-          .foreach{ calleeIdent =>
-            setMethodActiveInRelease(calleeIdent, release)
+          .foreach { callee =>
+            setMethodActiveInRelease(callee.identifier, release)
 
-            val ident = new MethodInvocationIdentifier(callerIdent, calleeIdent)
+            val ident = new MethodInvocationIdentifier(method.identifier, callee.identifier)
             setInvocationActiveInRelease(ident, release)
           }
       }

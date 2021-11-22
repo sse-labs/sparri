@@ -1,16 +1,17 @@
 package org.tud.cgcrawling.dependencies
 import dev.jeka.core.api.depmanagement.{JkDependencySet, JkQualifiedDependencySet, JkRepo}
-import dev.jeka.core.api.depmanagement.resolution.JkDependencyResolver
+import dev.jeka.core.api.depmanagement.resolution.{JkDependencyResolver, JkResolutionParameters}
 import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 import org.tud.cgcrawling.model.DependencyIdentifier
 
 import scala.collection.JavaConverters.collectionAsScalaIterableConverter
-import scala.util.{Success, Try}
+import scala.util.Try
 
 class JekaDependencyExtractor(configuration: Configuration) extends DependencyExtractor {
 
   private val resolver = JkDependencyResolver.of().addRepos(JkRepo.ofMavenCentral())
+  resolver.getParams.setFailOnDependencyResolutionError(false)
 
   override def resolveDependencies(identifier: MavenIdentifier): Try[Dependencies] = Try {
     resolver
@@ -39,7 +40,7 @@ class JekaDependencyExtractor(configuration: Configuration) extends DependencyEx
   }
 
   override def resolveAllDependencies(identifier: MavenIdentifier): (Try[Dependencies], Seq[MavenIdentifier]) = {
-    (Success(resolver
+    (Try(resolver
       .resolve(JkDependencySet.of(identifier.toString)).getDependencyTree.toFlattenList.asScala.map( node => {
 
       val scope = node.getNodeInfo.getDeclaredConfigurations.asScala.head
