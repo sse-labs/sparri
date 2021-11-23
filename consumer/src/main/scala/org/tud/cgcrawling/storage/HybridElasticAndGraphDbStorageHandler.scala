@@ -150,13 +150,21 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   }
 
   override def libraryExists(libName: String): Option[Boolean] = {
-    elasticClient.execute{
-      search(config.elasticDependencyIndexName).query(fuzzyQuery(libraryFieldName, libName).fuzziness("0"))
-    }.await
-      .toOption
-      .map{ response =>
-        response.totalHits > 0
-      }
+    val session = config.graphDatabaseDriver.session()
+
+    val existsTry = Try {
+      session
+        .run("MATCH (m:Method {Library: $lib}) RETURN COUNT(m) AS cnt", parameters("lib", libName))
+        .single()
+        .get("cnt")
+        .asInt() > 0
+    }
+
+    session.close()
+
+
+
+    existsTry.toOption
   }
 
   private def setupIndex(): Unit = {
