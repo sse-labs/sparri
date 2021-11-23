@@ -69,7 +69,8 @@ object OPALProjectHelper {
     val config = BaseConfig.withValue("org.opalj.br.analyses.cg.InitialEntryPointsKey.analysis",
       ConfigValueFactory.fromAnyRef("org.opalj.br.analyses.cg.LibraryEntryPointsFinder"))
 
-    val inconsistentExceptionHandler = (_: LogContext, error: InconsistentProjectException) => log.error("Inconsistent Project Exception: " + error.message)
+    val inconsistentExceptionHandler =
+      (_: LogContext, error: InconsistentProjectException) => log.warn("Inconsistent Project Exception: " + error.message)
 
     Project(projectClasses, thirdPartyClasses ++ jreClasses, libraryClassFilesAreInterfacesOnly = false, Traversable.empty, inconsistentExceptionHandler)(config, projectLogger)
   }

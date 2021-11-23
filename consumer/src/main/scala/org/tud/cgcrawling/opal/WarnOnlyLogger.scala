@@ -22,13 +22,17 @@ import org.slf4j.{Logger, LoggerFactory}
 class WarnOnlyLogger(ct: Class[_]) extends OPALLogger {
   private val internalLog: Logger =  LoggerFactory.getLogger(ct)
 
+  private val exclusionPrefixes = Set("java/lang/ClassLoader does not define")
+
   override def log(message: LogMessage)(implicit ctx: LogContext): Unit = {
-    message.level match {
-      case org.opalj.log.Error =>
-        internalLog.error(message.message)
-      case org.opalj.log.Warn =>
-        internalLog.warn(message.message)
-      case _ =>
+    if(!exclusionPrefixes.exists(p => message.message.startsWith(p))){
+      message.level match {
+        case org.opalj.log.Error =>
+          internalLog.error(message.message)
+        case org.opalj.log.Warn =>
+          internalLog.warn(message.message)
+        case _ =>
+      }
     }
   }
 }
