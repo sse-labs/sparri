@@ -27,14 +27,13 @@ class CallGraphCrawler(val configuration: Configuration)
         if(storageHandler.libraryExists(libraryIdentifier).getOrElse(false)){
           log.warn(s"Not processing $libraryIdentifier, as it is already in the database")
         } else {
-          if(!libraryIdentifier.contains("org.eclipse")){
-            val parts = libraryIdentifier.split(":")
-            val storageResult = processLibrary(parts(0),parts(1))
+          val parts = libraryIdentifier.split(":")
+          val storageResult = processLibrary(parts(0),parts(1))
 
-            if(!storageResult.success){
-              log.error(s"Failed to store library callgraph ${storageResult.libraryName}")
-            }
+          if(!storageResult.success){
+            log.error(s"Failed to store library callgraph ${storageResult.libraryName}")
           }
+
         }
       }
   }

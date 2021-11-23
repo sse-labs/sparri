@@ -24,7 +24,7 @@ class LibraryCallgraphBuilder(groupId: String,
 
   private[callgraphs] val classFileCache: ArtifactClassfileCache = new ArtifactClassfileCache(20)
   private[callgraphs] val downloader: MavenJarDownloader = new MavenJarDownloader()
-  private[callgraphs] val dependencyExtractor: JekaDependencyExtractor = new JekaDependencyExtractor(config)
+  private[callgraphs] val dependencyExtractor: JekaDependencyExtractor = JekaDependencyExtractor.getInstance(config)
 
   private val classFqnToDependencyMap: mutable.Map[String, MavenIdentifier] = new mutable.HashMap()
 
@@ -66,7 +66,7 @@ class LibraryCallgraphBuilder(groupId: String,
       val allThirdPartyClasses = getAllThirdPartyClassesWithCache(identifier)
 
       // Build Callgraph for entire program
-      val cgResponse = new CallGraphBuilder(config, system).buildCallgraph(downloadResponse, allThirdPartyClasses, classFqnToDependencyMap.toMap)
+      val cgResponse = CallGraphBuilder.buildCallgraph(downloadResponse, allThirdPartyClasses, classFqnToDependencyMap.toMap)
 
       // Apply the callgraph to the library  evolution object if successful
       if(cgResponse.success) {
@@ -110,5 +110,9 @@ class LibraryCallgraphBuilder(groupId: String,
     }
   }
 
-  def shutdown(): Unit = downloader.shutdown()
+  def shutdown(): Unit = {
+    classFileCache.clear()
+    classFqnToDependencyMap.clear()
+    downloader.shutdown()
+  }
 }

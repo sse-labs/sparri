@@ -1,12 +1,10 @@
 package org.tud.cgcrawling.callgraphs
 
-import akka.actor.ActorSystem
 import org.opalj.br.Method
 import org.opalj.br.analyses.Project
 import org.opalj.br.analyses.cg.InitialEntryPointsKey
 import org.opalj.br.instructions.{INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL}
 import org.slf4j.{Logger, LoggerFactory}
-import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 import org.tud.cgcrawling.download.MavenDownloadResult
 import org.tud.cgcrawling.model.LibraryCallgraph
@@ -17,7 +15,7 @@ import java.net.URL
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
-class CallGraphBuilder(val config: Configuration, val system: ActorSystem) {
+object CallGraphBuilder {
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 

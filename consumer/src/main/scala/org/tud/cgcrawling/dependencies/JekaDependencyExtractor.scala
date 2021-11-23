@@ -53,3 +53,17 @@ class JekaDependencyExtractor(configuration: Configuration) extends DependencyEx
   }
 
 }
+
+object JekaDependencyExtractor {
+
+  private var theInstance: Option[JekaDependencyExtractor] = None;
+
+  def getInstance(config: Configuration): JekaDependencyExtractor = {
+    if(theInstance.isEmpty){
+      theInstance = Some(new JekaDependencyExtractor(config))
+    }
+
+    theInstance.get
+  }
+
+}
