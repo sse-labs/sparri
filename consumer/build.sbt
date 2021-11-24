@@ -21,9 +21,9 @@ docker / dockerfile := {
   val artifactTargetPath = s"/app/${artifact.name}"
 
   new Dockerfile {
-    from("openjdk:8-jre")
+    from("openjdk:16-jdk")
     add(artifact, artifactTargetPath)
-    entryPoint("java", "-jar", "-Xms8G", "-Xmx8G", artifactTargetPath)
+    entryPoint("java", "-jar", "-Xmx8G", artifactTargetPath)
   }
 }
 

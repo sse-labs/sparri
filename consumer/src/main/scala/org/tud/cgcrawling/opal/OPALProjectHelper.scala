@@ -11,6 +11,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, DataInputStream, File, FileInputStream, InputStream}
 import java.net.URL
 import java.util.jar.JarInputStream
+import java.util.zip.ZipFile
 import scala.collection.mutable.ListBuffer
 import scala.util.{Failure, Try}
 
@@ -37,14 +38,19 @@ object OPALProjectHelper {
   lazy val jreClasses: ClassList = {
 
     def getJarFilesRecursive(directory: File): List[File] = {
-      val directChildJars = directory.listFiles.filter(f => f.isFile && f.getName.toLowerCase().endsWith(".jar")).toList
+      val directChildJars = directory
+        .listFiles
+        .filter(f => f.isFile && f.getName.toLowerCase().endsWith(".jmod") || f.getName.toLowerCase().endsWith(".jar"))
+        .toList
       directChildJars ++ directory.listFiles.filter(_.isDirectory).flatMap(getJarFilesRecursive).toList
     }
-
     getJarFilesRecursive(JRELibraryFolder)
       .filter(f => !f.getName.equals("jfxswt.jar")) // Do not load SWT classes, they depend on eclipse implementations
       .map(f => {
-        readClassesFromJarStream(new FileInputStream(f), f.toURI.toURL, LOAD_JRE_IMPLEMENTATION)
+        if(f.getName.endsWith(".jmod"))
+          readClassesFromJmodFile(f, LOAD_JRE_IMPLEMENTATION)
+        else
+          readClassesFromJarStream(new FileInputStream(f), f.toURI.toURL, LOAD_JRE_IMPLEMENTATION)
       })
       .filter(readTry => readTry match {
         case Failure(ex) =>
@@ -75,6 +81,37 @@ object OPALProjectHelper {
     Project(projectClasses, thirdPartyClasses ++ jreClasses, libraryClassFilesAreInterfacesOnly = false, Traversable.empty, inconsistentExceptionHandler)(config, projectLogger)
   }
 
+  def readClassesFromJmodFile(jmod: File, loadImplementation: Boolean): Try[ClassList] = Try {
+    val entries = new ListBuffer[(ClassFile, URL)]()
+
+    val zipFile = new ZipFile(jmod)
+    val source = jmod.toURI.toURL
+    val entryEnum = zipFile.entries()
+
+    val reader = if(loadImplementation) this.fullClassFileReader else this.interfaceClassFileReader
+
+    while(entryEnum.hasMoreElements){
+      val currentEntry = entryEnum.nextElement()
+      val entryName = currentEntry.getName.toLowerCase
+
+      if (entryName.endsWith(".class")){
+        val is = zipFile.getInputStream(currentEntry)
+        /**if(entryName.toLowerCase.contains("methodhandles$lookup.class")){
+          val cf = reader.ClassFile(getEntryByteStream(is))
+          cf.head.methods.foreach(m => println(m.fullyQualifiedSignature))
+          println()
+        }**/
+
+        reader
+          .ClassFile(getEntryByteStream(is))
+          .map(cf => (cf, source))
+          .foreach(t => entries.append(t))
+      }
+    }
+
+    entries.toList
+  }
+
   def readClassesFromJarStream(jarStream: InputStream, source:URL, loadImplementation: Boolean): Try[ClassList] = Try {
 
     val entries = new ListBuffer[(ClassFile, URL)]()
@@ -88,6 +125,7 @@ object OPALProjectHelper {
       val entryName = currentEntry.getName.toLowerCase
 
       if (entryName.endsWith(".class")){
+
         reader
           .ClassFile(getEntryByteStream(jarInputStream))
           .map(cf => (cf, source))
@@ -100,7 +138,7 @@ object OPALProjectHelper {
     entries.toList
   }
 
-  private def getEntryByteStream(in: JarInputStream): DataInputStream = {
+  private def getEntryByteStream(in: InputStream): DataInputStream = {
     val entryBytes = {
       val baos = new ByteArrayOutputStream()
       val buffer = new Array[Byte](32 * 1024)

@@ -38,8 +38,10 @@ object CallGraphBuilder {
       .filter(instr => instr != null && instr.isMethodInvocationInstruction)
       .flatMap {
         case iv: INVOKEVIRTUAL =>
+          // Note that empty results are valid here. We Might have methods being invoked on abstract
+          // library classes that are to be extended by the client, and therefore no implementation
+          // exists in the entire classpath
           project.virtualCall(method.classFile.thisType, iv)
-
         case is: INVOKESTATIC =>
           val resolvedCall = project.staticCall(method.classFile.thisType, is)
 
@@ -47,6 +49,7 @@ object CallGraphBuilder {
             Traversable(resolvedCall.value)
           } else {
             log.warn("Failed to resolve static call " + is.toString())
+            log.warn("\t- Call contained in " + method.fullyQualifiedSignature)
             Traversable.empty
           }
 
@@ -57,10 +60,13 @@ object CallGraphBuilder {
             Traversable(resolvedCall.value)
           } else {
             log.warn("Failed to resolve special call " + special.toString())
+            log.warn("\t- Call contained in " + method.fullyQualifiedSignature)
             Traversable.empty
           }
 
         case interface: INVOKEINTERFACE =>
+          // Note that empty results are valid here, there may be calls to interfaces that are never
+          // instantiated in the context of the library
           project.interfaceCall(method.classFile.thisType, interface)
       }
   }
