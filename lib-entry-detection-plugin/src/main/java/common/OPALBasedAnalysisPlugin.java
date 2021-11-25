@@ -30,8 +30,8 @@ public abstract class OPALBasedAnalysisPlugin extends AbstractMojo {
     @Parameter(defaultValue = "false")
     protected Boolean isLibrary;
 
-    @Parameter(defaultValue = "true")
-    protected Boolean completelyLoadLibraries;
+    @Parameter(defaultValue = "false")
+    protected Boolean loadDependencyImplementation;
 
     @Parameter(defaultValue = "true")
     protected Boolean loadThirdPartyLibraries;
@@ -74,10 +74,11 @@ public abstract class OPALBasedAnalysisPlugin extends AbstractMojo {
         if(theOPALProjectInstance == null){
             log.debug("Initializing OPAL with the following configuration:");
             log.debug("\t- Root project is libary: " + this.isLibrary);
-            log.debug("\t- Completely load libraries: " + this.completelyLoadLibraries);
+            log.debug("\t- Load implementation of 3rd party libraries: " + this.loadDependencyImplementation);
             log.debug("\t- Load 3rd party libraries: " + this.loadThirdPartyLibraries);
 
-            this.opalProjectWrapper.initializeOPALProject(getClassSourceDirectory(), this.isLibrary, this.completelyLoadLibraries, this.loadThirdPartyLibraries);
+            this.opalProjectWrapper.initializeOPALProject(getClassSourceDirectory(), this.isLibrary,
+                    this.loadDependencyImplementation, this.loadThirdPartyLibraries);
             this.theOPALProjectInstance = this.opalProjectWrapper.getOPALProject();
         }
 

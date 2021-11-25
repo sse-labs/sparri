@@ -43,7 +43,7 @@ public class MavenOPALProjectWrapper {
                     .contains(type);
     }
 
-    public void initializeOPALProject(String projectClassFilesRoot, boolean rootProjectIsLibrary, boolean completelyLoadLibraryJars, boolean includeThirdPartyJars){
+    public void initializeOPALProject(String projectClassFilesRoot, boolean rootProjectIsLibrary, boolean loadDependencyImplementation, boolean includeThirdPartyJars){
 
         if(this.theOPALProject == null){
 
@@ -53,14 +53,16 @@ public class MavenOPALProjectWrapper {
                 thirdPartyJarsToProcess.addAll(getThirdPartyLibraryJars());
             }
 
-            List<Tuple2<ClassFile, URL>> thirdPartyClasses = this.opalHelper.readClassesFromJar(thirdPartyJarsToProcess, completelyLoadLibraryJars);
+            List<Tuple2<ClassFile, URL>> thirdPartyClasses =
+                    this.opalHelper.readClassesFromClassContainerFiles(thirdPartyJarsToProcess, loadDependencyImplementation);
 
             if(includeThirdPartyJars){
                 // Only set this if include3rdParty flag is set, value of null indicates opposite
                 this.thirdPartyTypes = thirdPartyClasses.stream().map( t -> ((ClassFile)t._1).thisType()).collect(Collectors.toList());
             }
 
-            this.theOPALProject = this.opalHelper.buildOpalProject(projectClassFilesRoot, thirdPartyClasses, rootProjectIsLibrary, completelyLoadLibraryJars);
+            this.theOPALProject = this.opalHelper.buildOpalProject(projectClassFilesRoot, thirdPartyClasses,
+                    rootProjectIsLibrary, loadDependencyImplementation);
         } else {
             throw new IllegalStateException("OPAL project has already been initialized.");
         }
