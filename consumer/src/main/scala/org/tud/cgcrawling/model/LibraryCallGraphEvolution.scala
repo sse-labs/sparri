@@ -1,11 +1,7 @@
 package org.tud.cgcrawling.model
 
-import org.opalj.br.DeclaredMethod
-import org.opalj.br.analyses.Project
 import org.slf4j.{Logger, LoggerFactory}
-import org.tud.cgcrawling.opal.OPALProjectHelper
 
-import java.net.URL
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
@@ -20,6 +16,7 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
 
 
   private val releaseList: mutable.ListBuffer[String] = new ListBuffer[String]
+  private val instantiatedTypesMap: mutable.Map[String, mutable.ListBuffer[String]] = new mutable.HashMap()
 
   val libraryName = s"$groupId:$artifactId"
 
@@ -68,10 +65,18 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
   def applyNewRelease(callgraph: LibraryCallgraph,
                       dependencies: Set[DependencyIdentifier],
                       release: String): Unit = {
-
     if(releaseList.contains(release)){
       throw new RuntimeException(s"Release has already been applied to CallGraphEvolution: $release")
     }
+
+    callgraph
+      .instantiatedTypeNames
+      .foreach{ typeName =>
+        if(!instantiatedTypesMap.contains(typeName)){
+          instantiatedTypesMap.put(typeName, new mutable.ListBuffer())
+        }
+        instantiatedTypesMap(typeName).append(release)
+      }
 
     log.info(s"Processing new release $release for $libraryName")
     releaseList.append(release)
@@ -82,12 +87,12 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
       .allMethods
       .foreach { method =>
 
-        setMethodActiveInRelease(method.identifier, release)
+        setMethodActiveInRelease(method, release)
 
         callgraph
           .calleesOf(method)
           .foreach { callee =>
-            setMethodActiveInRelease(callee.identifier, release)
+            setMethodActiveInRelease(callee, release)
 
             val ident = new MethodInvocationIdentifier(method.identifier, callee.identifier)
             setInvocationActiveInRelease(ident, release)
@@ -111,16 +116,18 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
     invocationEvolutionMap(identifier).addActiveRelease(release)
   }
 
-  private def setMethodActiveInRelease(identifier: MethodIdentifier, release: String): Unit = {
-    if(!methodEvolutionMap.contains(identifier)){
-      methodEvolutionMap.put(identifier, new MethodEvolution(identifier))
+  private def setMethodActiveInRelease(method: LibraryMethod, release: String): Unit = {
+    if(!methodEvolutionMap.contains(method.identifier)){
+      methodEvolutionMap.put(method.identifier, new MethodEvolution(method.identifier))
     }
-    methodEvolutionMap(identifier).addActiveRelease(release)
+
+    val theEvolution = methodEvolutionMap(method.identifier)
+
+    theEvolution.addActiveRelease(release)
+
+    method.obligations.foreach(theEvolution.setObligationActiveIn(_, release))
   }
 
-  private def isExternalMethod(method: DeclaredMethod, project: Project[URL]): Boolean = {
-    OPALProjectHelper.isThirdPartyMethod(project, method)
-  }
 }
 
 
