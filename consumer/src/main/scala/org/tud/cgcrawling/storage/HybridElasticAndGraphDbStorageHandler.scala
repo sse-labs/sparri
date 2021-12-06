@@ -65,6 +65,9 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
         (batch, elasticClient.execute {
           bulk(
             batch.map { methodEvolution =>
+
+              val methodReleases = methodEvolution.isActiveIn
+
               indexInto(config.elasticMethodIndexName)
                 .fields(
                   isExternFieldName -> methodEvolution.identifier.isExternal,
@@ -73,12 +76,12 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
                   signatureFieldName -> methodEvolution.identifier.fullSignature,
                   analyzedLibraryFieldName -> cgEvolution.libraryName,
                   definingLibraryFieldName -> methodEvolution.identifier.definingArtifact.map(i => s"${i.groupId}:${i.artifactId}").getOrElse("<none>"),
-                  releasesFieldName -> methodEvolution.isActiveIn.toArray,
+                  releasesFieldName -> methodReleases.toArray,
                   isJreFieldName -> methodEvolution.identifier.isJREMethod,
                   obligationFieldName -> methodEvolution.obligationEvolutions().map( oEvo => Map(
                     declaredTypeFieldName -> oEvo.invocationObligation.declaredTypeName,
                     declaredMethodFieldName -> (oEvo.invocationObligation.methodName + oEvo.invocationObligation.descriptor),
-                    releasesFieldName -> oEvo.isActiveIn.toArray
+                    releasesFieldName -> buildReleasesValue(oEvo.isActiveIn, methodReleases)
                   ))
                 )
             }
@@ -101,20 +104,23 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
       }
       .exists(res => res.isError || res.result.hasFailures) ||
       elasticClient.execute{
+
+        val libReleases = cgEvolution.releases()
+
         indexInto(config.elasticLibraryIndexName).fields(
           libraryFieldName -> cgEvolution.libraryName,
-          releasesFieldName -> cgEvolution.releases(),
+          releasesFieldName -> libReleases.toArray,
           dependenciesFieldName -> cgEvolution.dependencyEvolutions().map{ dep =>
             Map(
               libraryFieldName -> s"${dep.identifier.identifier.groupId}:${dep.identifier.identifier.artifactId}",
               versionFieldName -> dep.identifier.identifier.version,
-              releasesFieldName -> dep.isActiveIn,
+              releasesFieldName -> buildReleasesValue(dep.isActiveIn, libReleases),
               scopeFieldName -> dep.identifier.scope
             )
           },
           instantiatedTypesFieldName -> cgEvolution.instantiatedTypeEvolutions().map( tEvo => Map(
             declaredTypeFieldName -> tEvo._1,
-            releasesFieldName -> tEvo._2.toArray
+            releasesFieldName -> buildReleasesValue(tEvo._2, libReleases)
           ))
         )
       }.await.isError
@@ -160,6 +166,14 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
     log.info("Finished storing method relations.")
 
     GraphDbStorageResult(cgEvolution.libraryName, !elasticErrorsExist && !neo4jErrorsExist)
+  }
+
+  private def buildReleasesValue(activeReleases: List[String], parentActiveReleases: List[String]): Array[String]= {
+    if(activeReleases.size == parentActiveReleases.size){
+      Array("*")
+    } else {
+      activeReleases.toArray
+    }
   }
 
   override def libraryExists(libName: String): Option[Boolean] = {

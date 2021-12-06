@@ -7,7 +7,7 @@ import scala.collection.mutable.ListBuffer
 
 class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
 
-  type InstantiatedTypeEvolution = (String, Iterable[String])
+  type InstantiatedTypeEvolution = (String, List[String])
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
