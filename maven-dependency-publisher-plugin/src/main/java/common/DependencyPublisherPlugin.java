@@ -74,7 +74,7 @@ public class DependencyPublisherPlugin extends AbstractMojo {
          for(String dep: dependencies){
              String libIdent = dep.substring(0, dep.lastIndexOf(":"));
              if(!libraries.contains(libIdent)){
-                 libraries.add(dep);
+                 libraries.add(libIdent);
              }
          }
 
@@ -88,8 +88,6 @@ public class DependencyPublisherPlugin extends AbstractMojo {
                  log.info("Publishing identifier: \"" + lib + "\"");
                  publisher.publishIdentifier(lib);
              }
-
-             publisher.shutdown();
          } catch(Exception iox){
             log.error("Failure while publishing dependencies: ", iox);
          } finally {
