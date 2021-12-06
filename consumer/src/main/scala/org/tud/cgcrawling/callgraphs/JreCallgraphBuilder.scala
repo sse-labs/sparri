@@ -10,14 +10,14 @@ import scala.util.Try
 /**
  * Provides means to analyze the JRE as an independent "library". This is far less complicated than regular library analysis,
  * as we do not have to download or cache any dependencies, and there is only one release. However, since the data model expects
- * artifacts to be of the Maven GAV format, we have to fake a library identifier for the JRE, which is G:"", A:"<jre>". We use
+ * artifacts to be of the Maven GAV format, we have to fake a library identifier for the JRE, which is G:"<none>", A:"<jre>". We use
  * the actual JRE version (via system property "java.version") as the version identifier.
  */
 object JreCallgraphBuilder {
 
   def buildCallgraphEvolution(): Try[LibraryCallGraphEvolution] = Try {
     val jreVersionString = System.getProperty("java.version")
-    val fakeJreIdentifier = MavenIdentifier("", "", "<jre>", jreVersionString)
+    val fakeJreIdentifier = MavenIdentifier("", "<none>", "<jre>", jreVersionString)
     val theCallGraphEvolution = new LibraryCallGraphEvolution(fakeJreIdentifier.groupId, fakeJreIdentifier.artifactId)
 
     val opalProject = OPALProjectHelper.buildJreOPALProject()

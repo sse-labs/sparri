@@ -4,7 +4,7 @@ import akka.Done
 import akka.actor.ActorSystem
 import akka.util.Timeout
 import org.slf4j.{Logger, LoggerFactory}
-import org.tud.cgcrawling.callgraphs.LibraryCallgraphBuilder
+import org.tud.cgcrawling.callgraphs.{JreCallgraphBuilder, LibraryCallgraphBuilder}
 import org.tud.cgcrawling.discovery.rabbitmq.MqIdentifierProcessing
 import org.tud.cgcrawling.storage.{GraphDbStorageResult, HybridElasticAndGraphDbStorageHandler, StorageHandler}
 
@@ -40,20 +40,23 @@ class CallGraphCrawler(val configuration: Configuration)
 
   def processLibrary(groupId: String, artifactId: String): GraphDbStorageResult = {
 
-    val libCgBuilder = new LibraryCallgraphBuilder(groupId, artifactId, configuration)
+    val builder = if(!artifactId.equals("<jre>")) {
+      Some(new LibraryCallgraphBuilder(groupId, artifactId, configuration))
+    } else { None }
 
-    libCgBuilder.buildCallgraphEvolution() match {
+
+    builder.map(_.buildCallgraphEvolution()).getOrElse(JreCallgraphBuilder.buildCallgraphEvolution()) match {
 
       case Success(evolution) =>
 
-        libCgBuilder.shutdown()
+        builder.foreach(_.shutdown())
         log.info(s"Finished building CG evolution for ${evolution.libraryName}.")
         log.info(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.numberOfInstantiatedTypeEvolutions()} instantiated types, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
         storageHandler.storeCallGraphEvolution(evolution)
 
       case Failure(ex) =>
         log.error(s"Failed to read versions for library $groupId:$artifactId", ex)
-        libCgBuilder.shutdown()
+        builder.foreach(_.shutdown())
         GraphDbStorageResult(s"$groupId:$artifactId", success = false)
     }
 
