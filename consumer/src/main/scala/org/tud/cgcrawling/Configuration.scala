@@ -42,7 +42,7 @@ class Configuration {
 
   val elasticClientUri: String = "<CHANGEME>"
   val elasticMethodIndexName: String = "methods"
-  val elasticDependencyIndexName: String = "dependencies"
+  val elasticLibraryIndexName: String = "libraries"
 
   val graphDatabaseUrl: String = "<CHANGEME>"
   val graphDatabaseUser: String = "neo4j"

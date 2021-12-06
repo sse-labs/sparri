@@ -48,7 +48,7 @@ class CallGraphCrawler(val configuration: Configuration)
 
         libCgBuilder.shutdown()
         log.info(s"Finished building CG evolution for ${evolution.libraryName}.")
-        log.info(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
+        log.info(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.numberOfInstantiatedTypeEvolutions()} instantiated types, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
         storageHandler.storeCallGraphEvolution(evolution)
 
       case Failure(ex) =>

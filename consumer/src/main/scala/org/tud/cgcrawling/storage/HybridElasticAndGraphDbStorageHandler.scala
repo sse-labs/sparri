@@ -33,10 +33,14 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   private val definingLibraryFieldName = "DefiningLibrary"
   private val releasesFieldName = "Releases"
   private val isJreFieldName = "IsJRE"
+  private val obligationFieldName = "Obligations"
+  private val declaredTypeFieldName = "DeclaredType"
+  private val declaredMethodFieldName = "DeclaredMethod"
 
   private val versionFieldName = "Version"
   private val scopeFieldName = "Scope"
   private val dependenciesFieldName = "Dependencies"
+  private val instantiatedTypesFieldName = "InstantiatedTypes"
 
   private val clientProps = AkkaHttpClientSettings(Seq(config.elasticClientUri))
 
@@ -70,7 +74,12 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
                   analyzedLibraryFieldName -> cgEvolution.libraryName,
                   definingLibraryFieldName -> methodEvolution.identifier.definingArtifact.map(i => s"${i.groupId}:${i.artifactId}").getOrElse("<none>"),
                   releasesFieldName -> methodEvolution.isActiveIn.toArray,
-                  isJreFieldName -> methodEvolution.identifier.isJREMethod
+                  isJreFieldName -> methodEvolution.identifier.isJREMethod,
+                  obligationFieldName -> methodEvolution.obligationEvolutions().map( oEvo => Map(
+                    declaredTypeFieldName -> oEvo.invocationObligation.declaredTypeName,
+                    declaredMethodFieldName -> (oEvo.invocationObligation.methodName + oEvo.invocationObligation.descriptor),
+                    releasesFieldName -> oEvo.isActiveIn.toArray
+                  ))
                 )
             }
           )
@@ -92,7 +101,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
       }
       .exists(res => res.isError || res.result.hasFailures) ||
       elasticClient.execute{
-        indexInto(config.elasticDependencyIndexName).fields(
+        indexInto(config.elasticLibraryIndexName).fields(
           libraryFieldName -> cgEvolution.libraryName,
           releasesFieldName -> cgEvolution.releases(),
           dependenciesFieldName -> cgEvolution.dependencyEvolutions().map{ dep =>
@@ -102,7 +111,11 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
               releasesFieldName -> dep.isActiveIn,
               scopeFieldName -> dep.identifier.scope
             )
-          }
+          },
+          instantiatedTypesFieldName -> cgEvolution.instantiatedTypeEvolutions().map( tEvo => Map(
+            declaredTypeFieldName -> tEvo._1,
+            releasesFieldName -> tEvo._2.toArray
+          ))
         )
       }.await.isError
 
@@ -190,7 +203,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
       .getOrElse(throw new RuntimeException("ElasticSearch not reachable"))
 
     val methodIndexPresent = indexPresent(config.elasticMethodIndexName)
-    val dependencyIndexPresent = indexPresent(config.elasticDependencyIndexName)
+    val libraryIndexPresent = indexPresent(config.elasticLibraryIndexName)
 
     if(!methodIndexPresent){
       log.info("Method index not found, creating it...")
@@ -203,15 +216,20 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
             TextField(analyzedLibraryFieldName),
             TextField(definingLibraryFieldName),
             BooleanField(isPublicFieldName),
-            TextField(releasesFieldName)
+            TextField(releasesFieldName),
+            NestedField(obligationFieldName).fields(
+              TextField(declaredTypeFieldName),
+              TextField(declaredMethodFieldName),
+              TextField(releasesFieldName)
+            )
           ))
       }.await
     }
 
-    if(!dependencyIndexPresent){
-      log.info("Dependency index not found, creating it...")
+    if(!libraryIndexPresent){
+      log.info("Library index not found, creating it...")
       elasticClient.execute{
-        createIndex(config.elasticDependencyIndexName)
+        createIndex(config.elasticLibraryIndexName)
           .mapping(properties(
             TextField(libraryFieldName),
             TextField(releasesFieldName),
@@ -220,6 +238,10 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
               TextField(versionFieldName),
               TextField(releasesFieldName),
               TextField(scopeFieldName)
+            ),
+            NestedField(instantiatedTypesFieldName).fields(
+              TextField(declaredTypeFieldName),
+              TextField(releasesFieldName)
             )
           ))
       }.await

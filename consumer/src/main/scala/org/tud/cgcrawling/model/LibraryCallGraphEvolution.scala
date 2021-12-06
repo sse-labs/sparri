@@ -7,6 +7,8 @@ import scala.collection.mutable.ListBuffer
 
 class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
 
+  type InstantiatedTypeEvolution = (String, Iterable[String])
+
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
   private val methodEvolutionMap: mutable.Map[MethodIdentifier, MethodEvolution] = new mutable.HashMap()
@@ -24,10 +26,12 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
   def methodEvolutions(): Iterable[MethodEvolution] = methodEvolutionMap.values
   def methodInvocationEvolutions(): Iterable[MethodInvocationEvolution] = invocationEvolutionMap.values
   def dependencyEvolutions(): Iterable[DependencyEvolution] = dependencyEvolutionMap.values
+  def instantiatedTypeEvolutions(): Iterable[InstantiatedTypeEvolution] = instantiatedTypesMap.map(t => (t._1, t._2.toList))
 
   def numberOfMethodEvolutions(): Int = methodEvolutionMap.size
   def numberOfInvocationEvolutions(): Int = invocationEvolutionMap.size
   def numberOfDependencyEvolutions(): Int = dependencyEvolutionMap.size
+  def numberOfInstantiatedTypeEvolutions(): Int = instantiatedTypesMap.size
 
   def dependenciesAt(release: String): Iterable[DependencyIdentifier] = {
     if(!releaseList.contains(release))
