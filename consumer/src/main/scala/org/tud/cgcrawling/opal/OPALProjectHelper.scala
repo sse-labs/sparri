@@ -70,6 +70,16 @@ object OPALProjectHelper {
     !project.allProjectClassFiles.contains(cf) && !jreClasses.map(_._1).contains(cf)
   }
 
+  def buildJreOPALProject(): Project[URL] = {
+    val config = BaseConfig.withValue("org.opalj.br.analyses.cg.InitialEntryPointsKey.analysis",
+      ConfigValueFactory.fromAnyRef("org.opalj.br.analyses.cg.LibraryEntryPointsFinder"))
+
+    val inconsistentExceptionHandler =
+      (_: LogContext, error: InconsistentProjectException) => log.warn("Inconsistent Project Exception: " + error.message)
+
+    Project(jreClasses, List.empty, libraryClassFilesAreInterfacesOnly = true, Traversable.empty, inconsistentExceptionHandler)(config, projectLogger)
+  }
+
   def buildOPALProject(projectClasses: ClassList, thirdPartyClasses: ClassList): Project[URL] = {
 
     val config = BaseConfig.withValue("org.opalj.br.analyses.cg.InitialEntryPointsKey.analysis",
@@ -96,11 +106,6 @@ object OPALProjectHelper {
 
       if (entryName.endsWith(".class")){
         val is = zipFile.getInputStream(currentEntry)
-        /**if(entryName.toLowerCase.contains("methodhandles$lookup.class")){
-          val cf = reader.ClassFile(getEntryByteStream(is))
-          cf.head.methods.foreach(m => println(m.fullyQualifiedSignature))
-          println()
-        }**/
 
         reader
           .ClassFile(getEntryByteStream(is))

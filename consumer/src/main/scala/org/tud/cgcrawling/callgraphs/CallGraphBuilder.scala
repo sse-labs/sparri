@@ -235,6 +235,18 @@ object CallGraphBuilder {
     callgraph
   }
 
+  private[callgraphs] def getInstantiatedTypeNames(project: Project[URL]): Set[String] = {
+    project
+      .allMethods
+      .filter(m => project.isProjectType(m.classFile.thisType) && m.body.isDefined)
+      .flatMap(m => m.body.get.instructions)
+      .filter(i => i != null && i.isMethodInvocationInstruction && i.isInstanceOf[INVOKESPECIAL])
+      .map(i => i.asInstanceOf[INVOKESPECIAL])
+      .filter(i => i.name.equals("<init>"))
+      .map(_.declaringClass.fqn)
+      .toSet
+  }
+
   def buildCallgraph(jarFile: MavenDownloadResult, thirdPartyClasses: ClassList, classFqnToIdentMap: Map[String, MavenIdentifier]): CallGraphBuilderResult = {
 
     val projectClasses =
@@ -247,15 +259,7 @@ object CallGraphBuilder {
       case Success(project) =>
         log.info(s"Successfully initialized OPAL project for ${jarFile.identifier.toString}")
 
-        val initializedTypeNames = project
-          .allMethods
-          .filter(m => project.isProjectType(m.classFile.thisType) && m.body.isDefined)
-          .flatMap(m => m.body.get.instructions)
-          .filter(i => i != null && i.isMethodInvocationInstruction && i.isInstanceOf[INVOKESPECIAL])
-          .map(i => i.asInstanceOf[INVOKESPECIAL])
-          .filter(i => i.name.equals("<init>"))
-          .map(_.declaringClass.fqn)
-          .toSet
+        val initializedTypeNames = getInstantiatedTypeNames(project)
 
         log.info("Successfully built initialized types")
 
