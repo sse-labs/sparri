@@ -22,9 +22,9 @@ import scala.util.{Failure, Success, Try}
 class HybridElasticAndGraphDbStorageHandler(config: Configuration)
                                            (implicit system: ActorSystem) extends StorageHandler {
 
-  private val maxConcurrentEsRequests = 10
-  private val neo4jMethodInsertBatchSize = 200
-  private val neo4jMethodInvocationInsertBatchSize = 100
+  private val maxConcurrentEsRequests = 30
+  private val neo4jMethodInsertBatchSize = 400
+  private val neo4jMethodInvocationInsertBatchSize = 200
 
   private val isExternFieldName = "IsExtern"
   private val isPublicFieldName = "IsPublic"
@@ -59,7 +59,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
 
     log.info("Starting to store data in ES ...")
 
-    val elasticErrorsExist = cgEvolution
+    val elasticErrorsForMethods = cgEvolution
       .methodEvolutions()
       .toList
       .grouped(maxConcurrentEsRequests)
@@ -109,8 +109,11 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
 
         tuple._2
       }
-      .exists(res => res.isError || res.result.hasFailures) ||
-      elasticClient.execute{
+      .exists(res => res.isError || res.result.hasFailures)
+
+    if(elasticErrorsForMethods) log.error("Got errors while storing methods in ES.")
+
+    val elasticErrorsForLibrary = elasticClient.execute{
 
         val libReleases = cgEvolution.releases()
 
@@ -131,6 +134,8 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
           ))
         )
       }.await.isError
+
+    if(elasticErrorsForLibrary) log.error("Got error while storing library in ES.")
 
     log.info("Finished storing data in ES.")
 
@@ -172,7 +177,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
 
     log.info("Finished storing method relations.")
 
-    GraphDbStorageResult(cgEvolution.libraryName, !elasticErrorsExist && !neo4jErrorsExist)
+    GraphDbStorageResult(cgEvolution.libraryName, !elasticErrorsForLibrary && !elasticErrorsForMethods && !neo4jErrorsExist)
   }
 
   private def buildReleasesValue(activeReleases: List[String], parentActiveReleases: List[String]): Array[String]= {
