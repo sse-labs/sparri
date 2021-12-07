@@ -1,12 +1,14 @@
 package org.tud.cgcrawling.storage
 
 import akka.actor.ActorSystem
+import com.sksamuel.elastic4s.ElasticApi.{search, termQuery}
 import com.sksamuel.elastic4s.akka.{AkkaHttpClient, AkkaHttpClientSettings}
-import com.sksamuel.elastic4s.ElasticClient
+import com.sksamuel.elastic4s.{ElasticClient, RequestFailure, RequestSuccess}
 import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.model.{LibraryCallGraphEvolution, MethodIdentifier}
 import com.sksamuel.elastic4s.ElasticDsl._
 import com.sksamuel.elastic4s.fields.{BooleanField, KeywordField, NestedField, TextField}
+import com.sksamuel.elastic4s.requests.searches.SearchResponse
 import org.neo4j.driver.Session
 import org.neo4j.driver.Values.parameters
 
@@ -67,6 +69,11 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
             batch.map { methodEvolution =>
 
               val methodReleases = methodEvolution.isActiveIn
+              // If defining Lib is not explicit and we are external => JRE call
+              val definingLib = methodEvolution.identifier.definingArtifact.map(i => s"${i.groupId}:${i.artifactId}").getOrElse{
+                if(methodEvolution.identifier.isJREMethod) "<none>:<jre>"
+                else "<unknown>:<unknown>"
+              }
 
               indexInto(config.elasticMethodIndexName)
                 .fields(
@@ -75,7 +82,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
                   nameFieldName -> methodEvolution.identifier.simpleName,
                   signatureFieldName -> methodEvolution.identifier.fullSignature,
                   analyzedLibraryFieldName -> cgEvolution.libraryName,
-                  definingLibraryFieldName -> methodEvolution.identifier.definingArtifact.map(i => s"${i.groupId}:${i.artifactId}").getOrElse("<none>"),
+                  definingLibraryFieldName -> definingLib,
                   releasesFieldName -> methodReleases.toArray,
                   isJreFieldName -> methodEvolution.identifier.isJREMethod,
                   obligationFieldName -> methodEvolution.obligationEvolutions().map( oEvo => Map(
@@ -176,22 +183,29 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
     }
   }
 
-  override def libraryExists(libName: String): Option[Boolean] = {
-    val session = config.graphDatabaseDriver.session()
+  override def libraryExists(libIdent: String): Option[Boolean] = {
 
-    val existsTry = Try {
-      session
-        .run("MATCH (m:Method {Library: $lib}) RETURN COUNT(m) AS cnt", parameters("lib", libName))
-        .single()
-        .get("cnt")
-        .asInt() > 0
+
+    elasticClient.execute{
+      search(config.elasticLibraryIndexName)
+        .query(termQuery(libraryFieldName, libIdent)).size(1).fetchSource(false)
+    }.await match {
+      case fail: RequestFailure =>
+        log.error("Failed to query ElasticSearch: ", fail.error.reason)
+        None
+
+      case results: RequestSuccess[SearchResponse] =>
+        val numberOfHits = results.result.totalHits
+        val time = results.result.took
+
+        log.debug(s"Query for '$libIdent' yielded $numberOfHits hits in $time ms.")
+
+        Some(numberOfHits > 0)
+
+      case response: RequestSuccess[_] =>
+        log.error(s"Unknown response type: ${response.result}")
+        None
     }
-
-    session.close()
-
-
-
-    existsTry.toOption
   }
 
   private def setupIndex(): Unit = {
