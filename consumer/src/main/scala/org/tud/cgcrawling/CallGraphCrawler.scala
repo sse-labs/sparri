@@ -32,6 +32,7 @@ class CallGraphCrawler(val configuration: Configuration)
 
           if(!storageResult.success){
             log.error(s"Failed to store library callgraph ${storageResult.libraryName}")
+            System.exit(1)
           }
 
         }

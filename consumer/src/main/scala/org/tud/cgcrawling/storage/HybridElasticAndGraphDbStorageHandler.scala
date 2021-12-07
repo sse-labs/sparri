@@ -113,7 +113,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
 
     if(elasticErrorsForMethods) log.error("Got errors while storing methods in ES.")
 
-    val elasticErrorsForLibrary = elasticClient.execute{
+    val elasticLibResponse = elasticClient.execute{
 
         val libReleases = cgEvolution.releases()
 
@@ -133,7 +133,14 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
             releasesFieldName -> buildReleasesValue(tEvo._2, libReleases)
           ))
         )
-      }.await.isError
+      }.await
+
+    if(elasticLibResponse.isError){
+      log.error("Failed to store library in ES", elasticLibResponse.error.asException)
+      println(elasticLibResponse.error.reason)
+    }
+
+    val elasticErrorsForLibrary = elasticLibResponse.isError
 
     if(elasticErrorsForLibrary) log.error("Got error while storing library in ES.")
 
