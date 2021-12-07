@@ -6,7 +6,7 @@ import com.sksamuel.elastic4s.ElasticClient
 import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.model.{LibraryCallGraphEvolution, MethodIdentifier}
 import com.sksamuel.elastic4s.ElasticDsl._
-import com.sksamuel.elastic4s.fields.{BooleanField, NestedField, TextField}
+import com.sksamuel.elastic4s.fields.{BooleanField, KeywordField, NestedField, TextField}
 import org.neo4j.driver.Session
 import org.neo4j.driver.Values.parameters
 
@@ -227,14 +227,14 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
             BooleanField(isExternFieldName),
             TextField(nameFieldName),
             TextField(signatureFieldName),
-            TextField(analyzedLibraryFieldName),
-            TextField(definingLibraryFieldName),
+            KeywordField(analyzedLibraryFieldName),
+            KeywordField(definingLibraryFieldName),
             BooleanField(isPublicFieldName),
-            TextField(releasesFieldName),
+            KeywordField(releasesFieldName),
             NestedField(obligationFieldName).fields(
               TextField(declaredTypeFieldName),
               TextField(declaredMethodFieldName),
-              TextField(releasesFieldName)
+              KeywordField(releasesFieldName)
             )
           ))
       }.await
@@ -245,17 +245,17 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
       elasticClient.execute{
         createIndex(config.elasticLibraryIndexName)
           .mapping(properties(
-            TextField(libraryFieldName),
-            TextField(releasesFieldName),
+            KeywordField(libraryFieldName),
+            KeywordField(releasesFieldName),
             NestedField(dependenciesFieldName).fields(
-              TextField(libraryFieldName),
-              TextField(versionFieldName),
-              TextField(releasesFieldName),
-              TextField(scopeFieldName)
+              KeywordField(libraryFieldName),
+              KeywordField(versionFieldName),
+              KeywordField(releasesFieldName),
+              KeywordField(scopeFieldName)
             ),
             NestedField(instantiatedTypesFieldName).fields(
-              TextField(declaredTypeFieldName),
-              TextField(releasesFieldName)
+              KeywordField(declaredTypeFieldName),
+              KeywordField(releasesFieldName)
             )
           ))
       }.await
