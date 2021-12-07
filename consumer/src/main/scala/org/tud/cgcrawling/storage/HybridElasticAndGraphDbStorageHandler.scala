@@ -59,132 +59,133 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
 
     log.info("Starting to store data in ES ...")
 
-    val elasticErrorsForMethods = cgEvolution
-      .methodEvolutions()
-      .toList
-      .grouped(maxConcurrentEsRequests)
-      .map { batch =>
-        (batch, elasticClient.execute {
-          bulk(
-            batch.map { methodEvolution =>
-
-              val methodReleases = methodEvolution.isActiveIn
-              // If defining Lib is not explicit and we are external => JRE call
-              val definingLib = methodEvolution.identifier.definingArtifact.map(i => s"${i.groupId}:${i.artifactId}").getOrElse{
-                if(methodEvolution.identifier.isJREMethod) "<none>:<jre>"
-                else "<unknown>:<unknown>"
-              }
-
-              indexInto(config.elasticMethodIndexName)
-                .fields(
-                  isExternFieldName -> methodEvolution.identifier.isExternal,
-                  isPublicFieldName -> methodEvolution.identifier.isPublic,
-                  nameFieldName -> methodEvolution.identifier.simpleName,
-                  signatureFieldName -> methodEvolution.identifier.fullSignature,
-                  analyzedLibraryFieldName -> cgEvolution.libraryName,
-                  definingLibraryFieldName -> definingLib,
-                  releasesFieldName -> methodReleases.toArray,
-                  isJreFieldName -> methodEvolution.identifier.isJREMethod,
-                  obligationFieldName -> methodEvolution.obligationEvolutions().map( oEvo => Map(
-                    declaredTypeFieldName -> oEvo.invocationObligation.declaredTypeName,
-                    declaredMethodFieldName -> (oEvo.invocationObligation.methodName + oEvo.invocationObligation.descriptor),
-                    releasesFieldName -> buildReleasesValue(oEvo.isActiveIn, methodReleases)
-                  ))
-                )
-            }
-          )
-        }.await(10 minutes))
-      }
-      .map{ tuple =>
-
-        if(!tuple._2.isError && !tuple._2.result.hasFailures){
-          val idList = tuple._2.result.items.toList.map(_.id)
-
-          for (i <- idList.indices){
-            val ident = tuple._1(i).identifier
-            val id = idList(i)
-            idLookup.put(ident, id)
-          }
-        }
-
-        tuple._2
-      }
-      .exists(res => res.isError || res.result.hasFailures)
-
-    if(elasticErrorsForMethods) log.error("Got errors while storing methods in ES.")
-
     val elasticLibResponse = elasticClient.execute{
 
-        val libReleases = cgEvolution.releases()
+      val libReleases = cgEvolution.releases()
 
-        indexInto(config.elasticLibraryIndexName).fields(
-          libraryFieldName -> cgEvolution.libraryName,
-          releasesFieldName -> libReleases.toArray,
-          dependenciesFieldName -> cgEvolution.dependencyEvolutions().map{ dep =>
-            Map(
-              libraryFieldName -> s"${dep.identifier.identifier.groupId}:${dep.identifier.identifier.artifactId}",
-              versionFieldName -> dep.identifier.identifier.version,
-              releasesFieldName -> buildReleasesValue(dep.isActiveIn, libReleases),
-              scopeFieldName -> dep.identifier.scope
-            )
-          },
-          instantiatedTypesFieldName -> cgEvolution.instantiatedTypeEvolutions().map( tEvo => Map(
-            declaredTypeFieldName -> tEvo._1,
-            releasesFieldName -> buildReleasesValue(tEvo._2, libReleases)
-          ))
-        )
-      }.await
+      indexInto(config.elasticLibraryIndexName).fields(
+        libraryFieldName -> cgEvolution.libraryName,
+        releasesFieldName -> libReleases.toArray,
+        dependenciesFieldName -> cgEvolution.dependencyEvolutions().map{ dep =>
+          Map(
+            libraryFieldName -> s"${dep.identifier.identifier.groupId}:${dep.identifier.identifier.artifactId}",
+            versionFieldName -> dep.identifier.identifier.version,
+            releasesFieldName -> buildReleasesValue(dep.isActiveIn, libReleases),
+            scopeFieldName -> dep.identifier.scope
+          )
+        },
+        instantiatedTypesFieldName -> cgEvolution.instantiatedTypeEvolutions().map( tEvo => Map(
+          declaredTypeFieldName -> tEvo._1,
+          releasesFieldName -> buildReleasesValue(tEvo._2, libReleases)
+        ))
+      )
+    }.await
 
-    if(elasticLibResponse.isError){
+    if(elasticLibResponse.isError) {
       log.error("Failed to store library in ES", elasticLibResponse.error.asException)
-      println(elasticLibResponse.error.reason)
-    }
+      GraphDbStorageResult(cgEvolution.libraryName, success = false)
+    } else {
 
-    val elasticErrorsForLibrary = elasticLibResponse.isError
+      log.debug("Starting to store methods...")
 
-    if(elasticErrorsForLibrary) log.error("Got error while storing library in ES.")
-
-    log.info("Finished storing data in ES.")
-
-
-    log.info("Starting to store method relations in Neo4j..")
-
-    //---STORE METHOD NODES AND INVOCATIONS IN NEO4J
-    val session = config.graphDatabaseDriver.session()
-
-    val neo4jErrorsExist = Try{
-      cgEvolution
+      val elasticErrorsForMethods = cgEvolution
         .methodEvolutions()
-        .map(evo => idLookup(evo.identifier))
-        .grouped(neo4jMethodInsertBatchSize)
-        .foreach{ batch =>
-          session.run("UNWIND $ids AS id CREATE (m: Method {ElasticId: id, Library: $lib})",
-            parameters("ids", batch.toList.asJava, "lib", cgEvolution.libraryName))
-        }
+        .toList
+        .grouped(maxConcurrentEsRequests)
+        .map { batch =>
+          (batch, elasticClient.execute {
+            bulk(
+              batch.map { methodEvolution =>
 
-      cgEvolution
-        .methodInvocationEvolutions()
-        .map{ invocation =>
-          Array(idLookup(invocation.invocationIdent.callerIdent),
-            idLookup(invocation.invocationIdent.calleeIdent), invocation.isActiveIn.toArray)
+                val methodReleases = methodEvolution.isActiveIn
+                // If defining Lib is not explicit and we are external => JRE call
+                val definingLib = methodEvolution.identifier.definingArtifact.map(i => s"${i.groupId}:${i.artifactId}").getOrElse{
+                  if(methodEvolution.identifier.isJREMethod) "<none>:<jre>"
+                  else "<unknown>:<unknown>"
+                }
+
+                indexInto(config.elasticMethodIndexName)
+                  .fields(
+                    isExternFieldName -> methodEvolution.identifier.isExternal,
+                    isPublicFieldName -> methodEvolution.identifier.isPublic,
+                    nameFieldName -> methodEvolution.identifier.simpleName,
+                    signatureFieldName -> methodEvolution.identifier.fullSignature,
+                    analyzedLibraryFieldName -> cgEvolution.libraryName,
+                    definingLibraryFieldName -> definingLib,
+                    releasesFieldName -> methodReleases.toArray,
+                    isJreFieldName -> methodEvolution.identifier.isJREMethod,
+                    obligationFieldName -> methodEvolution.obligationEvolutions().map( oEvo => Map(
+                      declaredTypeFieldName -> oEvo.invocationObligation.declaredTypeName,
+                      declaredMethodFieldName -> (oEvo.invocationObligation.methodName + oEvo.invocationObligation.descriptor),
+                      releasesFieldName -> buildReleasesValue(oEvo.isActiveIn, methodReleases)
+                    ))
+                  )
+              }
+            )
+          }.await(10 minutes))
         }
-        .grouped(neo4jMethodInvocationInsertBatchSize)
-        .foreach{ batch =>
-          session.run("UNWIND $i AS invocation MATCH (caller: Method {ElasticId: invocation[0]}) MATCH (callee: Method {ElasticId: invocation[1]}) CREATE (caller)-[:INVOKES {Releases: invocation[2]}]->(callee)",
-            parameters("i", batch.toList.asJava))
+        .map{ tuple =>
+
+          if(!tuple._2.isError && !tuple._2.result.hasFailures){
+            val idList = tuple._2.result.items.toList.map(_.id)
+
+            for (i <- idList.indices){
+              val ident = tuple._1(i).identifier
+              val id = idList(i)
+              idLookup.put(ident, id)
+            }
+          }
+
+          tuple._2
         }
-    } match {
-      case Success(_) =>
-        false
-      case Failure(ex) =>
-        log.error("Failed to store CG", ex)
-        true
+        .exists(res => res.isError || res.result.hasFailures)
+
+      if(elasticErrorsForMethods) log.error("Got errors while storing methods in ES.")
+
+
+
+      log.info("Finished storing data in ES.")
+
+
+      log.info("Starting to store method relations in Neo4j..")
+
+      //---STORE METHOD NODES AND INVOCATIONS IN NEO4J
+      val session = config.graphDatabaseDriver.session()
+
+      val neo4jErrorsExist = Try{
+        cgEvolution
+          .methodEvolutions()
+          .map(evo => idLookup(evo.identifier))
+          .grouped(neo4jMethodInsertBatchSize)
+          .foreach{ batch =>
+            session.run("UNWIND $ids AS id CREATE (m: Method {ElasticId: id, Library: $lib})",
+              parameters("ids", batch.toList.asJava, "lib", cgEvolution.libraryName))
+          }
+
+        cgEvolution
+          .methodInvocationEvolutions()
+          .map{ invocation =>
+            Array(idLookup(invocation.invocationIdent.callerIdent),
+              idLookup(invocation.invocationIdent.calleeIdent), invocation.isActiveIn.toArray)
+          }
+          .grouped(neo4jMethodInvocationInsertBatchSize)
+          .foreach{ batch =>
+            session.run("UNWIND $i AS invocation MATCH (caller: Method {ElasticId: invocation[0]}) MATCH (callee: Method {ElasticId: invocation[1]}) CREATE (caller)-[:INVOKES {Releases: invocation[2]}]->(callee)",
+              parameters("i", batch.toList.asJava))
+          }
+      } match {
+        case Success(_) =>
+          false
+        case Failure(ex) =>
+          log.error("Failed to store CG", ex)
+          true
+      }
+      session.close()
+
+      log.info("Finished storing method relations.")
+
+      GraphDbStorageResult(cgEvolution.libraryName, !elasticErrorsForMethods && !neo4jErrorsExist)
     }
-    session.close()
-
-    log.info("Finished storing method relations.")
-
-    GraphDbStorageResult(cgEvolution.libraryName, !elasticErrorsForLibrary && !elasticErrorsForMethods && !neo4jErrorsExist)
   }
 
   private def buildReleasesValue(activeReleases: List[String], parentActiveReleases: List[String]): Array[String]= {
@@ -270,6 +271,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
       log.info("Library index not found, creating it...")
       elasticClient.execute{
         createIndex(config.elasticLibraryIndexName)
+          .settings(Map("index.mapping.nested_objects.limit" -> 50000))
           .mapping(properties(
             KeywordField(libraryFieldName),
             KeywordField(releasesFieldName),
