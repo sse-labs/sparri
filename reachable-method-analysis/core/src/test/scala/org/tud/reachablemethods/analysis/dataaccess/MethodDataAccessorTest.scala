@@ -19,7 +19,7 @@ class MethodDataAccessorTest extends AnyFlatSpec with must.Matchers {
 
     accessor.initialize()
 
-    assert(accessor.libraryInIndex("org.apache.httpcomponents:httpclient"))
+    assert(accessor.libraryInIndex("io.netty:netty-handler"))
   }
 
   "The ES Accessor" must "read methods for correct configurations" in withActorSystem { system =>

@@ -19,13 +19,27 @@ class CompositionalReachabilityAnalysis(configuration: Configuration)(implicit s
   override def analyzeProject(projectClasses: ClassList, dependencyClasses: ClassList,
                               classFqnDependencyLookup: Map[String, MavenIdentifier], treatProjectAsLibrary: Boolean): Try[Any] = {
 
-    if(!analysisPossible(classFqnDependencyLookup.values)){
+    val allDependencies = classFqnDependencyLookup.values.toList.distinct
+
+    if(!analysisPossible(allDependencies)){
       Failure(new IllegalStateException("Cannot perform reachability analysis: requirements not satisfied"))
     }
 
     log.info("Initializing OPAL analysis infrastructure..")
     val opalProject = OPALProjectHelper.buildOPALProject(projectClasses, dependencyClasses, treatProjectAsLibrary)
     log.info("Done Initializing OPAL.")
+
+    val analysisContext = new CompositionalAnalysisContext(opalProject, classFqnDependencyLookup)
+
+    allDependencies.foreach { dependency =>
+      analysisContext.indexInstantiatedTypes(methodAccessor.getArtifactMetadata(dependency.libraryIdentifier,
+        dependency.version).map(_.instantiatedTypes).get) //TODO: Error Handling
+
+      analysisContext.indexMethods(methodAccessor
+        .getArtifactMethods(dependency.libraryIdentifier, dependency.version)
+        .get) //TODO: Error Handling
+
+    }
 
 
     ???

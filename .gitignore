@@ -1,4 +1,5 @@
 *.class
+!reachable-method-analysis/core/src/test/resources/validproject/classes/**
 *.log
 *.cache
 target
