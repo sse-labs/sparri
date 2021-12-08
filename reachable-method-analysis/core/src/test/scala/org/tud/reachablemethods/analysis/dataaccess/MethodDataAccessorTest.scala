@@ -5,6 +5,7 @@ import akka.http.scaladsl.model.IllegalUriException
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must
 import org.tud.reachablemethods.analysis.Configuration
+import org.tud.reachablemethods.analysis.testutils.withActorSystem
 
 class MethodDataAccessorTest extends AnyFlatSpec with must.Matchers {
   "The ES Accessor" must "error when database host is invalid url" in withActorSystem { system =>
@@ -45,9 +46,4 @@ class MethodDataAccessorTest extends AnyFlatSpec with must.Matchers {
     override val elasticClientUri: String = url
   }
 
-  private def withActorSystem(implicit consumer: ActorSystem => Unit): Unit ={
-    val system = ActorSystem("es-accessor-test")
-    consumer(system)
-    system.terminate()
-  }
 }

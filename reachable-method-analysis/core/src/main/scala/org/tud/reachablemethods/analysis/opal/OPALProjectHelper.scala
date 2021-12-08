@@ -7,17 +7,17 @@ import org.opalj.br.reader.Java16LibraryFramework
 import org.opalj.bytecode.JRELibraryFolder
 import org.opalj.log.{GlobalLogContext, LogContext, OPALLogger, StandardLogContext}
 import org.slf4j.{Logger, LoggerFactory}
+import org.tud.reachablemethods.analysis.model.ClassList.{ClassList, ClassWithURL}
 
 import java.io._
 import java.net.URL
 import java.util.jar.JarInputStream
 import java.util.zip.ZipFile
+import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.util.{Failure, Try}
 
 object OPALProjectHelper {
-
-  type ClassList = List[(ClassFile, URL)]
 
   private val LOAD_JRE_IMPLEMENTATION = true
 
@@ -80,10 +80,10 @@ object OPALProjectHelper {
     Project(jreClasses, List.empty, libraryClassFilesAreInterfacesOnly = true, Traversable.empty, inconsistentExceptionHandler)(config, projectLogger)
   }
 
-  def buildOPALProject(projectClasses: ClassList, thirdPartyClasses: ClassList): Project[URL] = {
+  def buildOPALProject(projectClasses: ClassList, thirdPartyClasses: ClassList, treatProjectAsLibrary: Boolean): Project[URL] = {
 
-    val config = BaseConfig.withValue("org.opalj.br.analyses.cg.InitialEntryPointsKey.analysis",
-      ConfigValueFactory.fromAnyRef("org.opalj.br.analyses.cg.LibraryEntryPointsFinder"))
+    val config = if(treatProjectAsLibrary) BaseConfig.withValue("org.opalj.br.analyses.cg.InitialEntryPointsKey.analysis",
+      ConfigValueFactory.fromAnyRef("org.opalj.br.analyses.cg.LibraryEntryPointsFinder")) else BaseConfig
 
     val inconsistentExceptionHandler =
       (_: LogContext, error: InconsistentProjectException) => log.warn("Inconsistent Project Exception: " + error.message)
@@ -143,7 +143,37 @@ object OPALProjectHelper {
     entries.toList
   }
 
-  private def getEntryByteStream(in: InputStream): DataInputStream = {
+
+  def readClassesFromDirectory(directory: File, loadImplementation: Boolean, recursive: Boolean): Try[ClassList] = Try {
+    if(!directory.isDirectory){
+      throw new IllegalStateException("Cannot read classes from directory, input is no directory: " + directory.getPath)
+    }
+
+    val listBuffer = new ListBuffer[ClassWithURL]()
+
+    addClassFiles(directory, listBuffer, loadImplementation, recursive)
+
+    listBuffer.toList
+  }
+
+
+  private def addClassFiles(directory: File, classFiles: mutable.ListBuffer[ClassWithURL], loadImplementation: Boolean, recursive: Boolean): Unit = {
+
+    val reader = if(loadImplementation) this.fullClassFileReader else this.interfaceClassFileReader
+
+    for (content <- directory.listFiles) {
+
+      if (content.isFile && content.getName.toLowerCase.endsWith(".class")) {
+        reader.ClassFile(new DataInputStream(new FileInputStream(content))).foreach(cf => {classFiles.append((cf, content.toURI.toURL)) })
+      } else if (recursive && content.isDirectory) {
+        addClassFiles(content, classFiles, loadImplementation, recursive)
+      }
+    }
+  }
+
+
+
+  private def getEntryByteStream(in: InputStream) = {
     val entryBytes = {
       val baos = new ByteArrayOutputStream()
       val buffer = new Array[Byte](32 * 1024)
