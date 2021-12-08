@@ -31,6 +31,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   private val nameFieldName = "Name"
   private val signatureFieldName = "Signature"
   private val libraryFieldName = "Library"
+  private val libraryKeywordName = "Library.keyword"
   private val analyzedLibraryFieldName = "AnalyzedLibrary"
   private val definingLibraryFieldName = "DefiningLibrary"
   private val releasesFieldName = "Releases"
@@ -86,7 +87,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
       GraphDbStorageResult(cgEvolution.libraryName, success = false)
     } else {
 
-      log.debug("Starting to store methods...")
+      log.info("Starting to store methods...")
 
       val elasticErrorsForMethods = cgEvolution
         .methodEvolutions()
@@ -201,10 +202,10 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
 
     elasticClient.execute{
       search(config.elasticLibraryIndexName)
-        .query(termQuery(libraryFieldName, libIdent)).size(1).fetchSource(false)
+        .query(termQuery(libraryKeywordName, libIdent)).size(1).fetchSource(false)
     }.await match {
       case fail: RequestFailure =>
-        log.error("Failed to query ElasticSearch: ", fail.error.reason)
+        log.error("Failed to query ElasticSearch: " + fail.error.reason)
         None
 
       case results: RequestSuccess[SearchResponse] =>
