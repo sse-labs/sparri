@@ -253,8 +253,8 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
         createIndex(config.elasticMethodIndexName)
           .mapping(properties(
             BooleanField(isExternFieldName),
-            TextField(nameFieldName),
-            TextField(signatureFieldName),
+            KeywordField(nameFieldName),
+            KeywordField(signatureFieldName),
             KeywordField(analyzedLibraryFieldName),
             KeywordField(definingLibraryFieldName),
             BooleanField(isPublicFieldName),
