@@ -129,6 +129,14 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
             )
           }.await(10 minutes)
         }
+        .map(res => {
+          if(res.isError){
+            log.error("Bulk response failed: " + res.error.reason, res.error.asException)
+          }
+
+          res.result.failures.foreach( i => log.error("Bulk item failed: " + i.error.map(_.reason).getOrElse("<No Error>")))
+          res
+        })
         .exists(res => res.isError || res.result.hasFailures)
 
       if(elasticErrorsForMethods) log.error("Got errors while storing methods in ES.")
@@ -192,6 +200,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
       log.info("Method index not found, creating it...")
       elasticClient.execute{
         createIndex(config.elasticMethodIndexName)
+          .settings(Map("index.mapping.nested_objects.limit" -> 50000))
           .mapping(properties(
             BooleanField(isExternFieldName),
             KeywordField(nameFieldName),
