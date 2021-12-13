@@ -14,6 +14,10 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
   private val methodEvolutionMap: mutable.Map[MethodIdentifier, MethodEvolution] = new mutable.HashMap()
   private val invocationEvolutionMap: mutable.Map[MethodInvocationIdentifier, MethodInvocationEvolution] =
     new mutable.HashMap()
+
+  private val invocationEvolutionPerMethod: mutable.Map[MethodIdentifier, mutable.Set[MethodInvocationEvolution]] =
+    new mutable.HashMap()
+
   private val dependencyEvolutionMap: mutable.Map[DependencyIdentifier, DependencyEvolution] = new mutable.HashMap()
 
 
@@ -49,6 +53,10 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
     methodEvolutions()
       .filter(_.isActiveIn.contains(release))
       .map(_.identifier)
+  }
+
+  def calleeEvolutionsAt(caller: MethodIdentifier): Set[MethodInvocationEvolution] = {
+    invocationEvolutionPerMethod.get(caller).map(_.toSet).getOrElse(Set.empty)
   }
 
   def calleesAt(caller: MethodIdentifier, release: String): Iterable[MethodIdentifier] ={
@@ -118,6 +126,12 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
     }
 
     invocationEvolutionMap(identifier).addActiveRelease(release)
+
+    if(!invocationEvolutionPerMethod.contains(identifier.callerIdent)){
+      invocationEvolutionPerMethod.put(identifier.callerIdent, new mutable.HashSet[MethodInvocationEvolution]())
+    }
+
+    invocationEvolutionPerMethod(identifier.callerIdent).add(invocationEvolutionMap(identifier))
   }
 
   private def setMethodActiveInRelease(method: LibraryMethod, release: String): Unit = {
