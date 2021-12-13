@@ -122,8 +122,10 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
                       releasesFieldName -> buildReleasesValue(oEvo.isActiveIn, methodReleases)
                     )),
                     calleeFieldName -> cgEvolution.calleeEvolutionsAt(methodEvolution.identifier)
-                      .map( iEvo => (iEvo.invocationIdent.calleeIdent.fullSignature, buildReleasesValue(iEvo.isActiveIn, methodReleases)))
-                      .toMap
+                      .map( iEvo => Map(
+                        signatureFieldName -> iEvo.invocationIdent.calleeIdent.fullSignature,
+                        releasesFieldName -> buildReleasesValue(iEvo.isActiveIn, methodReleases)
+                      ))
                   )
               }
             )
