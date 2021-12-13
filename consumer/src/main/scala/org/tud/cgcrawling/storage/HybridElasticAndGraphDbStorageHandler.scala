@@ -178,19 +178,6 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
 
   private def setupIndex(): Unit = {
 
-    val session: Session = config.graphDatabaseDriver.session()
-
-    Try{
-      session.run("CREATE CONSTRAINT unique_es IF NOT EXISTS ON (m:Method) ASSERT m.ElasticId IS UNIQUE")
-    } match {
-      case Failure(ex) =>
-        log.error("Error while ensuring Neo4j constraints are present!", ex)
-      case _ =>
-        log.info("Neo4j indices are present.")
-    }
-
-    session.close()
-
     def indexPresent(indexName: String): Boolean = elasticClient
       .execute(indexExists(indexName))
       .await
