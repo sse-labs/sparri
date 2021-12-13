@@ -22,6 +22,16 @@ class MethodDataAccessorTest extends AnyFlatSpec with must.Matchers {
     assert(accessor.libraryInIndex("io.netty:netty-handler"))
   }
 
+  "The ES Accessor" must "read methods via signature" in withActorSystem { system =>
+    val accessor = new MethodDataAccessor(new Configuration())(system)
+
+    val jreVersion = accessor.getIndexedJreVersion.get
+
+    val sigResult = accessor.getArtifactMethodBySignature("void javax.swing.SwingUtilities.invokeLater(java.lang.Runnable)", "<none>:<jre>", jreVersion)
+
+    assert(sigResult.isSuccess)
+  }
+
   "The ES Accessor" must "read methods for correct configurations" in withActorSystem { system =>
     val accessor = new MethodDataAccessor(new Configuration())(system)
 

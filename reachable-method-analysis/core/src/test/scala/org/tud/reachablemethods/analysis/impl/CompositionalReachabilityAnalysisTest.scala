@@ -49,5 +49,7 @@ class CompositionalReachabilityAnalysisTest extends AnyFlatSpec with must.Matche
 
     val classesRoot = new File(getClass.getResource("/validproject/classes").getPath)
     val result = analysis.analyzeMavenProject(classesRoot, deps, treatProjectAsLibrary = false)
+
+    assert(result.isSuccess)
   }
 }

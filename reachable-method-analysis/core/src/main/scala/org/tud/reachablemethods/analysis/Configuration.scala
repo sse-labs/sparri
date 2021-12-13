@@ -6,4 +6,8 @@ class Configuration {
   val elasticMethodIndexName: String = "methods"
   val elasticLibraryIndexName: String = "libraries"
 
+  val graphDatabaseUrl: String = "<CHANGEME>"
+  val graphDatabaseUser: String = "<CHANGEME>"
+  val graphDatabasePassword: String = "<CHANGEME>"
+
 }
