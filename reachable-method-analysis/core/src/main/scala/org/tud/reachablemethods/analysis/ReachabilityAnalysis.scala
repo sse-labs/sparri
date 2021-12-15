@@ -11,6 +11,8 @@ trait ReachabilityAnalysis {
 
   protected val log: Logger = LoggerFactory.getLogger(this.getClass)
 
+  protected val loadDependencyImplementations: Boolean
+
   def analysisPossible(dependencies: Iterable[MavenIdentifier]): Boolean
 
   def analyzeProject(projectClasses: ClassList, dependencyClasses: ClassList, classFqnDependencyLookup: Map[String, MavenIdentifier], treatProjectAsLibrary: Boolean = false): Try[Any]
@@ -20,7 +22,7 @@ trait ReachabilityAnalysis {
     val projectClasses = ClassList.readClassesFromDirectory(classDir, loadImplementation = true, recurse = true)
 
     val dependencyClasses = Try(dependencies
-      .flatMap(_.classContainer.getClassList(loadImplementation = false).get)
+      .flatMap(_.classContainer.getClassList(loadImplementation = loadDependencyImplementations).get)
       .toList)
 
     if(projectClasses.isFailure){

@@ -17,8 +17,7 @@ import scala.util.{Failure, Success, Try}
 class CompositionalReachabilityAnalysis(configuration: Configuration)(implicit system: ActorSystem) extends ReachabilityAnalysis {
 
   private[impl] val methodAccessor: MethodDataAccessor = new MethodDataAccessor(configuration)
-  private[impl] val invocationAccessor: InvocationDataAccessor = new InvocationDataAccessor(configuration)
-  private[impl] def dataAccessors: List[DataAccessor] = List(methodAccessor, invocationAccessor)
+  private[impl] def dataAccessors: List[DataAccessor] = List(methodAccessor)
 
   dataAccessors.foreach(_.initialize())
 
@@ -36,7 +35,7 @@ class CompositionalReachabilityAnalysis(configuration: Configuration)(implicit s
       val opalProject = OPALProjectHelper.buildOPALProject(projectClasses, dependencyClasses, treatProjectAsLibrary)
       log.info("Done Initializing OPAL.")
 
-      val analysisContext = new CompositionalAnalysisContext(classFqnLookupWithJRE, methodAccessor, invocationAccessor)
+      val analysisContext = new CompositionalAnalysisContext(classFqnLookupWithJRE, methodAccessor, opalProject)
 
       // Add all instantiated types of current project to index
       analysisContext.indexInstantiatedTypes(getInstantiatedTypeNames(opalProject))

@@ -1,7 +1,7 @@
 package org.tud.reachablemethods.analysis.dataaccess
 
 import akka.actor.ActorSystem
-import com.sksamuel.elastic4s.ElasticApi.{RichFuture, boolQuery, idsQuery, search, searchScroll, termQuery}
+import com.sksamuel.elastic4s.ElasticApi.{RichFuture, boolQuery, idsQuery, search, searchScroll, termQuery, termsQuery}
 import com.sksamuel.elastic4s.{ElasticClient, RequestFailure, RequestSuccess}
 import com.sksamuel.elastic4s.ElasticDsl.{IndexExistsHandler, SearchHandler, SearchScrollHandler, indexExists}
 import com.sksamuel.elastic4s.akka.{AkkaHttpClient, AkkaHttpClientSettings}
@@ -122,14 +122,14 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
   def getArtifactMethods(libIdent: String, version: String): Try[List[ElasticMethodData]] = {
 
     val request = search(config.elasticMethodIndexName).query(boolQuery.must(
-        termQuery(ElasticPropertyNames.analyzedLibraryFieldName, libIdent),
-        termQuery(ElasticPropertyNames.releasesFieldName, version)
+        termQuery(ElasticPropertyNames.analyzedLibraryKeywordName, libIdent),
+        termQuery(ElasticPropertyNames.releasesKeywordName, version)
       )).sourceInclude(ElasticPropertyNames.nameFieldName, ElasticPropertyNames.signatureFieldName, ElasticPropertyNames.isExternFieldName,
-        ElasticPropertyNames.obligationFieldName, ElasticPropertyNames.definingLibraryFieldName)
+        ElasticPropertyNames.obligationFieldName, ElasticPropertyNames.definingLibraryFieldName, ElasticPropertyNames.calleeFieldName)
 
     val hits = scrollAllResults(request).get
 
-    Success(hits.map( searchHit => hitToMethodData(searchHit, libIdent, version)))
+    Success(hits.map(hitToMethodData(_, libIdent, version)))
   }
 
   def getArtifactMethodByElasticIds(elasticIds: Seq[String], version: String): Try[Seq[ElasticMethodData]] = {
@@ -139,7 +139,7 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
         .query(idsQuery(elasticIds))
         .size(elasticIds.size)
         .sourceInclude(ElasticPropertyNames.nameFieldName,ElasticPropertyNames.signatureFieldName, ElasticPropertyNames.isExternFieldName,
-          ElasticPropertyNames.obligationFieldName, ElasticPropertyNames.definingLibraryFieldName, ElasticPropertyNames.analyzedLibraryFieldName)
+          ElasticPropertyNames.obligationFieldName, ElasticPropertyNames.definingLibraryFieldName, ElasticPropertyNames.analyzedLibraryFieldName, ElasticPropertyNames.calleeFieldName)
     }.await match {
       case fail: RequestFailure =>
         log.error("Failed to query ElasticSearch: ", fail.error.reason)
@@ -160,28 +160,38 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
     }
   }
 
-  def getArtifactMethodBySignature(signature: String, libIdent: String, version: String): Try[ElasticMethodData] = {
-    elasticClient.execute{
-      search(config.elasticMethodIndexName).query(boolQuery.must(
-        termQuery(ElasticPropertyNames.signatureFieldName, signature),
-        termQuery(ElasticPropertyNames.analyzedLibraryFieldName, libIdent),
-        termQuery(ElasticPropertyNames.releasesFieldName, version)
-      )).sourceInclude(ElasticPropertyNames.nameFieldName,ElasticPropertyNames.signatureFieldName, ElasticPropertyNames.isExternFieldName,
-        ElasticPropertyNames.obligationFieldName, ElasticPropertyNames.definingLibraryFieldName)
-    }.await match {
-      case fail: RequestFailure =>
-        log.error("Failed to query ElasticSearch: ", fail.error.reason)
-        Failure(fail.error.asException)
+  def getArtifactMethodBySignatures(signatures: Iterable[String], libIdent: String, version: String): Try[Iterable[ElasticMethodData]] = {
 
-      case results: RequestSuccess[SearchResponse]  =>
-        val numberOfHits = results.result.totalHits
-        val time = results.result.took
-        log.debug(s"Method by Signature query yielded $numberOfHits hits in $time ms.")
+    if(signatures.size > 10000){Failure(new Exception("Too many signatures"))}
 
-        Try(hitToMethodData(results.result.hits.hits.head, libIdent, version))
-      case sth@_ =>
-        log.error(s"Unknown response type while querying for signature")
-        Failure(new IllegalStateException("Unknown search response from ElasticSearch"))
+    if(signatures.isEmpty){ Success(List())}
+    else {
+      elasticClient.execute{
+        search(config.elasticMethodIndexName).query(boolQuery.must(
+          termsQuery(ElasticPropertyNames.signatureKeywordName, signatures),
+          termQuery(ElasticPropertyNames.analyzedLibraryKeywordName, libIdent),
+          termQuery(ElasticPropertyNames.releasesKeywordName, version)
+        )).sourceInclude(ElasticPropertyNames.nameFieldName,ElasticPropertyNames.signatureFieldName, ElasticPropertyNames.isExternFieldName,
+          ElasticPropertyNames.obligationFieldName, ElasticPropertyNames.definingLibraryFieldName, ElasticPropertyNames.calleeFieldName)
+          .size(signatures.size)
+      }.await match {
+        case fail: RequestFailure =>
+          log.error("Failed to query ElasticSearch: ", fail.error.reason)
+          Failure(fail.error.asException)
+
+        case results: RequestSuccess[SearchResponse]  =>
+          val numberOfHits = results.result.totalHits
+          val time = results.result.took
+          log.debug(s"Method by ${signatures.size} Signatures query yielded $numberOfHits hits in $time ms.")
+
+          Try {
+            results.result.hits.hits.map( hit => hitToMethodData(hit, libIdent, version))
+          }
+
+        case sth@_ =>
+          log.error(s"Unknown response type while querying for signature")
+          Failure(new IllegalStateException("Unknown search response from ElasticSearch"))
+      }
     }
 
   }
@@ -190,14 +200,16 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
 
     val batchSize = 10000
 
-    def scrollOn(scrollId: String): Try[List[SearchHit]] = {
-      log.debug("Scrolling ...")
+    def scrollOn(scrollId: String): Try[Array[SearchHit]] = {
       elasticClient.execute{
-        searchScroll(scrollId).keepAlive("1m")
+        searchScroll(scrollId).keepAlive("2m")
       }.await match {
         case fail: RequestFailure => Failure(fail.error.asException)
         case results: RequestSuccess[SearchResponse] =>
-          Success(results.result.hits.hits.toList)
+          val numberOfHits = results.result.hits.size
+          val time = results.result.took
+          log.debug(s"Scroll continuation query yielded $numberOfHits hits in $time ms.")
+          Success(results.result.hits.hits)
         case _ => Failure(new IllegalStateException("Unknown search response from ElasticSearch"))
       }
     }
@@ -205,7 +217,7 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
 
     elasticClient.execute{
       request
-        .scroll("1m")
+        .scroll("2m")
         .size(batchSize)
     }.await match {
       case fail: RequestFailure =>
@@ -219,10 +231,10 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
 
         val resultList: mutable.ListBuffer[SearchHit] = new ListBuffer[SearchHit]()
 
-        var hitList = results.result.hits.hits.toList
+        var hitList = results.result.hits.hits
         resultList.appendAll(hitList)
 
-        while(hitList.size == batchSize){
+        while(hitList.length == batchSize){
           hitList = scrollOn(results.result.scrollId.get).get
           resultList.appendAll(hitList)
         }
@@ -258,6 +270,7 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
     val mExtern = fieldMap(ElasticPropertyNames.isExternFieldName).asInstanceOf[Boolean]
     val mObligations = fieldMap(ElasticPropertyNames.obligationFieldName).asInstanceOf[Iterable[Map[String, AnyRef]]]
     val mDefiningLib = fieldMap(ElasticPropertyNames.definingLibraryFieldName).asInstanceOf[String]
+    val mCallees = fieldMap(ElasticPropertyNames.calleeFieldName).asInstanceOf[Iterable[Map[String, AnyRef]]]
 
     val obligations = mObligations
       .filter{ obj =>
@@ -270,7 +283,15 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
       }
       .toList
 
-    ElasticMethodData(id, mName, mSig, mExtern, obligations, mDefiningLib, libIdent, version)
+    val callees = mCallees
+      .filter{ obj =>
+        val calleeActiveIn = obj(ElasticPropertyNames.releasesFieldName).asInstanceOf[List[String]]
+        calleeActiveIn.contains("*") || calleeActiveIn.contains(version)
+      }
+      .map(obj => obj(ElasticPropertyNames.signatureFieldName).asInstanceOf[String])
+      .toList
+
+    ElasticMethodData(id, mName, mSig, mExtern, obligations, callees, mDefiningLib, libIdent, version)
   }
 
 }
@@ -288,7 +309,9 @@ private object ElasticPropertyNames {
   val isExternFieldName = "IsExtern"
   val nameFieldName = "Name"
   val signatureFieldName = "Signature"
+  val signatureKeywordName = "Signature.keyword"
   val obligationFieldName = "Obligations"
+  val calleeFieldName = "Callees"
   val definingLibraryFieldName = "DefiningLibrary"
   val declaredTypeFieldName = "DeclaredType"
   val declaredMethodFieldName = "DeclaredMethod"

@@ -25,6 +25,13 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL], context: Composit
     // Set of methods already processed
     val methodSignaturesSeen: mutable.HashSet[String] = new mutable.HashSet[String]()
 
+    def printProgress(methodName: String, internal: Boolean): Unit ={
+      if(methodSignaturesSeen.size % 1000 == 0){
+        val internalStr = if(internal) "Project" else "Dependency"
+        log.debug(s"Processing: #${methodSignaturesSeen.size} [$internalStr] $methodName\r")
+      }
+    }
+
     def processMethod(method: Method): Unit = {
       if(opalProject.isProjectType(method.classFile.thisType)) {
         processInternalMethod(method)
@@ -33,8 +40,6 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL], context: Composit
     }
 
     def processDependencyMethod(method: Method): Unit = {
-      methodSignaturesSeen.add(method.fullyQualifiedSignature)
-
       context.getMethodBySignatureAndClass(method.fullyQualifiedSignature, method.classFile.fqn) match {
         case Some(methodData) =>
           processDependencyMethodData(methodData)
@@ -44,50 +49,53 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL], context: Composit
     }
 
     def processDependencyMethodData(methodData: ElasticMethodData): Unit = {
-      log.debug("Processing dependency: " + methodData.signature)
-      methodSignaturesSeen.add(methodData.signature)
+      if(!methodSignaturesSeen.contains(methodData.signature)){
+        printProgress(methodData.signature, false)
+        //log.debug("Processing dependency: " + methodData.signature)
+        methodSignaturesSeen.add(methodData.signature)
 
-      // TODO: If external -> need to map to other artifact!
-      val dependencyCallees = context.getInvokedMethods(methodData.elasticId, methodData.libraryVersion)
+        // TODO: If external -> need to map to other artifact!
+        val dependencyCallees = methodData.calleeSignatures.flatMap{ sig =>
+          val res = context.signatureLookup(sig)
 
-      dependencyCallees
-        .filter(data => !methodSignaturesSeen.contains(data.signature))
-        .foreach(processDependencyMethodData)
+          if(res.isEmpty)
+            log.error("Did not find callee signature in local index, although preloading of callees is enabled: " + sig)
 
-      dependencyCallees.foreach{ callee => {
-        callee.obligations.foreach { obligation =>
-          //TODO: Use index for type lookup
-          opalProject.allClassFiles.find(_.thisType.fqn.equals(obligation.declaredTypeName)) match {
-            case Some(declaredType) =>
-              classHierarchy.allSubtypes(declaredType.thisType, reflexive = false)
-                .filter(t => opalProject.isProjectType(t)) //TODO: Not true, need to find subtypes in other libraries as well..all libraries except current one!
-                .filter(t => context.isTypeInstantiated(t.fqn))
-                .flatMap(t => opalProject.allMethods.filter(m => m.classFile.thisType.equals(t)))
-                .filter(m => (m.name + m.descriptor.valueToString).equals(obligation.methodDescription))
-                .filter(m => !methodSignaturesSeen.contains(m.fullyQualifiedSignature))
-                .foreach{ method =>
-                  log.info("Recursing into project method via obligation: " + method.fullyQualifiedSignature)
-                  processMethod(method)
-                }
-
-            case None =>
-              log.error("Declared type of obligation was not found in project type hierarchy: " + obligation.declaredTypeName)
-          }
+          res
         }
-      }}
+
+        dependencyCallees
+          .foreach(processDependencyMethodData)
+
+        methodData.obligations.foreach{ obligation =>
+          context.resolveObligationInLibrary(obligation, methodData.analyzedLibrary)
+            .getOrElse({
+              //log.warn("Type not found while resolving obligation: " + obligation.declaredTypeName)
+              Set.empty[Method]
+            })
+            .foreach{ method =>
+              log.info("Recursing into project method via obligation: " + method.fullyQualifiedSignature)
+              processMethod(method)
+            }
+        }
+      }
+
     }
 
     def processInternalMethod(method: Method): Unit = {
-      log.debug("Processing internal: " + method.fullyQualifiedSignature)
-      methodSignaturesSeen.add(method.fullyQualifiedSignature)
+      if(!methodSignaturesSeen.contains(method.fullyQualifiedSignature)){
+        printProgress(method.fullyQualifiedSignature, true)
+        //log.debug("Processing internal: " + method.fullyQualifiedSignature)
+        methodSignaturesSeen.add(method.fullyQualifiedSignature)
 
-      if(method.body.isDefined){
-        getAllCallees(method, opalProject)
-          .foreach{ callee =>
-            if(!methodSignaturesSeen.contains(callee.fullyQualifiedSignature)){
-              processMethod(callee)
+        if(method.body.isDefined){
+          getAllCallees(method, opalProject)
+            .foreach{ callee =>
+              if(!methodSignaturesSeen.contains(callee.fullyQualifiedSignature)){
+                processMethod(callee)
+              }
             }
-          }
+        }
       }
     }
 

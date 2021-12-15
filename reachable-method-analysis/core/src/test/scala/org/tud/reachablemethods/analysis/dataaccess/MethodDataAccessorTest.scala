@@ -27,7 +27,7 @@ class MethodDataAccessorTest extends AnyFlatSpec with must.Matchers {
 
     val jreVersion = accessor.getIndexedJreVersion.get
 
-    val sigResult = accessor.getArtifactMethodBySignature("void javax.swing.SwingUtilities.invokeLater(java.lang.Runnable)", "<none>:<jre>", jreVersion)
+    val sigResult = accessor.getArtifactMethodBySignatures(List("void javax.swing.SwingUtilities.invokeLater(java.lang.Runnable)"), "<none>:<jre>", jreVersion)
 
     assert(sigResult.isSuccess)
   }
