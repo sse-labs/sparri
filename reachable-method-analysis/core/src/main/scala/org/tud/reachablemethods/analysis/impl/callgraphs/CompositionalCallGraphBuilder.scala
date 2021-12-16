@@ -1,10 +1,8 @@
 package org.tud.reachablemethods.analysis.impl.callgraphs
 
-import org.opalj.br.{ClassHierarchy, Method}
+import org.opalj.br.Method
 import org.opalj.br.analyses.Project
-import org.opalj.br.analyses.cg.InitialEntryPointsKey
-import org.opalj.br.instructions.{INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL}
-import org.slf4j.{Logger, LoggerFactory}
+
 import org.tud.reachablemethods.analysis.dataaccess.ElasticMethodData
 import org.tud.reachablemethods.analysis.impl.CompositionalAnalysisContext
 
@@ -12,14 +10,9 @@ import java.net.URL
 import scala.collection.mutable
 import scala.util.{Success, Try}
 
-class CompositionalCallGraphBuilder(opalProject: Project[URL], context: CompositionalAnalysisContext) {
+class CompositionalCallGraphBuilder(opalProject: Project[URL],
+                                    context: CompositionalAnalysisContext) extends CallGraphBuilder(opalProject) {
 
-  private val log: Logger = LoggerFactory.getLogger(getClass)
-
-  def entryPoints: Traversable[Method] =
-    opalProject.get(InitialEntryPointsKey).filter(m => opalProject.isProjectType(m.classFile.thisType))
-
-  def classHierarchy: ClassHierarchy = opalProject.classHierarchy
 
   def buildCallGraph(): Try[Any] = {
     // Set of methods already processed
@@ -51,7 +44,7 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL], context: Composit
     def processDependencyMethodData(methodData: ElasticMethodData): Unit = {
       if(!methodSignaturesSeen.contains(methodData.signature)){
         printProgress(methodData.signature, false)
-        //log.debug("Processing dependency: " + methodData.signature)
+
         methodSignaturesSeen.add(methodData.signature)
 
         // TODO: If external -> need to map to other artifact!
@@ -67,17 +60,28 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL], context: Composit
         dependencyCallees
           .foreach(processDependencyMethodData)
 
-        methodData.obligations.foreach{ obligation =>
+        val obligationTargets = methodData.obligations.flatMap{ obligation =>
           context.resolveObligationInLibrary(obligation, methodData.analyzedLibrary)
             .getOrElse({
               //log.warn("Type not found while resolving obligation: " + obligation.declaredTypeName)
-              Set.empty[Method]
+              Iterable.empty
             })
-            .foreach{ method =>
+        }
+
+        obligationTargets.foreach {
+          case Left(method) =>
+            if (!methodSignaturesSeen.contains(method.fullyQualifiedSignature)) {
               log.info("Recursing into project method via obligation: " + method.fullyQualifiedSignature)
-              processMethod(method)
+              processInternalMethod(method)
+            }
+          case Right(methodData) =>
+            if (!methodSignaturesSeen.contains(methodData.signature)) {
+              log.info("Recursing into dependency method via obligation: " + methodData.signature)
+              processDependencyMethodData(methodData)
             }
         }
+
+
       }
 
     }
@@ -85,7 +89,7 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL], context: Composit
     def processInternalMethod(method: Method): Unit = {
       if(!methodSignaturesSeen.contains(method.fullyQualifiedSignature)){
         printProgress(method.fullyQualifiedSignature, true)
-        //log.debug("Processing internal: " + method.fullyQualifiedSignature)
+
         methodSignaturesSeen.add(method.fullyQualifiedSignature)
 
         if(method.body.isDefined){
@@ -104,54 +108,5 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL], context: Composit
     Success()
   }
 
-  /**
-   * This method processes a method with body, iterates all method invocation instructions and resolves the call targets
-   * via the project interface. The result is an array of methods that are being invoked by the given method. The result
-   * may contain duplicates.
-   * @param method Method to resolver callees for. Must have a non-empty body!
-   * @param project Project context for resolving invocations
-   * @return Array of potential target methods, may contain duplicates
-   */
-  private[callgraphs] def getAllCallees(method: Method, project: Project[URL]): Array[Method] = {
-
-    assert(method.body.isDefined)
-    method
-      .body
-      .get
-      .instructions
-      .filter(instr => instr != null && instr.isMethodInvocationInstruction)
-      .flatMap {
-        case iv: INVOKEVIRTUAL =>
-          project.virtualCall(method.classFile.thisType, iv)
-            .filter(m => context.isTypeInstantiated(m.classFile.thisType.fqn))
-          //TODO: Check empty results
-        case is: INVOKESTATIC =>
-          val resolvedCall = project.staticCall(method.classFile.thisType, is)
-
-          if(resolvedCall.hasValue){
-            Traversable(resolvedCall.value)
-          } else {
-            log.warn("Failed to resolve static call " + is.toString())
-            log.warn("\t- Call contained in " + method.fullyQualifiedSignature)
-            Traversable.empty
-          }
-
-        case special: INVOKESPECIAL =>
-          val resolvedCall = project.specialCall(method.classFile.thisType, special)
-
-          if(resolvedCall.hasValue){
-            Traversable(resolvedCall.value)
-          } else {
-            log.warn("Failed to resolve special call " + special.toString())
-            log.warn("\t- Call contained in " + method.fullyQualifiedSignature)
-            Traversable.empty
-          }
-
-        case interface: INVOKEINTERFACE =>
-          project.interfaceCall(method.classFile.thisType, interface)
-            .filter(m => context.isTypeInstantiated(m.classFile.thisType.fqn))
-          //TODO: Check empty results
-      }
-  }
-
+  override protected def isTypeInstantiated(typeFqn: String): Boolean = context.isTypeInstantiated(typeFqn)
 }

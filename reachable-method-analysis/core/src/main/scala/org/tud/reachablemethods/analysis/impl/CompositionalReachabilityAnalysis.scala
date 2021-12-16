@@ -2,10 +2,9 @@ package org.tud.reachablemethods.analysis.impl
 
 import akka.actor.ActorSystem
 import org.opalj.br.analyses.Project
-import org.opalj.br.analyses.cg.{ApplicationWithoutJREEntryPointsFinder, InitialEntryPointsKey}
 import org.opalj.br.instructions.INVOKESPECIAL
-import org.tud.reachablemethods.analysis.dataaccess.{DataAccessor, InvocationDataAccessor, MethodDataAccessor}
-import org.tud.reachablemethods.analysis.impl.callgraphs.CompositionalCallGraphBuilder
+import org.tud.reachablemethods.analysis.dataaccess.{DataAccessor, MethodDataAccessor}
+import org.tud.reachablemethods.analysis.impl.callgraphs.{CallGraphBuilder, CompositionalCallGraphBuilder}
 import org.tud.reachablemethods.analysis.{Configuration, ReachabilityAnalysis}
 import org.tud.reachablemethods.analysis.model.ClassList.ClassList
 import org.tud.reachablemethods.analysis.model.MavenIdentifier
@@ -15,6 +14,8 @@ import java.net.URL
 import scala.util.{Failure, Success, Try}
 
 class CompositionalReachabilityAnalysis(configuration: Configuration)(implicit system: ActorSystem) extends ReachabilityAnalysis {
+
+  override protected val loadDependencyImplementations: Boolean = false
 
   private[impl] val methodAccessor: MethodDataAccessor = new MethodDataAccessor(configuration)
   private[impl] def dataAccessors: List[DataAccessor] = List(methodAccessor)
@@ -38,7 +39,7 @@ class CompositionalReachabilityAnalysis(configuration: Configuration)(implicit s
       val analysisContext = new CompositionalAnalysisContext(classFqnLookupWithJRE, methodAccessor, opalProject)
 
       // Add all instantiated types of current project to index
-      analysisContext.indexInstantiatedTypes(getInstantiatedTypeNames(opalProject))
+      analysisContext.indexInstantiatedTypes(CallGraphBuilder.getInstantiatedTypeNames(opalProject, projectOnly = true))
 
       // Add all instantiated types of dependency projects to index
       allDependencies.foreach { dependency =>
@@ -62,15 +63,4 @@ class CompositionalReachabilityAnalysis(configuration: Configuration)(implicit s
     dependencies.forall(dep => methodAccessor.libraryInIndex(dep.libraryIdentifier))
   }
 
-  private[impl] def getInstantiatedTypeNames(project: Project[URL]): Set[String] = {
-    project
-      .allMethods
-      .filter(m => project.isProjectType(m.classFile.thisType) && m.body.isDefined)
-      .flatMap(m => m.body.get.instructions)
-      .filter(i => i != null && i.isMethodInvocationInstruction && i.isInstanceOf[INVOKESPECIAL])
-      .map(i => i.asInstanceOf[INVOKESPECIAL])
-      .filter(i => i.name.equals("<init>"))
-      .map(_.declaringClass.fqn)
-      .toSet
-  }
 }
