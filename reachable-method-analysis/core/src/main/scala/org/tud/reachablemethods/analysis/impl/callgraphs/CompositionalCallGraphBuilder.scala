@@ -15,13 +15,11 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
 
 
   def buildCallGraph(): Try[Any] = {
-    // Set of methods already processed
-    val methodSignaturesSeen: mutable.HashSet[String] = new mutable.HashSet[String]()
 
     def printProgress(methodName: String, internal: Boolean): Unit ={
-      if(methodSignaturesSeen.size % 1000 == 0){
+      if(context.numberOfMethodsSeen() % 1000 == 0){
         val internalStr = if(internal) "Project" else "Dependency"
-        log.debug(s"Processing: #${methodSignaturesSeen.size} [$internalStr] $methodName\r")
+        log.debug(s"Processing: #${context.numberOfMethodsSeen()} [$internalStr] $methodName\r")
       }
     }
 
@@ -33,19 +31,21 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
     }
 
     def processDependencyMethod(method: Method): Unit = {
-      context.getMethodBySignatureAndClass(method.fullyQualifiedSignature, method.classFile.fqn) match {
-        case Some(methodData) =>
-          processDependencyMethodData(methodData)
-        case None =>
-          log.error("No method data in index: " + method.fullyQualifiedSignature)
+
+      val dataOpt = context.getMethodBySignatureAndClass(method.fullyQualifiedSignature, method.classFile.fqn)
+
+      if(dataOpt.isDefined){
+        processDependencyMethodData(dataOpt.get)
+      } else {
+        log.error("No method data in index: " + method.fullyQualifiedSignature)
       }
     }
 
     def processDependencyMethodData(methodData: ElasticMethodData): Unit = {
-      if(!methodSignaturesSeen.contains(methodData.signature)){
+      if(!context.methodSeen(methodData.signature)){
         printProgress(methodData.signature, false)
 
-        methodSignaturesSeen.add(methodData.signature)
+        context.addMethodSeen(methodData.signature)
 
         // TODO: If external -> need to map to other artifact!
         val dependencyCallees = methodData.calleeSignatures.flatMap{ sig =>
@@ -70,12 +70,12 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
 
         obligationTargets.foreach {
           case Left(method) =>
-            if (!methodSignaturesSeen.contains(method.fullyQualifiedSignature)) {
+            if (!context.methodSeen(method.fullyQualifiedSignature)) {
               log.info("Recursing into project method via obligation: " + method.fullyQualifiedSignature)
               processInternalMethod(method)
             }
           case Right(methodData) =>
-            if (!methodSignaturesSeen.contains(methodData.signature)) {
+            if (!context.methodSeen(methodData.signature)) {
               log.info("Recursing into dependency method via obligation: " + methodData.signature)
               processDependencyMethodData(methodData)
             }
@@ -87,15 +87,15 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
     }
 
     def processInternalMethod(method: Method): Unit = {
-      if(!methodSignaturesSeen.contains(method.fullyQualifiedSignature)){
+      if(!context.methodSeen(method.fullyQualifiedSignature)){
         printProgress(method.fullyQualifiedSignature, true)
 
-        methodSignaturesSeen.add(method.fullyQualifiedSignature)
+        context.addMethodSeen(method.fullyQualifiedSignature)
 
         if(method.body.isDefined){
           getAllCallees(method, opalProject)
             .foreach{ callee =>
-              if(!methodSignaturesSeen.contains(callee.fullyQualifiedSignature)){
+              if(!context.methodSeen(callee.fullyQualifiedSignature)){
                 processMethod(callee)
               }
             }

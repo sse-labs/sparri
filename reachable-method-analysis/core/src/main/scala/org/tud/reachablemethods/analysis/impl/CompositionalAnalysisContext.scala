@@ -19,11 +19,13 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
 
   private val elasticIdMethodIndex: mutable.Map[String, ElasticMethodData] = new mutable.HashMap()
   private val signatureMethodDataIndex: mutable.Map[String, ElasticMethodData] = new mutable.HashMap()
-
   private val fqnTypeIndex: mutable.Map[String, ObjectType] = new mutable.HashMap()
   private val typeFqnMethodObjectIndex: mutable.Map[String, mutable.Set[Method]] = new mutable.HashMap()
 
-  private val uidObligationIndex: mutable.Map[String, Option[Iterable[Either[Method, ElasticMethodData]]]] = new mutable.HashMap()
+
+  private val uidObligationCache: mutable.Map[String, Option[Iterable[Either[Method, ElasticMethodData]]]] = new mutable.HashMap()
+
+  private val methodSignaturesProcessed: mutable.Set[String] = new mutable.HashSet()
 
 
   log.debug("Indexing all types by FQN...")
@@ -35,9 +37,16 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
   log.debug("Done indexing all dependencies.")
 
 
+  // Indices that materialize into immutable collections once querying starts
   lazy val classHierarchy: ClassHierarchy = opalProject.classHierarchy
 
   lazy val instantiatedTypes: Set[String] = instantiatedTypeNames.toSet
+
+  lazy val typeIndex: Map[String, ObjectType] = fqnTypeIndex.toMap
+
+  lazy val methodObjectIndex: Map[String, Set[Method]] = typeFqnMethodObjectIndex.mapValues(_.toSet).toMap
+
+  lazy val methodDataIndex: Map[String, ElasticMethodData] = signatureMethodDataIndex.toMap
 
   def indexInstantiatedTypes(typeNames: Iterable[String]): Unit = {
     typeNames.foreach(instantiatedTypeNames.add)
@@ -45,23 +54,28 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
 
   def isTypeInstantiated(typeName: String): Boolean = instantiatedTypes.contains(typeName)
 
+  def addMethodSeen(methodSignature: String): Unit = methodSignaturesProcessed.add(methodSignature)
+
+  def methodSeen(methodSignature: String): Boolean = methodSignaturesProcessed.contains(methodSignature)
+
+  def numberOfMethodsSeen(): Int = methodSignaturesProcessed.size
+
   def resolveObligationInLibrary(obligation: InvocationObligation, libraryIdent: String): Option[Iterable[Either[Method, ElasticMethodData]]]= {
     val obligationKey = obligationInLibraryUid(obligation, libraryIdent)
 
-    //TODO: Return either of MethodData and Method, filter out seen methods
-    if(uidObligationIndex.contains(obligationKey)){
-      uidObligationIndex(obligationKey)
+    if(uidObligationCache.contains(obligationKey)){
+      uidObligationCache(obligationKey)
     } else {
 
-      val declTypeOpt = fqnTypeIndex.get(obligation.declaredTypeName)
+      val declTypeOpt = typeIndex.get(obligation.declaredTypeName)
 
       val result = declTypeOpt.map{ declType =>
 
         classHierarchy.allSubtypesIterator(declType, reflexive = true)
           .filter(t => instantiatedTypes.contains(t.fqn))
-          .flatMap(t => typeFqnMethodObjectIndex.getOrElse(t.fqn, Iterable.empty))
+          .flatMap(t => methodObjectIndex.getOrElse(t.fqn, Iterable.empty))
           .filter(m => (m.name + m.descriptor.valueToString).equals(obligation.methodDescription))
-          .map(m => if(signatureMethodDataIndex.contains(m.fullyQualifiedSignature)) Right(signatureMethodDataIndex(m.fullyQualifiedSignature)) else Left(m))
+          .map(m => if(methodDataIndex.contains(m.fullyQualifiedSignature)) Right(methodDataIndex(m.fullyQualifiedSignature)) else Left(m))
           .toSeq
       }
 
@@ -106,7 +120,7 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
             .filter(ctx => obligation.methodDescription.equals(ctx.name + ctx.descriptor.valueToString))*/
         }*/
 
-      uidObligationIndex.put(obligationKey, result)
+      uidObligationCache.put(obligationKey, result)
 
       result
     }
@@ -164,23 +178,12 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
 
   private def buildSignatureMethodIndex(): Unit = {
     opalProject.allMethods.foreach { m =>
-      val methodKey = m.name + m.descriptor.valueToString
 
       if(!typeFqnMethodObjectIndex.contains(m.classFile.thisType.fqn)){
         typeFqnMethodObjectIndex.put(m.classFile.thisType.fqn, new mutable.HashSet[Method]())
       }
 
       typeFqnMethodObjectIndex(m.classFile.thisType.fqn).add(m)
-    }
-  }
-
-  private def loadJreData(): Unit = {
-    val jreIdent = classFileFqnDependencyMap.values.find(i => i.artifactId.equals("<jre>")).get
-    methodDataAccessor.getArtifactMethods(jreIdent.libraryIdentifier, jreIdent.version) match {
-      case Success(hits) =>
-        hits.foreach(addToMethodIndices(_, preloadCallees = false))
-      case Failure(ex) =>
-        log.error("Failed to load JRE methods", ex)
     }
   }
 
