@@ -47,15 +47,20 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
 
         context.addMethodSeen(methodData.signature)
 
-        // TODO: If external -> need to map to other artifact!
-        val dependencyCallees = methodData.calleeSignatures.flatMap{ sig =>
-          val res = context.signatureLookup(sig)
+        val dependencyCallees = if(methodData.isExtern){
+          log.error("Extern method data!")
+          Iterable.empty
+        } else {
+          methodData.calleeSignatures.flatMap { sig =>
+            val res = context.signatureLookup(sig)
 
-          if(res.isEmpty)
-            log.error("Did not find callee signature in local index, although preloading of callees is enabled: " + sig)
+            if(res.isEmpty)
+              log.error("Did not find callee signature in local index, although preloading of callees is enabled: " + sig)
 
-          res
+            res
+          }
         }
+
 
         dependencyCallees
           .foreach(processDependencyMethodData)

@@ -76,49 +76,8 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
           .flatMap(t => methodObjectIndex.getOrElse(t.fqn, Iterable.empty))
           .filter(m => (m.name + m.descriptor.valueToString).equals(obligation.methodDescription))
           .map(m => if(methodDataIndex.contains(m.fullyQualifiedSignature)) Right(methodDataIndex(m.fullyQualifiedSignature)) else Left(m))
-          .toSeq
+          .toSet
       }
-
-      /*val result = signatureMethodObjectIndex
-        .get(obligation.methodDescription)
-        .map { methods =>
-          methods
-            .filter{ method => declTypeOpt.isEmpty || method.classFile.thisType.isSubtypeOf(declTypeOpt.get)(classHierarchy)}
-            .filter{ method =>
-              val cf = method.classFile
-
-              // Only keep methods from other libraries or the current project ( We will never resolve obligations on the current project)
-              //(!classFileFqnDependencyMap.contains(cf.fqn) || !classFileFqnDependencyMap(cf.fqn).libraryIdentifier.equals(libraryIdent)) &&
-                instantiatedTypes.contains(cf.thisType.fqn) && opalProject.isProjectType(cf.thisType)
-            }.toSeq
-        }*/
-
-      /*val result = fqnTypeIndex
-        .get(obligation.declaredTypeName)
-        .map{ typeObj =>
-
-          val subtypes = classHierarchy.allSubtypesIterator(typeObj, reflexive = false)
-            .filter { t =>
-              val cfOpt = opalProject.classFile(t)
-
-              (cfOpt.isEmpty || !classFileFqnDependencyMap.contains(cfOpt.get.fqn) || !classFileFqnDependencyMap(cfOpt.get.fqn).libraryIdentifier.equals(libraryIdent)) &&
-                instantiatedTypes.contains(t.fqn)
-            }
-            //.filter(t => opalProject.isProjectType(t))//TODO: Not true, need to find subtypes in other libraries as well..all libraries except current one!
-
-          subtypes
-            .flatMap(t => opalProject.instanceMethods.getOrElse(t, Seq.empty).map(_.method))
-            .filter(ctx => obligation.methodDescription.equals(ctx.name + ctx.descriptor.valueToString))
-            .filter(t => !classFileFqnDependencyMap.contains(t.classFile.fqn) || !classFileFqnDependencyMap(t.classFile.fqn).libraryIdentifier.equals(libraryIdent))//TODO: Not true, need to find subtypes in other libraries as well..all libraries except current one!
-            .toSeq
-
-
-          /*classHierarchy.allSubtypes(typeObj, reflexive = false)
-            .filter(t => isTypeInstantiated(t.fqn))
-            .filter(t => opalProject.isProjectType(t)) //TODO: Not true, need to find subtypes in other libraries as well..all libraries except current one!
-            .flatMap(t => opalProject.instanceMethods.getOrElse(t, Seq.empty).map(_.method))
-            .filter(ctx => obligation.methodDescription.equals(ctx.name + ctx.descriptor.valueToString))*/
-        }*/
 
       uidObligationCache.put(obligationKey, result)
 
@@ -134,7 +93,7 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
       classFileFqnDependencyMap
         .get(classFqn)
         .flatMap(ident => methodDataAccessor.getArtifactMethodBySignatures(List(signature), ident.libraryIdentifier, ident.version).toOption)
-        .flatMap(hits => hits.map(h => addToMethodIndices(h)).headOption)
+        .flatMap(hits => hits.map(h => addToMethodIndices(h, false)).headOption)
     }
   }
 
@@ -145,7 +104,10 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
   private def addToMethodIndices(methodData: ElasticMethodData, preloadCallees: Boolean = true): ElasticMethodData = {
 
     elasticIdMethodIndex.put(methodData.elasticId, methodData)
-    signatureMethodDataIndex.put(methodData.signature, methodData)
+
+    if(!methodData.isExtern){
+      signatureMethodDataIndex.put(methodData.signature, methodData)
+    }
 
     if(preloadCallees){
       indexCallees(methodData)
