@@ -35,6 +35,7 @@ class CompositionalReachabilityAnalysis(configuration: Configuration, override v
       val opalProject = OPALProjectHelper.buildOPALProject(projectClasses, dependencyClasses, treatProjectAsLibrary)
       log.info("Done Initializing OPAL.")
 
+      val startDownload = System.currentTimeMillis()
       val analysisContext = new CompositionalAnalysisContext(classFqnLookupWithJRE, methodAccessor, opalProject, log)
 
       // Add all instantiated types of current project to index
@@ -46,12 +47,19 @@ class CompositionalReachabilityAnalysis(configuration: Configuration, override v
           dependency.version).map(_.instantiatedTypes).get) //TODO: Error Handling
       }
 
+      val downloadDuration = (System.currentTimeMillis() - startDownload) / 1000
+      val startAnalysis = System.currentTimeMillis()
+
       val cgBuilder = new CompositionalCallGraphBuilder(opalProject, analysisContext, log)
 
       cgBuilder.buildCallGraph()
 
+      val analysisDuration = (System.currentTimeMillis() - startAnalysis) / 1000
+
 
       methodAccessor.shutdown()
+
+      log.info(s"Compositional analysis finished [download=$downloadDuration s; analysis=$analysisDuration s]")
 
       Success(analysisContext.methodSignaturesSeen)
     }
