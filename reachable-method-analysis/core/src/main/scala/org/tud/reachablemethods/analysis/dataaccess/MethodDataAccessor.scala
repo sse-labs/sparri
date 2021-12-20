@@ -5,29 +5,29 @@ import com.sksamuel.elastic4s.ElasticApi.{RichFuture, boolQuery, idsQuery, searc
 import com.sksamuel.elastic4s.{ElasticClient, RequestFailure, RequestSuccess}
 import com.sksamuel.elastic4s.ElasticDsl.{IndexExistsHandler, SearchHandler, SearchScrollHandler, indexExists}
 import com.sksamuel.elastic4s.akka.{AkkaHttpClient, AkkaHttpClientSettings}
-import com.sksamuel.elastic4s.requests.searches.queries.IdQuery
 import com.sksamuel.elastic4s.requests.searches.{SearchHit, SearchRequest, SearchResponse}
 import org.tud.reachablemethods.analysis.Configuration
+import org.tud.reachablemethods.analysis.logging.{AnalysisLogger, AnalysisLogging}
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.util.{Failure, Success, Try}
 
-class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) extends DataAccessor(config) {
+class MethodDataAccessor(config: Configuration, override val log: AnalysisLogger)(implicit system: ActorSystem) extends AnalysisLogging {
 
   private[dataaccess] lazy val elasticClient: ElasticClient = {
     val props = AkkaHttpClientSettings(Seq(config.elasticClientUri))
     ElasticClient(AkkaHttpClient(props))
   }
 
-  override def initialize(): Unit = {
+  def initialize(): Unit = {
     // Will also build the client for the first time, and thus error if creation fails
     if(!requiredIndicesExist()){
       throw new IllegalStateException(s"Missing required ElasticSearch Indices: ${config.elasticMethodIndexName}, ${config.elasticLibraryIndexName}" )
     }
   }
 
-  override def shutdown(): Unit = {
+  def shutdown(): Unit = {
     elasticClient.close()
   }
 
@@ -37,7 +37,7 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
         .query(termQuery(ElasticPropertyNames.libraryKeywordName, libIdent)).size(1).fetchSource(false)
     }.await match {
       case fail: RequestFailure =>
-        log.error("Failed to query ElasticSearch: ", fail.error.reason)
+        log.error("Failed to query ElasticSearch: " + fail.error.reason)
         false
 
       case results: RequestSuccess[SearchResponse] =>
@@ -142,7 +142,7 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
           ElasticPropertyNames.obligationFieldName, ElasticPropertyNames.definingLibraryFieldName, ElasticPropertyNames.analyzedLibraryFieldName, ElasticPropertyNames.calleeFieldName)
     }.await match {
       case fail: RequestFailure =>
-        log.error("Failed to query ElasticSearch: ", fail.error.reason)
+        log.error("Failed to query ElasticSearch: " + fail.error.reason)
         Failure(fail.error.asException)
 
       case results: RequestSuccess[SearchResponse]  =>
@@ -176,7 +176,7 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
           .size(signatures.size)
       }.await match {
         case fail: RequestFailure =>
-          log.error("Failed to query ElasticSearch: ", fail.error.reason)
+          log.error("Failed to query ElasticSearch: " + fail.error.reason)
           Failure(fail.error.asException)
 
         case results: RequestSuccess[SearchResponse]  =>
@@ -200,7 +200,7 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
 
     val batchSize = 10000
 
-    def scrollOn(scrollId: String): Try[Array[SearchHit]] = {
+    def scrollOn(scrollId: String, batchCnt: Int, totalBatchCount: Int): Try[Array[SearchHit]] = {
       elasticClient.execute{
         searchScroll(scrollId).keepAlive("2m")
       }.await match {
@@ -208,7 +208,7 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
         case results: RequestSuccess[SearchResponse] =>
           val numberOfHits = results.result.hits.size
           val time = results.result.took
-          log.debug(s"Scroll continuation query yielded $numberOfHits hits in $time ms.")
+          log.info(s"SCROLLING DATA: $numberOfHits ( $batchCnt / $totalBatchCount ) [$time ms]")
           Success(results.result.hits.hits)
         case _ => Failure(new IllegalStateException("Unknown search response from ElasticSearch"))
       }
@@ -221,21 +221,24 @@ class MethodDataAccessor(config: Configuration)(implicit system: ActorSystem) ex
         .size(batchSize)
     }.await match {
       case fail: RequestFailure =>
-        log.error("Failed to query ElasticSearch: ", fail.error.reason)
+        log.error("Failed to query ElasticSearch: " + fail.error.reason)
         Failure(fail.error.asException)
 
       case results: RequestSuccess[SearchResponse] =>
-        val numberOfHits = results.result.totalHits
+        val totalNumberOfHits = results.result.totalHits
+        val totalBatchCount = ((totalNumberOfHits / batchSize) + 1).toInt
+        val numberOfHits = results.result.hits.size
         val time = results.result.took
-        log.debug(s"Scroll query yielded $numberOfHits hits in $time ms.")
+        log.info(s"SCROLLING DATA: $numberOfHits ( 1 / $totalBatchCount ) [$time ms]")
 
         val resultList: mutable.ListBuffer[SearchHit] = new ListBuffer[SearchHit]()
 
         var hitList = results.result.hits.hits
         resultList.appendAll(hitList)
-
+        var batchCnt = 1
         while(hitList.length == batchSize){
-          hitList = scrollOn(results.result.scrollId.get).get
+          batchCnt += 1
+          hitList = scrollOn(results.result.scrollId.get, batchCnt, totalBatchCount).get
           resultList.appendAll(hitList)
         }
 

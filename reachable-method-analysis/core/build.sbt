@@ -4,9 +4,11 @@ version := "0.1"
 
 scalaVersion := "2.12.15"
 
+publishM2Configuration := publishM2Configuration.value.withOverwrite(true)
+
 val opalVersion = "4.0.0"
 libraryDependencies ++= Seq(
-  "de.opal-project" % "common_2.12" % opalVersion,
+  "de.opal-project" % "common_2.12" % opalVersion exclude("com.fasterxml.jackson.core", "jackson-annotations"),
   "de.opal-project" % "framework_2.12" % opalVersion,
 )
 
@@ -20,8 +22,5 @@ libraryDependencies ++= Seq(
 
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"
 
-val akkaHttpVersion = "10.1.11"
-
-libraryDependencies += "com.typesafe.akka" %% "akka-http" % akkaHttpVersion
 libraryDependencies += "org.scalatest" %% "scalatest" % "3.2.9" % "test"
 

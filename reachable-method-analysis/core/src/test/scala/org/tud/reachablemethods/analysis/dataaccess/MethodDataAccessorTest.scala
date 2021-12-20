@@ -5,17 +5,22 @@ import akka.http.scaladsl.model.IllegalUriException
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must
 import org.tud.reachablemethods.analysis.Configuration
+import org.tud.reachablemethods.analysis.logging.AnalysisLogger
 import org.tud.reachablemethods.analysis.testutils.withActorSystem
 
 class MethodDataAccessorTest extends AnyFlatSpec with must.Matchers {
+
+  val defaultLogger = new AnalysisLogger
+
+
   "The ES Accessor" must "error when database host is invalid url" in withActorSystem { system =>
-    val accessor = new MethodDataAccessor(buildConfiguration("<<url>>"))(system)
+    val accessor = new MethodDataAccessor(buildConfiguration("<<url>>"), defaultLogger)(system)
 
     assertThrows[IllegalUriException](accessor.initialize())
   }
 
   "The ES Accessor" must "read libraries for correct configurations" in withActorSystem { system =>
-    val accessor = new MethodDataAccessor(new Configuration())(system)
+    val accessor = new MethodDataAccessor(new Configuration(), defaultLogger)(system)
 
     accessor.initialize()
 
@@ -23,7 +28,7 @@ class MethodDataAccessorTest extends AnyFlatSpec with must.Matchers {
   }
 
   "The ES Accessor" must "read methods via signature" in withActorSystem { system =>
-    val accessor = new MethodDataAccessor(new Configuration())(system)
+    val accessor = new MethodDataAccessor(new Configuration(), defaultLogger)(system)
 
     val jreVersion = accessor.getIndexedJreVersion.get
 
@@ -33,7 +38,7 @@ class MethodDataAccessorTest extends AnyFlatSpec with must.Matchers {
   }
 
   "The ES Accessor" must "read methods for correct configurations" in withActorSystem { system =>
-    val accessor = new MethodDataAccessor(new Configuration())(system)
+    val accessor = new MethodDataAccessor(new Configuration(), defaultLogger)(system)
 
     accessor.initialize()
 

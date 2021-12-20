@@ -1,23 +1,27 @@
 package org.tud.reachablemethods.analysis
 
-import org.slf4j.{Logger, LoggerFactory}
-import org.tud.reachablemethods.analysis.model.{ClassContainerFile, ClassList, MavenIdentifier, MavenJarFileDependency}
+import org.tud.reachablemethods.analysis.logging.{AnalysisLogger, AnalysisLogging}
+import org.tud.reachablemethods.analysis.model.{ClassList, MavenIdentifier, MavenJarFileDependency}
 import org.tud.reachablemethods.analysis.model.ClassList.ClassList
+import org.tud.reachablemethods.analysis.opal.OPALProjectHelper
 
 import java.io.File
-import scala.util.Try
+import scala.util.{Failure, Try}
 
-trait ReachabilityAnalysis {
+trait ReachabilityAnalysis extends AnalysisLogging {
 
-  protected val log: Logger = LoggerFactory.getLogger(this.getClass)
+  protected val log: AnalysisLogger
+  OPALProjectHelper.initializeLogging(log)
 
   protected val loadDependencyImplementations: Boolean
 
+  def shutdown(): Unit = {}
+
   def analysisPossible(dependencies: Iterable[MavenIdentifier]): Boolean
 
-  def analyzeProject(projectClasses: ClassList, dependencyClasses: ClassList, classFqnDependencyLookup: Map[String, MavenIdentifier], treatProjectAsLibrary: Boolean = false): Try[Any]
+  def analyzeProject(projectClasses: ClassList, dependencyClasses: ClassList, classFqnDependencyLookup: Map[String, MavenIdentifier], treatProjectAsLibrary: Boolean = false): Try[Set[String]]
 
-  def analyzeMavenProject(classDir: File, dependencies: Iterable[MavenJarFileDependency], treatProjectAsLibrary: Boolean = false): Try[Any] = {
+  def analyzeMavenProject(classDir: File, dependencies: Iterable[MavenJarFileDependency], treatProjectAsLibrary: Boolean = false): Try[Set[String]] = {
 
     val projectClasses = ClassList.readClassesFromDirectory(classDir, loadImplementation = true, recurse = true)
 
@@ -27,10 +31,10 @@ trait ReachabilityAnalysis {
 
     if(projectClasses.isFailure){
       log.error("Failed to load project classes from: " + classDir.getPath, projectClasses.failed.get)
-      projectClasses
+      Failure(projectClasses.failed.get)
     } else if(dependencyClasses.isFailure){
       log.error("Failed to load project dependency classes.", dependencyClasses.failed.get)
-      dependencyClasses
+      Failure(dependencyClasses.failed.get)
     } else {
 
       val lookup = dependencies

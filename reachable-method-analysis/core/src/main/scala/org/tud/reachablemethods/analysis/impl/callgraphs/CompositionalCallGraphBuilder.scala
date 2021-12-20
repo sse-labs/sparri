@@ -2,16 +2,16 @@ package org.tud.reachablemethods.analysis.impl.callgraphs
 
 import org.opalj.br.Method
 import org.opalj.br.analyses.Project
-
 import org.tud.reachablemethods.analysis.dataaccess.ElasticMethodData
 import org.tud.reachablemethods.analysis.impl.CompositionalAnalysisContext
+import org.tud.reachablemethods.analysis.logging.AnalysisLogger
 
 import java.net.URL
 import scala.collection.mutable
 import scala.util.{Success, Try}
 
 class CompositionalCallGraphBuilder(opalProject: Project[URL],
-                                    context: CompositionalAnalysisContext) extends CallGraphBuilder(opalProject) {
+                                    context: CompositionalAnalysisContext, log: AnalysisLogger) extends CallGraphBuilder(opalProject, log) {
 
 
   def buildCallGraph(): Try[Any] = {

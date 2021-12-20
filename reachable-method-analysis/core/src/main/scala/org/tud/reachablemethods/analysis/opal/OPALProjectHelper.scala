@@ -6,7 +6,7 @@ import org.opalj.br.analyses.{InconsistentProjectException, Project}
 import org.opalj.br.reader.Java16LibraryFramework
 import org.opalj.bytecode.JRELibraryFolder
 import org.opalj.log.{GlobalLogContext, LogContext, OPALLogger, StandardLogContext}
-import org.slf4j.{Logger, LoggerFactory}
+import org.tud.reachablemethods.analysis.logging.AnalysisLogger
 import org.tud.reachablemethods.analysis.model.ClassList.{ClassList, ClassWithURL}
 
 import java.io._
@@ -21,7 +21,9 @@ object OPALProjectHelper {
 
   private val LOAD_JRE_IMPLEMENTATION = true
 
-  private val projectLogger: OPALLogger = new WarnOnlyLogger(this.getClass)
+  private implicit val classVal: Class[_] = getClass
+  private var log: AnalysisLogger = new AnalysisLogger
+  private var projectLogger: OPALLogger = new WarnOnlyLogger(log)
   private val projectLogCtx: LogContext = {
     val ctx = new StandardLogContext()
     OPALLogger.register(ctx, projectLogger)
@@ -29,7 +31,6 @@ object OPALProjectHelper {
     ctx
   }
 
-  private val log: Logger = LoggerFactory.getLogger(this.getClass)
   private val fullClassFileReader = Project.JavaClassFileReader(projectLogCtx, BaseConfig)
   private val interfaceClassFileReader = Java16LibraryFramework
 
@@ -59,6 +60,14 @@ object OPALProjectHelper {
         case _ => true
       })
       .flatMap(_.get)
+  }
+
+
+  def initializeLogging(log: AnalysisLogger): Unit ={
+    this.log = log
+    this.projectLogger = new WarnOnlyLogger(log)
+    OPALLogger.updateLogger(projectLogCtx, projectLogger)
+    OPALLogger.updateLogger(GlobalLogContext, projectLogger)
   }
 
   def isThirdPartyMethod(project: Project[URL],method: DeclaredMethod): Boolean = {

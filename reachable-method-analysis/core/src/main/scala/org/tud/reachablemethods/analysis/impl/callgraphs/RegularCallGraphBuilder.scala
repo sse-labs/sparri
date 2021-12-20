@@ -2,12 +2,13 @@ package org.tud.reachablemethods.analysis.impl.callgraphs
 
 import org.opalj.br.Method
 import org.opalj.br.analyses.Project
+import org.tud.reachablemethods.analysis.logging.AnalysisLogger
 
 import java.net.URL
 import scala.collection.mutable
-import scala.util.{Success, Try}
+import scala.util.Try
 
-class RegularCallGraphBuilder(opalProject: Project[URL]) extends CallGraphBuilder(opalProject) {
+class RegularCallGraphBuilder(opalProject: Project[URL], log: AnalysisLogger) extends CallGraphBuilder(opalProject, log) {
 
   private[callgraphs] val instantiatedTypes = CallGraphBuilder.getInstantiatedTypeNames(opalProject, projectOnly = false)
 

@@ -4,13 +4,11 @@ import org.opalj.br.{ClassHierarchy, Method}
 import org.opalj.br.analyses.Project
 import org.opalj.br.analyses.cg.InitialEntryPointsKey
 import org.opalj.br.instructions.{INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL}
-import org.slf4j.{Logger, LoggerFactory}
+import org.tud.reachablemethods.analysis.logging.{AnalysisLogger, AnalysisLogging}
 
 import java.net.URL
 
-abstract class CallGraphBuilder(opalProject: Project[URL]) {
-
-  protected val log: Logger = LoggerFactory.getLogger(getClass)
+abstract class CallGraphBuilder(opalProject: Project[URL], override val log: AnalysisLogger) extends AnalysisLogging {
 
   protected val classHierarchy: ClassHierarchy = opalProject.classHierarchy
 

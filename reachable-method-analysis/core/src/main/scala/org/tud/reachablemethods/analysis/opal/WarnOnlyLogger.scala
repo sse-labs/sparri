@@ -17,10 +17,11 @@
 package org.tud.reachablemethods.analysis.opal
 
 import org.opalj.log.{LogContext, LogMessage, OPALLogger}
-import org.slf4j.{Logger, LoggerFactory}
+import org.tud.reachablemethods.analysis.logging.AnalysisLogger
 
-class WarnOnlyLogger(ct: Class[_]) extends OPALLogger {
-  private val internalLog: Logger =  LoggerFactory.getLogger(ct)
+class WarnOnlyLogger(log: AnalysisLogger) extends OPALLogger {
+
+  private implicit val classVal: Class[_] = getClass
 
   private val exclusionPrefixes = Set("java/lang/ClassLoader does not define")
 
@@ -28,9 +29,9 @@ class WarnOnlyLogger(ct: Class[_]) extends OPALLogger {
     if(!exclusionPrefixes.exists(p => message.message.startsWith(p))){
       message.level match {
         case org.opalj.log.Error =>
-          internalLog.error(message.message)
+          log.error(message.message)
         case org.opalj.log.Warn =>
-          internalLog.warn(message.message)
+          log.warn(message.message)
         case _ =>
       }
     }
