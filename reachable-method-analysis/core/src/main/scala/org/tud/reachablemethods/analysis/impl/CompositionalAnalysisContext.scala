@@ -60,6 +60,10 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
 
   def methodSignaturesSeen: Set[String]= methodSignaturesProcessed.toSet
 
+  def obligationResolved(obligation: InvocationObligation, libraryIdent: String): Boolean = {
+    uidObligationCache.contains(obligationInLibraryUid(obligation, libraryIdent))
+  }
+
   def resolveObligationInLibrary(obligation: InvocationObligation, libraryIdent: String): Option[Iterable[Either[Method, ElasticMethodData]]]= {
     val obligationKey = obligationInLibraryUid(obligation, libraryIdent)
 
@@ -90,10 +94,11 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
     if(signatureMethodDataIndex.contains(signature)){
       Some(signatureMethodDataIndex(signature))
     } else {
+      None /*
       classFileFqnDependencyMap
         .get(classFqn)
         .flatMap(ident => methodDataAccessor.getArtifactMethodBySignatures(List(signature), ident.libraryIdentifier, ident.version).toOption)
-        .flatMap(hits => hits.map(addToMethodIndices).headOption)
+        .flatMap(hits => hits.map(addToMethodIndices).headOption)*/
     }
   }
 
