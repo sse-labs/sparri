@@ -1,29 +1,28 @@
 package org.tud.reachablemethods.analysis.impl
 
 import akka.actor.ActorSystem
-import org.opalj.br.analyses.Project
-import org.opalj.br.analyses.cg.{ApplicationWithoutJREEntryPointsFinder, InitialEntryPointsKey}
-import org.opalj.br.instructions.INVOKESPECIAL
-import org.tud.reachablemethods.analysis.dataaccess.{DataAccessor, InvocationDataAccessor, MethodDataAccessor}
-import org.tud.reachablemethods.analysis.impl.callgraphs.CompositionalCallGraphBuilder
+import org.tud.reachablemethods.analysis.dataaccess.MethodDataAccessor
+import org.tud.reachablemethods.analysis.impl.callgraphs.{CallGraphBuilder, CompositionalCallGraphBuilder}
+import org.tud.reachablemethods.analysis.logging.AnalysisLogger
 import org.tud.reachablemethods.analysis.{Configuration, ReachabilityAnalysis}
 import org.tud.reachablemethods.analysis.model.ClassList.ClassList
 import org.tud.reachablemethods.analysis.model.MavenIdentifier
 import org.tud.reachablemethods.analysis.opal.OPALProjectHelper
 
-import java.net.URL
 import scala.util.{Failure, Success, Try}
 
-class CompositionalReachabilityAnalysis(configuration: Configuration)(implicit system: ActorSystem) extends ReachabilityAnalysis {
+class CompositionalReachabilityAnalysis(configuration: Configuration, override val log: AnalysisLogger = new AnalysisLogger) extends ReachabilityAnalysis {
 
-  private[impl] val methodAccessor: MethodDataAccessor = new MethodDataAccessor(configuration)
-  private[impl] val invocationAccessor: InvocationDataAccessor = new InvocationDataAccessor(configuration)
-  private[impl] def dataAccessors: List[DataAccessor] = List(methodAccessor, invocationAccessor)
+  private val system: ActorSystem = ActorSystem("reachability-analysis")
 
-  dataAccessors.foreach(_.initialize())
+  override protected val loadDependencyImplementations: Boolean = false
+
+  private[impl] val methodAccessor: MethodDataAccessor = new MethodDataAccessor(configuration, log)(system)
+
+  methodAccessor.initialize()
 
   override def analyzeProject(projectClasses: ClassList, dependencyClasses: ClassList,
-                              classFqnDependencyLookup: Map[String, MavenIdentifier], treatProjectAsLibrary: Boolean): Try[Any] = {
+                              classFqnDependencyLookup: Map[String, MavenIdentifier], treatProjectAsLibrary: Boolean): Try[Set[String]] = {
 
     val jreIdent = MavenIdentifier("<none>", "<jre>", methodAccessor.getIndexedJreVersion.get)
     val classFqnLookupWithJRE = classFqnDependencyLookup ++ OPALProjectHelper.jreClasses.map(c => (c._1.fqn, jreIdent)).toMap
@@ -36,10 +35,10 @@ class CompositionalReachabilityAnalysis(configuration: Configuration)(implicit s
       val opalProject = OPALProjectHelper.buildOPALProject(projectClasses, dependencyClasses, treatProjectAsLibrary)
       log.info("Done Initializing OPAL.")
 
-      val analysisContext = new CompositionalAnalysisContext(classFqnLookupWithJRE, methodAccessor, invocationAccessor)
+      val analysisContext = new CompositionalAnalysisContext(classFqnLookupWithJRE, methodAccessor, opalProject, log)
 
       // Add all instantiated types of current project to index
-      analysisContext.indexInstantiatedTypes(getInstantiatedTypeNames(opalProject))
+      analysisContext.indexInstantiatedTypes(CallGraphBuilder.getInstantiatedTypeNames(opalProject, projectOnly = true))
 
       // Add all instantiated types of dependency projects to index
       allDependencies.foreach { dependency =>
@@ -47,14 +46,14 @@ class CompositionalReachabilityAnalysis(configuration: Configuration)(implicit s
           dependency.version).map(_.instantiatedTypes).get) //TODO: Error Handling
       }
 
-      val cgBuilder = new CompositionalCallGraphBuilder(opalProject, analysisContext)
+      val cgBuilder = new CompositionalCallGraphBuilder(opalProject, analysisContext, log)
 
       cgBuilder.buildCallGraph()
 
 
-      dataAccessors.foreach(_.shutdown())
+      methodAccessor.shutdown()
 
-      Success()
+      Success(analysisContext.methodSignaturesSeen)
     }
 
   }
@@ -63,15 +62,6 @@ class CompositionalReachabilityAnalysis(configuration: Configuration)(implicit s
     dependencies.forall(dep => methodAccessor.libraryInIndex(dep.libraryIdentifier))
   }
 
-  private[impl] def getInstantiatedTypeNames(project: Project[URL]): Set[String] = {
-    project
-      .allMethods
-      .filter(m => project.isProjectType(m.classFile.thisType) && m.body.isDefined)
-      .flatMap(m => m.body.get.instructions)
-      .filter(i => i != null && i.isMethodInvocationInstruction && i.isInstanceOf[INVOKESPECIAL])
-      .map(i => i.asInstanceOf[INVOKESPECIAL])
-      .filter(i => i.name.equals("<init>"))
-      .map(_.declaringClass.fqn)
-      .toSet
-  }
+  override def shutdown(): Unit = system.terminate()
+
 }

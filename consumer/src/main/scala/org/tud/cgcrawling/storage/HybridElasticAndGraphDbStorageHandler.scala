@@ -37,6 +37,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   private val releasesFieldName = "Releases"
   private val isJreFieldName = "IsJRE"
   private val obligationFieldName = "Obligations"
+  private val calleeFieldName = "Callees"
   private val declaredTypeFieldName = "DeclaredType"
   private val declaredMethodFieldName = "DeclaredMethod"
 
@@ -94,7 +95,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
         .toList
         .grouped(maxConcurrentEsRequests)
         .map { batch =>
-          (batch, elasticClient.execute {
+          elasticClient.execute {
             bulk(
               batch.map { methodEvolution =>
 
@@ -119,26 +120,25 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
                       declaredTypeFieldName -> oEvo.invocationObligation.declaredTypeName,
                       declaredMethodFieldName -> (oEvo.invocationObligation.methodName + oEvo.invocationObligation.descriptor),
                       releasesFieldName -> buildReleasesValue(oEvo.isActiveIn, methodReleases)
-                    ))
+                    )),
+                    calleeFieldName -> cgEvolution.calleeEvolutionsAt(methodEvolution.identifier)
+                      .map( iEvo => Map(
+                        signatureFieldName -> iEvo.invocationIdent.calleeIdent.fullSignature,
+                        releasesFieldName -> buildReleasesValue(iEvo.isActiveIn, methodReleases)
+                      ))
                   )
               }
             )
-          }.await(10 minutes))
+          }.await(10 minutes)
         }
-        .map{ tuple =>
-
-          if(!tuple._2.isError && !tuple._2.result.hasFailures){
-            val idList = tuple._2.result.items.toList.map(_.id)
-
-            for (i <- idList.indices){
-              val ident = tuple._1(i).identifier
-              val id = idList(i)
-              idLookup.put(ident, id)
-            }
+        .map(res => {
+          if(res.isError){
+            log.error("Bulk response failed: " + res.error.reason, res.error.asException)
           }
 
-          tuple._2
-        }
+          res.result.failures.foreach( i => log.error("Bulk item failed: " + i.error.map(_.reason).getOrElse("<No Error>")))
+          res
+        })
         .exists(res => res.isError || res.result.hasFailures)
 
       if(elasticErrorsForMethods) log.error("Got errors while storing methods in ES.")
@@ -148,44 +148,8 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
       log.info("Finished storing data in ES.")
 
 
-      log.info("Starting to store method relations in Neo4j..")
 
-      //---STORE METHOD NODES AND INVOCATIONS IN NEO4J
-      val session = config.graphDatabaseDriver.session()
-
-      val neo4jErrorsExist = Try{
-        cgEvolution
-          .methodEvolutions()
-          .map(evo => idLookup(evo.identifier))
-          .grouped(neo4jMethodInsertBatchSize)
-          .foreach{ batch =>
-            session.run("UNWIND $ids AS id CREATE (m: Method {ElasticId: id, Library: $lib})",
-              parameters("ids", batch.toList.asJava, "lib", cgEvolution.libraryName))
-          }
-
-        cgEvolution
-          .methodInvocationEvolutions()
-          .map{ invocation =>
-            Array(idLookup(invocation.invocationIdent.callerIdent),
-              idLookup(invocation.invocationIdent.calleeIdent), invocation.isActiveIn.toArray)
-          }
-          .grouped(neo4jMethodInvocationInsertBatchSize)
-          .foreach{ batch =>
-            session.run("UNWIND $i AS invocation MATCH (caller: Method {ElasticId: invocation[0]}) MATCH (callee: Method {ElasticId: invocation[1]}) CREATE (caller)-[:INVOKES {Releases: invocation[2]}]->(callee)",
-              parameters("i", batch.toList.asJava))
-          }
-      } match {
-        case Success(_) =>
-          false
-        case Failure(ex) =>
-          log.error("Failed to store CG", ex)
-          true
-      }
-      session.close()
-
-      log.info("Finished storing method relations.")
-
-      GraphDbStorageResult(cgEvolution.libraryName, !elasticErrorsForMethods && !neo4jErrorsExist)
+      GraphDbStorageResult(cgEvolution.libraryName, !elasticErrorsForMethods)
     }
   }
 
@@ -224,19 +188,6 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
 
   private def setupIndex(): Unit = {
 
-    val session: Session = config.graphDatabaseDriver.session()
-
-    Try{
-      session.run("CREATE CONSTRAINT unique_es IF NOT EXISTS ON (m:Method) ASSERT m.ElasticId IS UNIQUE")
-    } match {
-      case Failure(ex) =>
-        log.error("Error while ensuring Neo4j constraints are present!", ex)
-      case _ =>
-        log.info("Neo4j indices are present.")
-    }
-
-    session.close()
-
     def indexPresent(indexName: String): Boolean = elasticClient
       .execute(indexExists(indexName))
       .await
@@ -251,6 +202,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
       log.info("Method index not found, creating it...")
       elasticClient.execute{
         createIndex(config.elasticMethodIndexName)
+          .settings(Map("index.mapping.nested_objects.limit" -> 50000))
           .mapping(properties(
             BooleanField(isExternFieldName),
             KeywordField(nameFieldName),
@@ -259,6 +211,10 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
             KeywordField(definingLibraryFieldName),
             BooleanField(isPublicFieldName),
             KeywordField(releasesFieldName),
+            NestedField(calleeFieldName).fields(
+              TextField(signatureFieldName),
+              KeywordField(releasesFieldName)
+            ),
             NestedField(obligationFieldName).fields(
               TextField(declaredTypeFieldName),
               TextField(declaredMethodFieldName),

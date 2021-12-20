@@ -77,7 +77,6 @@ object CallGraphCrawler {
       .startProcessing()
       .onComplete{ response =>
         println(s"Got success value ${response.isSuccess}")
-        theConfig.graphDatabaseDriver.close()
         Await.result(theSystem.terminate(), shutdownTimeout.duration)
       }(theSystem.dispatcher)
 

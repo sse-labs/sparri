@@ -6,7 +6,7 @@ import org.tud.reachablemethods.analysis.model.ClassList.ClassList
 
 import java.io.File
 import java.net.URL
-import scala.util.{Success, Try}
+import scala.util.Try
 
 class ClassContainerFile(val containerFile: File) {
 
