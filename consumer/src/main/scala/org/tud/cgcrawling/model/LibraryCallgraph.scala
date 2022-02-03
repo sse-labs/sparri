@@ -5,7 +5,7 @@ import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 
 import scala.collection.mutable
 
-class LibraryCallgraph(val instantiatedTypeNames: Set[String]) {
+class LibraryCallgraph(val instantiatedTypeNames: Set[String], val hierarchy: ClassHierarchy) {
 
   private val methodsMap: mutable.Map[String, LibraryMethod] = new mutable.HashMap()
   private val invocationMap: mutable.Map[String, mutable.Set[LibraryMethod]] = new mutable.HashMap()

@@ -22,7 +22,8 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
 
 
   private val releaseList: mutable.ListBuffer[String] = new ListBuffer[String]
-  private val instantiatedTypesMap: mutable.Map[String, mutable.ListBuffer[String]] = new mutable.HashMap()
+
+  private val typeEvolutionMap: mutable.Map[String, TypeEvolution] = new mutable.HashMap()
 
   val libraryName = s"$groupId:$artifactId"
 
@@ -30,12 +31,20 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
   def methodEvolutions(): Iterable[MethodEvolution] = methodEvolutionMap.values
   def methodInvocationEvolutions(): Iterable[MethodInvocationEvolution] = invocationEvolutionMap.values
   def dependencyEvolutions(): Iterable[DependencyEvolution] = dependencyEvolutionMap.values
-  def instantiatedTypeEvolutions(): Iterable[InstantiatedTypeEvolution] = instantiatedTypesMap.map(t => (t._1, t._2.toList))
+  def typeEvolutions(): Iterable[TypeEvolution] = typeEvolutionMap.values
+
+  //TODO: Remove this legacy API
+  def instantiatedTypeEvolutions(): Iterable[InstantiatedTypeEvolution] = typeEvolutionMap
+    .values
+    .filter(tEvo => tEvo.isInstantiatedIn.nonEmpty)
+    .map(tEvo => {
+      (tEvo.typeFqn, tEvo.isInstantiatedIn)
+    })
 
   def numberOfMethodEvolutions(): Int = methodEvolutionMap.size
   def numberOfInvocationEvolutions(): Int = invocationEvolutionMap.size
   def numberOfDependencyEvolutions(): Int = dependencyEvolutionMap.size
-  def numberOfInstantiatedTypeEvolutions(): Int = instantiatedTypesMap.size
+  def numberOfTypeEvolutions(): Int = typeEvolutionMap.size
 
   def dependenciesAt(release: String): Iterable[DependencyIdentifier] = {
     if(!releaseList.contains(release))
@@ -81,17 +90,21 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
       throw new RuntimeException(s"Release has already been applied to CallGraphEvolution: $release")
     }
 
-    callgraph
-      .instantiatedTypeNames
-      .foreach{ typeName =>
-        if(!instantiatedTypesMap.contains(typeName)){
-          instantiatedTypesMap.put(typeName, new mutable.ListBuffer())
-        }
-        instantiatedTypesMap(typeName).append(release)
-      }
-
     log.info(s"Processing new release $release for $libraryName")
     releaseList.append(release)
+
+    callgraph.hierarchy.allTypeNames.foreach{ typeFqn =>
+      if(!typeEvolutionMap.contains(typeFqn)){
+        typeEvolutionMap.put(typeFqn, new TypeEvolution(typeFqn))
+      }
+
+      typeEvolutionMap(typeFqn).addActiveRelease(release)
+      typeEvolutionMap(typeFqn).setChildrenIn(release, callgraph.hierarchy.childrenOf(typeFqn).getOrElse(Iterable.empty))
+
+      if(callgraph.instantiatedTypeNames.contains(typeFqn)){
+        typeEvolutionMap(typeFqn).setInstantiatedIn(release)
+      }
+    }
 
     dependencies.foreach(setDependencyActiveInRelease(_, release))
 

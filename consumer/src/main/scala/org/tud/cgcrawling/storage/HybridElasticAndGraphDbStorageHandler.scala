@@ -35,7 +35,6 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   private val analyzedLibraryFieldName = "AnalyzedLibrary"
   private val definingLibraryFieldName = "DefiningLibrary"
   private val releasesFieldName = "Releases"
-  private val isJreFieldName = "IsJRE"
   private val obligationFieldName = "Obligations"
   private val calleeFieldName = "Callees"
   private val declaredTypeFieldName = "DeclaredType"
@@ -44,7 +43,10 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   private val versionFieldName = "Version"
   private val scopeFieldName = "Scope"
   private val dependenciesFieldName = "Dependencies"
-  private val instantiatedTypesFieldName = "InstantiatedTypes"
+  private val typesFieldName = "Types"
+  private val instantiatingReleasesFieldName = "InstantiatingReleases"
+  private val typeFqnFieldName = "TypeFQN"
+  private val typeChildrenFieldName = "TypeChildren"
 
   private val clientProps = AkkaHttpClientSettings(Seq(config.elasticClientUri))
 
@@ -56,8 +58,6 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   override def storeCallGraphEvolution(cgEvolution: LibraryCallGraphEvolution): GraphDbStorageResult = {
 
     implicit val ec: ExecutionContext = system.dispatcher
-
-    val idLookup: mutable.Map[MethodIdentifier, String] = new mutable.HashMap()
 
     log.info("Starting to store data in ES ...")
 
@@ -76,9 +76,17 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
             scopeFieldName -> dep.identifier.scope
           )
         },
-        instantiatedTypesFieldName -> cgEvolution.instantiatedTypeEvolutions().map( tEvo => Map(
-          declaredTypeFieldName -> tEvo._1,
-          releasesFieldName -> buildReleasesValue(tEvo._2, libReleases)
+        //TODO: Restructure to save "parents" and make object implicit
+
+        //TODO: Can we leave out some non-project types? Maybe non-instantiated leaf nodes in hierarchy, as they must be included
+        //TODO: in the project extending the current one.
+        typesFieldName -> cgEvolution.typeEvolutions().map(tEvo => Map(
+          typeFqnFieldName -> tEvo.typeFqn,
+          releasesFieldName -> buildReleasesValue(tEvo.isActiveIn, libReleases), // "Releases" will be "*" if they are equal to the Lib's Releases
+          instantiatingReleasesFieldName -> buildReleasesValue(tEvo.isInstantiatedIn, libReleases), // "InstantiatingReleases" will be "*" if equal to Lib's Releases
+          typeChildrenFieldName -> tEvo.childFqnToReleasesMap.map{ entry =>
+            Map(typeFqnFieldName -> entry._1, releasesFieldName -> entry._2)
+          }
         ))
       )
     }.await
@@ -100,11 +108,6 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
               batch.map { methodEvolution =>
 
                 val methodReleases = methodEvolution.isActiveIn
-                // If defining Lib is not explicit and we are external => JRE call
-                val definingLib = methodEvolution.identifier.definingArtifact.map(i => s"${i.groupId}:${i.artifactId}").getOrElse{
-                  if(methodEvolution.identifier.isJREMethod) "<none>:<jre>"
-                  else "<unknown>:<unknown>"
-                }
 
                 indexInto(config.elasticMethodIndexName)
                   .fields(
@@ -113,9 +116,9 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
                     nameFieldName -> methodEvolution.identifier.simpleName,
                     signatureFieldName -> methodEvolution.identifier.fullSignature,
                     analyzedLibraryFieldName -> cgEvolution.libraryName,
-                    definingLibraryFieldName -> definingLib,
+                    definingLibraryFieldName -> methodEvolution.identifier.definingLibraryName,
                     releasesFieldName -> methodReleases.toArray,
-                    isJreFieldName -> methodEvolution.identifier.isJREMethod,
+                    typeFqnFieldName -> methodEvolution.identifier.typeFqn,
                     obligationFieldName -> methodEvolution.obligationEvolutions().map( oEvo => Map(
                       declaredTypeFieldName -> oEvo.invocationObligation.declaredTypeName,
                       declaredMethodFieldName -> (oEvo.invocationObligation.methodName + oEvo.invocationObligation.descriptor),
@@ -179,10 +182,6 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
         log.debug(s"Query for '$libIdent' yielded $numberOfHits hits in $time ms.")
 
         Some(numberOfHits > 0)
-
-      case response: RequestSuccess[_] =>
-        log.error(s"Unknown response type: ${response.result}")
-        None
     }
   }
 
@@ -211,6 +210,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
             KeywordField(definingLibraryFieldName),
             BooleanField(isPublicFieldName),
             KeywordField(releasesFieldName),
+            KeywordField(typeFqnFieldName),
             NestedField(calleeFieldName).fields(
               TextField(signatureFieldName),
               KeywordField(releasesFieldName)
@@ -238,9 +238,14 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
               KeywordField(releasesFieldName),
               KeywordField(scopeFieldName)
             ),
-            NestedField(instantiatedTypesFieldName).fields(
-              KeywordField(declaredTypeFieldName),
-              KeywordField(releasesFieldName)
+            NestedField(typesFieldName).fields(
+              KeywordField(typeFqnFieldName),
+              KeywordField(releasesFieldName),
+              KeywordField(instantiatingReleasesFieldName),
+              NestedField(typeChildrenFieldName).fields(
+                KeywordField(typeFqnFieldName),
+                KeywordField(releasesFieldName)
+              )
             )
           ))
       }.await
