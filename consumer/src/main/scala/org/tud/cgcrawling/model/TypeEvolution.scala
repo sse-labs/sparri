@@ -13,8 +13,14 @@ class TypeEvolution(val typeFqn: String) extends CgElementEvolution {
   private def activateRelease(release: String): Unit = if(isActiveIn.contains(release)) addActiveRelease(release)
 
   override def addActiveRelease(release: String): Unit = {
-    parentTypeMap.put(release, None)
-    parentInterfacesMap.put(release, Iterable.empty)
+    if(!parentTypeMap.contains(release)){
+      parentTypeMap.put(release, None)
+    }
+
+    if(!parentInterfacesMap.contains(release)){
+      parentInterfacesMap.put(release, mutable.Iterable.empty)
+    }
+
     super.addActiveRelease(release)
   }
 

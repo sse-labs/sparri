@@ -84,10 +84,10 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
           releasesFieldName -> buildReleasesValue(tEvo.isActiveIn, libReleases), // "Releases" will be "*" if they are equal to the Lib's Releases
           instantiatingReleasesFieldName -> buildReleasesValue(tEvo.isInstantiatedIn, libReleases), // "InstantiatingReleases" will be "*" if equal to Lib's Releases
           typeParentsFieldName -> tEvo.parentTypeFqnToReleasesMap.map { entry => //TODO: Make java/lang/Object implicit?
-            Map(typeFqnFieldName -> entry._1, releasesFieldName -> entry._2)
+            Map(typeFqnFieldName -> entry._1, releasesFieldName -> buildReleasesValue(entry._2.toList, libReleases))
           },
           typeInterfacesFieldName -> tEvo.parentInterfaceFqnToReleasesMap.map { entry =>
-            Map(typeFqnFieldName -> entry._1, releasesFieldName -> entry._2)
+            Map(typeFqnFieldName -> entry._1, releasesFieldName -> buildReleasesValue(entry._2.toList, libReleases))
           }
         ))
       )
