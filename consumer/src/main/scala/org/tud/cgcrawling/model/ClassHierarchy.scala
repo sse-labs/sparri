@@ -2,25 +2,42 @@ package org.tud.cgcrawling.model
 
 import scala.collection.mutable
 
-class ClassHierarchy private (val roots: Iterable[String]) {
+class ClassHierarchy  {
 
-  private val childMap = mutable.Map[String, Iterable[String]]()
+  private val parentTypeMap = mutable.Map[String, Option[String]]()
+  private val parentInterfacesMap = mutable.Map[String, Iterable[String]]()
+
   private val allTypes = mutable.HashSet[String]()
 
   def allTypeNames: Set[String] = allTypes.toSet
 
-  def childrenOf(parent: String): Option[Iterable[String]] = childMap.get(parent)
+  def parentTypeOf(childFqn: String): Option[String] = parentTypeMap.get(childFqn).flatten
+  def parentInterfacesOf(childFqn: String): Iterable[String] = parentInterfacesMap.getOrElse(childFqn, List.empty)
 
-  private def setChildren(parent: org.opalj.br.ObjectType, children: Iterable[org.opalj.br.ObjectType]): Unit =
-    setChildren(parent.fqn, children.map(_.fqn))
+  private def setParentType(childType: org.opalj.br.ObjectType, parentType: Option[org.opalj.br.ObjectType]): Unit = {
+    setParentType(childType.fqn, parentType.map(_.fqn))
+  }
 
-  private def setChildren(parent: String, children: Iterable[String]): Unit = {
-    allTypes.add(parent)
-    children.foreach(allTypes.add)
+  private def setParentType(childFqn: String, parentFqn: Option[String]): Unit = {
+    allTypes.add(childFqn)
 
-    if(children.nonEmpty){
-      childMap.put(parent, children)
+    if(parentFqn.isDefined) {
+      allTypes.add(parentFqn.get)
     }
+
+    parentTypeMap.put(childFqn, parentFqn)
+  }
+
+  private def setParentInterfaces(childType: org.opalj.br.ObjectType, parentInterfaces: Iterable[org.opalj.br.ObjectType]): Unit = {
+    setParentInterfaces(childType.fqn, parentInterfaces.map(_.fqn))
+
+  }
+
+  private def setParentInterfaces(childFqn: String, parentInterfaceFqns: Iterable[String]): Unit = {
+    allTypes.add(childFqn)
+    parentInterfaceFqns.foreach(allTypes.add)
+
+    parentInterfacesMap.put(childFqn, parentInterfaceFqns)
   }
 
 }
@@ -28,20 +45,14 @@ class ClassHierarchy private (val roots: Iterable[String]) {
 object ClassHierarchy {
 
   def fromOPALModel(ch: org.opalj.br.ClassHierarchy): ClassHierarchy = {
-    //rootTypes contains types and interfaces. Also "directSubtypesOf" retrieves both classes and interfaces
-    val rootTypes = ch.rootTypes
+    val theHierarchy = new ClassHierarchy
 
-    val theHierarchy = new ClassHierarchy(rootTypes.map(_.fqn))
-
-    def addChildren(objType: org.opalj.br.ObjectType): Unit = {
-      val children = ch.directSubtypesOf(objType).toIterable
-
-      theHierarchy.setChildren(objType, children)
-
-      children.foreach(addChildren)
+    def addParents(objType: org.opalj.br.ObjectType): Unit = {
+      theHierarchy.setParentType(objType, ch.superclassType(objType))
+      theHierarchy.setParentInterfaces(objType, ch.superinterfaceTypes(objType).getOrElse(List.empty))
     }
 
-    rootTypes.foreach(addChildren)
+    ch.foreachKnownType(addParents)
 
     theHierarchy
   }

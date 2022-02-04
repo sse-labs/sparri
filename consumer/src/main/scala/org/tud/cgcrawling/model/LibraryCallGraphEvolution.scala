@@ -99,7 +99,8 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
       }
 
       typeEvolutionMap(typeFqn).addActiveRelease(release)
-      typeEvolutionMap(typeFqn).setChildrenIn(release, callgraph.hierarchy.childrenOf(typeFqn).getOrElse(Iterable.empty))
+      typeEvolutionMap(typeFqn).setParentTypeIn(release, callgraph.hierarchy.parentTypeOf(typeFqn))
+      typeEvolutionMap(typeFqn).setParentInterfacesIn(release, callgraph.hierarchy.parentInterfacesOf(typeFqn))
 
       if(callgraph.instantiatedTypeNames.contains(typeFqn)){
         typeEvolutionMap(typeFqn).setInstantiatedIn(release)

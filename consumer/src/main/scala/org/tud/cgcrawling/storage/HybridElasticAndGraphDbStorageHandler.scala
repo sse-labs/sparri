@@ -46,7 +46,8 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   private val typesFieldName = "Types"
   private val instantiatingReleasesFieldName = "InstantiatingReleases"
   private val typeFqnFieldName = "TypeFQN"
-  private val typeChildrenFieldName = "TypeChildren"
+  private val typeParentsFieldName = "TypeParents"
+  private val typeInterfacesFieldName = "TypeInterfaces"
 
   private val clientProps = AkkaHttpClientSettings(Seq(config.elasticClientUri))
 
@@ -76,15 +77,16 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
             scopeFieldName -> dep.identifier.scope
           )
         },
-        //TODO: Restructure to save "parents" and make object implicit
-
         //TODO: Can we leave out some non-project types? Maybe non-instantiated leaf nodes in hierarchy, as they must be included
         //TODO: in the project extending the current one.
         typesFieldName -> cgEvolution.typeEvolutions().map(tEvo => Map(
           typeFqnFieldName -> tEvo.typeFqn,
           releasesFieldName -> buildReleasesValue(tEvo.isActiveIn, libReleases), // "Releases" will be "*" if they are equal to the Lib's Releases
           instantiatingReleasesFieldName -> buildReleasesValue(tEvo.isInstantiatedIn, libReleases), // "InstantiatingReleases" will be "*" if equal to Lib's Releases
-          typeChildrenFieldName -> tEvo.childFqnToReleasesMap.map{ entry =>
+          typeParentsFieldName -> tEvo.parentTypeFqnToReleasesMap.map { entry => //TODO: Make java/lang/Object implicit?
+            Map(typeFqnFieldName -> entry._1, releasesFieldName -> entry._2)
+          },
+          typeInterfacesFieldName -> tEvo.parentInterfaceFqnToReleasesMap.map { entry =>
             Map(typeFqnFieldName -> entry._1, releasesFieldName -> entry._2)
           }
         ))
@@ -242,7 +244,11 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
               KeywordField(typeFqnFieldName),
               KeywordField(releasesFieldName),
               KeywordField(instantiatingReleasesFieldName),
-              NestedField(typeChildrenFieldName).fields(
+              NestedField(typeParentsFieldName).fields(
+                KeywordField(typeFqnFieldName),
+                KeywordField(releasesFieldName)
+              ),
+              NestedField(typeInterfacesFieldName).fields(
                 KeywordField(typeFqnFieldName),
                 KeywordField(releasesFieldName)
               )

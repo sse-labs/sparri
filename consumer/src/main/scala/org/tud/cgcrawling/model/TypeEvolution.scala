@@ -6,20 +6,26 @@ import scala.collection.mutable.ListBuffer
 class TypeEvolution(val typeFqn: String) extends CgElementEvolution {
 
   private val instantiatedIn: mutable.ListBuffer[String] = new ListBuffer[String]
-  private val childMap: mutable.Map[String, Iterable[String]] = new mutable.HashMap[String, Iterable[String]]
+  private val parentTypeMap: mutable.Map[String, Option[String]] = new mutable.HashMap[String, Option[String]]()
+  private val parentInterfacesMap: mutable.Map[String, Iterable[String]] = new mutable.HashMap[String, Iterable[String]]()
 
 
   private def activateRelease(release: String): Unit = if(isActiveIn.contains(release)) addActiveRelease(release)
 
   override def addActiveRelease(release: String): Unit = {
-    // If type active in release, it is reasonable to assume it initially has no children in this release
-    childMap.put(release, Iterable.empty)
+    parentTypeMap.put(release, None)
+    parentInterfacesMap.put(release, Iterable.empty)
     super.addActiveRelease(release)
   }
 
-  def setChildrenIn(release: String, children: Iterable[String]): Unit = {
+  def setParentTypeIn(release: String, parentType: Option[String]): Unit = {
     activateRelease(release)
-    childMap.update(release, children)
+    parentTypeMap.update(release, parentType)
+  }
+
+  def setParentInterfacesIn(release: String, parentInterfaces: Iterable[String]): Unit = {
+    activateRelease(release)
+    parentInterfacesMap.update(release, parentInterfaces)
   }
 
   def setInstantiatedIn(release: String): Unit = {
@@ -29,17 +35,32 @@ class TypeEvolution(val typeFqn: String) extends CgElementEvolution {
 
   def isInstantiatedIn: List[String] = instantiatedIn.toList
 
-  def childFqnToReleasesMap: Map[String, Iterable[String]] = {
-
+  def parentTypeFqnToReleasesMap: Map[String, Iterable[String]] = {
     val invertedMap = new mutable.HashMap[String, mutable.ListBuffer[String]]()
-    for( (release, children) <- childMap) {
-      children.foreach{ child =>
 
-        if(!invertedMap.contains(child)){
-          invertedMap.put(child, new ListBuffer[String])
+    for( (release, parentOpt) <- parentTypeMap) {
+      if(parentOpt.isDefined){
+        if(!invertedMap.contains(parentOpt.get)){
+          invertedMap.put(parentOpt.get, new ListBuffer[String])
+        }
+        invertedMap(parentOpt.get).append(release)
+      }
+    }
+
+    invertedMap.mapValues(_.toIterable).toMap
+  }
+
+  def parentInterfaceFqnToReleasesMap: Map[String, Iterable[String]] = {
+    val invertedMap = new mutable.HashMap[String, mutable.ListBuffer[String]]()
+
+    for( (release, interfaces) <- parentInterfacesMap){
+      interfaces.foreach{ interface =>
+
+        if(!invertedMap.contains(interface)){
+          invertedMap.put(interface, new ListBuffer[String])
         }
 
-        invertedMap(child).append(release)
+        invertedMap(interface).append(release)
       }
     }
 
