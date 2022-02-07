@@ -1,6 +1,7 @@
 package org.tud.cgcrawling.callgraphs
 
 import akka.actor.ActorSystem
+import org.opalj.de.DependencyExtractor
 import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.dependencies.JekaDependencyExtractor
@@ -24,7 +25,6 @@ class LibraryCallgraphBuilder(groupId: String,
 
   private[callgraphs] val classFileCache: ArtifactClassfileCache = new ArtifactClassfileCache(20)
   private[callgraphs] val downloader: MavenJarDownloader = new MavenJarDownloader()
-  private[callgraphs] val dependencyExtractor: JekaDependencyExtractor = new JekaDependencyExtractor(config)
 
   private val classFqnToDependencyMap: mutable.Map[String, MavenIdentifier] = new mutable.HashMap()
 
@@ -51,7 +51,7 @@ class LibraryCallgraphBuilder(groupId: String,
     val downloadResponse = downloader.downloadJar(identifier)
 
     // Get dependencies
-    val dependencies = dependencyExtractor.getDeclaredDependencies(identifier) match {
+    val dependencies = JekaDependencyExtractor.getDeclaredDependencies(identifier) match {
       case Success(dependencies) => dependencies.toSet
       case Failure(ex) =>
         log.error(s"Failed to extract dependencies for release ${identifier.version} of library ${evolution.libraryName}", ex)
@@ -76,7 +76,7 @@ class LibraryCallgraphBuilder(groupId: String,
   }
 
   private[callgraphs] def getAllThirdPartyClassesWithCache(identifier: MavenIdentifier, loadImplementation: Boolean = false): ClassList = {
-    dependencyExtractor.resolveAllDependencies(identifier)._1 match {
+    JekaDependencyExtractor.resolveAllDependencies(identifier)._1 match {
       case Success(allDependencies) =>
         allDependencies
           .map(_.identifier)

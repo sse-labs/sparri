@@ -43,7 +43,7 @@ class CallGraphCrawler(val configuration: Configuration)
 
     // Instantiate the LibraryCallgraphBuilder only if the given library is not the JRE. If it is the JRE, we want to
     // use a dedicated builder
-    val builder = if(!artifactId.equals("<jre>")) {
+    var builder = if(!artifactId.equals("<jre>")) {
       Some(new LibraryCallgraphBuilder(groupId, artifactId, configuration))
     } else { None }
 
@@ -54,6 +54,7 @@ class CallGraphCrawler(val configuration: Configuration)
 
         // Shutdown builder (only necessary if not JRE)
         builder.foreach(_.shutdown())
+        builder = null //Free unused class space as soon as possible
 
         // Print success and statistics
         log.info(s"Finished building CG evolution for ${evolution.libraryName}.")
@@ -65,6 +66,7 @@ class CallGraphCrawler(val configuration: Configuration)
       case Failure(ex) =>
         log.error(s"Failed to read versions for library $groupId:$artifactId", ex)
         builder.foreach(_.shutdown())
+        builder = null
         GraphDbStorageResult(s"$groupId:$artifactId", success = false)
     }
 

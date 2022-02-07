@@ -9,7 +9,6 @@ class PomFileDependencyExtractorTest extends AnyFlatSpec with must.Matchers{
 
   val config: Configuration = new Configuration()
 
-  val jekaExtractor = new JekaDependencyExtractor(config)
   val aetherExtractor = new PomFileDependencyExtractor(config)
 
   val identifier1: MavenIdentifier =
@@ -17,7 +16,7 @@ class PomFileDependencyExtractorTest extends AnyFlatSpec with must.Matchers{
 
   "The recursive dependency extraction" must "collect dependencies at different depths" in {
 
-    val jekaResult = jekaExtractor.resolveAllDependencies(identifier1)
+    val jekaResult = JekaDependencyExtractor.resolveAllDependencies(identifier1)
     val aetherResult = aetherExtractor.resolveAllDependencies(identifier1)
 
     assert(jekaResult._1.isSuccess)
@@ -30,7 +29,7 @@ class PomFileDependencyExtractorTest extends AnyFlatSpec with must.Matchers{
   }
 
   "The two resolve implementations" must "not differ for direct dependencies" in {
-    val jekaResult = jekaExtractor.getDeclaredDependencies(identifier1)
+    val jekaResult = JekaDependencyExtractor.getDeclaredDependencies(identifier1)
     val aetherResult = aetherExtractor.resolveDependencies(identifier1)
 
     assert(jekaResult.isSuccess)
@@ -49,11 +48,11 @@ class PomFileDependencyExtractorTest extends AnyFlatSpec with must.Matchers{
   "The two resolve implementations" must "should be somewhat equal in execution time" in {
 
     val start = System.currentTimeMillis()
-    jekaExtractor.getDeclaredDependencies(identifier1)
+    JekaDependencyExtractor.getDeclaredDependencies(identifier1)
     val j1 = System.currentTimeMillis()
     aetherExtractor.resolveDependencies(identifier1)
     val a1 = System.currentTimeMillis()
-    val jekaResult = jekaExtractor.resolveAllDependencies(identifier1)
+    val jekaResult = JekaDependencyExtractor.resolveAllDependencies(identifier1)
     val j2 = System.currentTimeMillis()
     val aetherResult = aetherExtractor.resolveAllDependencies(identifier1)
     val a2 = System.currentTimeMillis()
