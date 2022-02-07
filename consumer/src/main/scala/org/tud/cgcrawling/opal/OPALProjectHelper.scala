@@ -30,8 +30,6 @@ object OPALProjectHelper {
   }
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
-  private val fullClassFileReader = Project.JavaClassFileReader(projectLogCtx, BaseConfig)
-  private val interfaceClassFileReader = Java16LibraryFramework
 
   lazy val jreClassFqns: List[String] = jreClasses.map(_._1.fqn)
 
@@ -59,6 +57,20 @@ object OPALProjectHelper {
         case _ => true
       })
       .flatMap(_.get)
+  }
+
+  /**
+   * Builds the ClassFileReader to process ClassFiles with.
+   * @param loadImplementation Decides whether or not the reader loads implementation (code) or interfaces-only
+   * @return ClassFileReader
+   * @note We do not use instance variables here, since the Java16LibraryFramework uses caching, and the caches will
+   *       grow continuously until the class space is exhausted
+   */
+  def getClassFileReader(loadImplementation: Boolean): Java16LibraryFramework = {
+    if(loadImplementation)
+      Project.JavaClassFileReader(projectLogCtx, BaseConfig)
+    else
+      Java16LibraryFramework
   }
 
   def isThirdPartyMethod(project: Project[URL],method: DeclaredMethod): Boolean = {
@@ -98,7 +110,7 @@ object OPALProjectHelper {
     val source = jmod.toURI.toURL
     val entryEnum = zipFile.entries()
 
-    val reader = if(loadImplementation) this.fullClassFileReader else this.interfaceClassFileReader
+    val reader = getClassFileReader(loadImplementation)
 
     while(entryEnum.hasMoreElements){
       val currentEntry = entryEnum.nextElement()
@@ -124,7 +136,7 @@ object OPALProjectHelper {
 
     var currentEntry = jarInputStream.getNextJarEntry
 
-    val reader = if(loadImplementation) this.fullClassFileReader else this.interfaceClassFileReader
+    val reader = getClassFileReader(loadImplementation)
 
     while(currentEntry != null){
       val entryName = currentEntry.getName.toLowerCase
