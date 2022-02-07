@@ -11,6 +11,7 @@ import scala.util.Try
 class JekaDependencyExtractor(configuration: Configuration) extends DependencyExtractor {
 
   private val resolver = JkDependencyResolver.of().addRepos(JkRepo.ofMavenCentral())
+  resolver.setUseCache
   resolver.getParams.setFailOnDependencyResolutionError(false)
 
   override def resolveDependencies(identifier: MavenIdentifier): Try[Dependencies] = Try {
@@ -50,20 +51,6 @@ class JekaDependencyExtractor(configuration: Configuration) extends DependencyEx
       .toList
       .distinct
       .filter(dep => !dep.identifier.equals(identifier))), Seq.empty)
-  }
-
-}
-
-object JekaDependencyExtractor {
-
-  private var theInstance: Option[JekaDependencyExtractor] = None;
-
-  def getInstance(config: Configuration): JekaDependencyExtractor = {
-    if(theInstance.isEmpty){
-      theInstance = Some(new JekaDependencyExtractor(config))
-    }
-
-    theInstance.get
   }
 
 }

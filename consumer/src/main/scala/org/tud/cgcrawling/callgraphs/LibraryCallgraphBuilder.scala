@@ -24,7 +24,7 @@ class LibraryCallgraphBuilder(groupId: String,
 
   private[callgraphs] val classFileCache: ArtifactClassfileCache = new ArtifactClassfileCache(20)
   private[callgraphs] val downloader: MavenJarDownloader = new MavenJarDownloader()
-  private[callgraphs] val dependencyExtractor: JekaDependencyExtractor = JekaDependencyExtractor.getInstance(config)
+  private[callgraphs] val dependencyExtractor: JekaDependencyExtractor = new JekaDependencyExtractor(config)
 
   private val classFqnToDependencyMap: mutable.Map[String, MavenIdentifier] = new mutable.HashMap()
 
