@@ -2,7 +2,7 @@ package org.tud.reachablemethods.analysis.impl
 
 import org.opalj.br.{ClassHierarchy, Method, ObjectType}
 import org.opalj.br.analyses.Project
-import org.tud.reachablemethods.analysis.dataaccess.{ElasticMethodData, InvocationObligation, MethodDataAccessor}
+import org.tud.reachablemethods.analysis.dataaccess.{ArtifactMetadata, ElasticMethodData, InvocationObligation, MethodDataAccessor}
 import org.tud.reachablemethods.analysis.logging.{AnalysisLogger, AnalysisLogging}
 import org.tud.reachablemethods.analysis.model.MavenIdentifier
 
@@ -10,12 +10,13 @@ import java.net.URL
 import scala.collection.mutable
 import scala.util.{Failure, Success}
 
-class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenIdentifier],
-                                   methodDataAccessor: MethodDataAccessor, opalProject: Project[URL], override val log: AnalysisLogger) extends AnalysisLogging {
+class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
+                                   methodDataAccessor: MethodDataAccessor,
+                                   opalProject: Project[URL],
+                                   override val log: AnalysisLogger) extends AnalysisLogging {
 
   private val instantiatedTypeNames: mutable.Set[String] = new mutable.HashSet[String]()
 
-  private val elasticIdMethodIndex: mutable.Map[String, ElasticMethodData] = new mutable.HashMap()
   private val signatureMethodDataIndex: mutable.Map[String, ElasticMethodData] = new mutable.HashMap()
   private val fqnTypeIndex: mutable.Map[String, ObjectType] = new mutable.HashMap()
   private val typeFqnMethodObjectIndex: mutable.Map[String, mutable.Set[Method]] = new mutable.HashMap()
@@ -25,13 +26,22 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
 
   private val methodSignaturesProcessed: mutable.Set[String] = new mutable.HashSet()
 
+  //TODO: Restructure indices and their initialization
+  //TODO:   1.) Load all dependency types from Elastic -> Index instantiated types, build partial hierarchy
+  //TODO:   2.) Add JRE / Project types from the OPAL project -> Merge hierarchy, extend set of instantiated types
+  //TODO:   3.) Load all dependency methods from Elastic -> Index by signature and possibly by TypeFQN
+  //TODO:   4.) Merge OPAL project methods into indices -> Find appropriate index format
+
+
+  log.debug("Building type hierarchy index...")
+  loadAllDependencyTypes()
 
   log.debug("Indexing all types by FQN...")
   buildFqnTypeIndex()
   buildSignatureMethodIndex()
   log.debug("Done indexing all types.")
   log.debug("Indexing all dependency methods...")
-  loadAllDependencies()
+  loadAllDependencyMethods()
   log.debug("Done indexing all dependencies.")
 
 
@@ -108,13 +118,19 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
 
   private def addToMethodIndices(methodData: ElasticMethodData): ElasticMethodData = {
 
-    elasticIdMethodIndex.put(methodData.elasticId, methodData)
-
     if(!methodData.isExtern){
       signatureMethodDataIndex.put(methodData.signature, methodData)
     }
 
     methodData
+  }
+
+  private def addToTypeIndices(metadata: ArtifactMetadata): Unit = {
+    metadata.types.foreach { artifactType =>
+      if(artifactType.isInstantiated) instantiatedTypeNames.add(artifactType.fqn)
+
+      //TODO: Build type hierarchy
+    }
   }
 
 
@@ -136,13 +152,24 @@ class CompositionalAnalysisContext(classFileFqnDependencyMap: Map[String, MavenI
     }
   }
 
-  private def loadAllDependencies(): Unit = {
-    classFileFqnDependencyMap.values.toList.distinct.foreach{ ident =>
+  private def loadAllDependencyMethods(): Unit = {
+    dependencies.foreach { ident =>
       methodDataAccessor.getArtifactMethods(ident.libraryIdentifier, ident.version) match {
         case Success(hits) =>
           hits.foreach(addToMethodIndices)
         case Failure(ex) =>
           log.error(s"Failed to load Dependency methods for ${ident.libraryIdentifier}", ex)
+      }
+    }
+  }
+
+  private def loadAllDependencyTypes(): Unit = {
+    dependencies.foreach { ident =>
+      methodDataAccessor.getArtifactMetadata(ident.libraryIdentifier, ident.version) match {
+        case Success(metadata) =>
+          addToTypeIndices(metadata)
+        case Failure(ex) =>
+          log.error(s"Failed to load Dependency metadata for ${ident.libraryIdentifier}", ex)
       }
     }
   }

@@ -48,7 +48,7 @@ class CompositionalReachabilityAnalysisTest extends AnyFlatSpec with must.Matche
     //assert(analysis.analysisPossible(deps.map(_.dependencyIdentifier)))
 
     val classesRoot = new File(getClass.getResource("/validproject/classes").getPath)
-    val result = analysis.analyzeMavenProject(classesRoot, deps, treatProjectAsLibrary = false)
+    val result = analysis.analyzeMavenProject(classesRoot, deps.map(_.dependencyIdentifier), treatProjectAsLibrary = false)
 
     assert(result.isSuccess)
   }
@@ -79,8 +79,8 @@ class CompositionalReachabilityAnalysisTest extends AnyFlatSpec with must.Matche
     assert(compositionalAnalysis.analysisPossible(deps.map(_.dependencyIdentifier)))
 
 
-    val regularResult = regularAnalysis.analyzeMavenProject(classesRoot, deps, treatProjectAsLibrary = false)
-    val compositionalResult = compositionalAnalysis.analyzeMavenProject(classesRoot, deps, treatProjectAsLibrary = false)
+    val regularResult = regularAnalysis.analyzeMavenProject(classesRoot, deps.map(_.dependencyIdentifier), treatProjectAsLibrary = false)
+    val compositionalResult = compositionalAnalysis.analyzeMavenProject(classesRoot, deps.map(_.dependencyIdentifier), treatProjectAsLibrary = false)
 
     assert(regularResult.isSuccess)
     assert(compositionalResult.isSuccess)

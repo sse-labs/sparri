@@ -91,8 +91,11 @@ object OPALProjectHelper {
 
   def buildOPALProject(projectClasses: ClassList, thirdPartyClasses: ClassList, treatProjectAsLibrary: Boolean): Project[URL] = {
 
-    val config = if(treatProjectAsLibrary) BaseConfig.withValue("org.opalj.br.analyses.cg.InitialEntryPointsKey.analysis",
-      ConfigValueFactory.fromAnyRef("org.opalj.br.analyses.cg.LibraryEntryPointsFinder")) else BaseConfig
+    var config = BaseConfig.withValue("org.opalj.br.reader.ClassFileReader.Invokedynamic.rewrite",
+      ConfigValueFactory.fromAnyRef(true))
+
+    config = if(treatProjectAsLibrary) config.withValue("org.opalj.br.analyses.cg.InitialEntryPointsKey.analysis",
+      ConfigValueFactory.fromAnyRef("org.opalj.br.analyses.cg.LibraryEntryPointsFinder")) else config
 
     val inconsistentExceptionHandler =
       (_: LogContext, error: InconsistentProjectException) => log.warn("Inconsistent Project Exception: " + error.message)

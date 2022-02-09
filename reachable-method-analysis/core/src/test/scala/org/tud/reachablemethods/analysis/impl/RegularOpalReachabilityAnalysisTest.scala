@@ -28,7 +28,7 @@ class RegularOpalReachabilityAnalysisTest extends AnyFlatSpec with must.Matchers
     assert(analysis.analysisPossible(deps.map(_.dependencyIdentifier)))
 
     val classesRoot = new File(getClass.getResource("/validproject/classes").getPath)
-    val result = analysis.analyzeMavenProject(classesRoot, deps, treatProjectAsLibrary = false)
+    val result = analysis.analyzeMavenProject(classesRoot, deps.map(_.dependencyIdentifier), treatProjectAsLibrary = false)
 
     assert(result.isSuccess)
   }
