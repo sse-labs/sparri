@@ -29,18 +29,13 @@ class CompositionalReachabilityAnalysis(configuration: Configuration, override v
       log.info("Initializing OPAL analysis infrastructure..")
 
       // We always load the local JRE, and no further dependency classes. The local JRE should correspond to the analyses-time JRE
-      val opalProject = OPALProjectHelper.buildOPALProject(projectClasses, OPALProjectHelper.jreClasses, treatProjectAsLibrary)
+      val opalProject = OPALProjectHelper.buildOPALProject(projectClasses, List.empty, treatProjectAsLibrary)
       log.info("Done Initializing OPAL.")
 
       val startDownload = System.currentTimeMillis()
 
       // Context will initialize itself. In that, it will download all methods and types for all dependencies.
       val analysisContext = new CompositionalAnalysisContext(dependencies, methodAccessor, opalProject, log)
-
-      // Add all instantiated types of current project to index, this will include the JRE (which is the only dependency in the OPAL project)
-      analysisContext.indexInstantiatedTypes(CallGraphBuilder.getInstantiatedTypeNames(opalProject, projectOnly = false))
-
-      //TODO: Merge type hierarchy from OPAL project into partial hierarchy of the analysis context
 
       val downloadDuration = (System.currentTimeMillis() - startDownload) / 1000
       val startAnalysis = System.currentTimeMillis()

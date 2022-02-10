@@ -1,10 +1,11 @@
 package org.tud.reachablemethods.analysis.impl
 
-import org.opalj.br.{ClassHierarchy, Method, ObjectType}
+import org.opalj.br.{Method, ObjectType}
 import org.opalj.br.analyses.Project
 import org.tud.reachablemethods.analysis.dataaccess.{ArtifactMetadata, ElasticMethodData, InvocationObligation, MethodDataAccessor}
+import org.tud.reachablemethods.analysis.impl.callgraphs.CallGraphBuilder
 import org.tud.reachablemethods.analysis.logging.{AnalysisLogger, AnalysisLogging}
-import org.tud.reachablemethods.analysis.model.MavenIdentifier
+import org.tud.reachablemethods.analysis.model.{MavenIdentifier, TypeHierarchy}
 
 import java.net.URL
 import scala.collection.mutable
@@ -15,50 +16,48 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
                                    opalProject: Project[URL],
                                    override val log: AnalysisLogger) extends AnalysisLogging {
 
-  private val instantiatedTypeNames: mutable.Set[String] = new mutable.HashSet[String]()
+  // The type hierarchy that will be extended while processing new type information
+  private implicit val typeHierarchy: TypeHierarchy = new TypeHierarchy(log)
 
-  private val signatureMethodDataIndex: mutable.Map[String, ElasticMethodData] = new mutable.HashMap()
-  private val fqnTypeIndex: mutable.Map[String, ObjectType] = new mutable.HashMap()
-  private val typeFqnMethodObjectIndex: mutable.Map[String, mutable.Set[Method]] = new mutable.HashMap()
+  // String sets keeping track of instantiated types and methods seen
+  private val instantiatedTypeNames: mutable.Set[String] = new mutable.HashSet[String]()
+  private val methodSignaturesProcessed: mutable.Set[String] = new mutable.HashSet()
+
+  // Lookup maps to speed up analysis performance. Will be extended while new information is loaded
+  private val projectOnly_ObjectTypeFqnLookup: mutable.Map[String, ObjectType] = new mutable.HashMap()
+  private val methodInformationSignatureLookup: mutable.Map[String, Either[Method, ElasticMethodData]] = new mutable.HashMap()
+  private val methodInformationTypeFqnLookup: mutable.Map[String, mutable.Set[Either[Method, ElasticMethodData]]] = new mutable.HashMap()
+
 
 
   private val uidObligationCache: mutable.Map[String, Option[Iterable[Either[Method, ElasticMethodData]]]] = new mutable.HashMap()
 
-  private val methodSignaturesProcessed: mutable.Set[String] = new mutable.HashSet()
 
-  //TODO: Restructure indices and their initialization
-  //TODO:   1.) Load all dependency types from Elastic -> Index instantiated types, build partial hierarchy
-  //TODO:   2.) Add JRE / Project types from the OPAL project -> Merge hierarchy, extend set of instantiated types
-  //TODO:   3.) Load all dependency methods from Elastic -> Index by signature and possibly by TypeFQN
-  //TODO:   4.) Merge OPAL project methods into indices -> Find appropriate index format
-
+  //---------------------------------------------------
+  //  START BUILDING LOOKUPS
+  //---------------------------------------------------
 
   log.debug("Building type hierarchy index...")
   loadAllDependencyTypes()
-
-  log.debug("Indexing all types by FQN...")
-  buildFqnTypeIndex()
-  buildSignatureMethodIndex()
-  log.debug("Done indexing all types.")
-  log.debug("Indexing all dependency methods...")
+  loadAllProjectTypes()
+  log.debug("Building method indices...")
+  // Important to first load dependency methods. This way, we only add project information about methods that are not
+  // in elastic
   loadAllDependencyMethods()
-  log.debug("Done indexing all dependencies.")
+  loadAllProjectMethods()
+  log.debug("Done building indices.")
+
+  //---------------------------------------------------
+  //  END BUILDING LOOKUPS
+  //
+  //  At this point, all indices are in their final form and
+  //  could be materialized into lazy vals for querying
+  //---------------------------------------------------
 
 
   // Indices that materialize into immutable collections once querying starts
-  lazy val classHierarchy: ClassHierarchy = opalProject.classHierarchy
-
   lazy val instantiatedTypes: Set[String] = instantiatedTypeNames.toSet
 
-  lazy val typeIndex: Map[String, ObjectType] = fqnTypeIndex.toMap
-
-  lazy val methodObjectIndex: Map[String, Set[Method]] = typeFqnMethodObjectIndex.mapValues(_.toSet).toMap
-
-  lazy val methodDataIndex: Map[String, ElasticMethodData] = signatureMethodDataIndex.toMap
-
-  def indexInstantiatedTypes(typeNames: Iterable[String]): Unit = {
-    typeNames.foreach(instantiatedTypeNames.add)
-  }
 
   def isTypeInstantiated(typeName: String): Boolean = instantiatedTypes.contains(typeName)
 
@@ -74,7 +73,8 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
     uidObligationCache.contains(obligationInLibraryUid(obligation, libraryIdent))
   }
 
-  def resolveObligationInLibrary(obligation: InvocationObligation, libraryIdent: String): Option[Iterable[Either[Method, ElasticMethodData]]]= {
+  //TODO: Redesign using new type hierarchy
+  /*def resolveObligationInLibrary(obligation: InvocationObligation, libraryIdent: String): Option[Iterable[Either[Method, ElasticMethodData]]]= {
     val obligationKey = obligationInLibraryUid(obligation, libraryIdent)
 
     if(uidObligationCache.contains(obligationKey)){
@@ -97,58 +97,57 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
 
       result
     }
+  }*/
+
+  def signatureLookup(signature: String): Option[Either[Method, ElasticMethodData]] = {
+    methodInformationSignatureLookup.get(signature)
   }
 
+  private def obligationInLibraryUid(obligation: InvocationObligation, libIdent: String): String =
+    obligation.declaredTypeName + obligation.methodDescription + libIdent
 
-  def getMethodBySignatureAndClass(signature: String, classFqn: String): Option[ElasticMethodData] = {
-    if(signatureMethodDataIndex.contains(signature)){
-      Some(signatureMethodDataIndex(signature))
-    } else {
-      None /*
-      classFileFqnDependencyMap
-        .get(classFqn)
-        .flatMap(ident => methodDataAccessor.getArtifactMethodBySignatures(List(signature), ident.libraryIdentifier, ident.version).toOption)
-        .flatMap(hits => hits.map(addToMethodIndices).headOption)*/
-    }
-  }
 
-  def signatureLookup(signature: String): Option[ElasticMethodData] = {
-    signatureMethodDataIndex.get(signature)
-  }
 
-  private def addToMethodIndices(methodData: ElasticMethodData): ElasticMethodData = {
+  //---------------------------------------------------------
+  //  START OF INDEX CREATION METHODS
+  //---------------------------------------------------------
+
+  private def addToMethodIndices(methodData: ElasticMethodData): Unit = {
 
     if(!methodData.isExtern){
-      signatureMethodDataIndex.put(methodData.signature, methodData)
+      methodInformationSignatureLookup.put(methodData.signature, Right(methodData))
     }
 
-    methodData
+    if(!methodInformationTypeFqnLookup.contains(methodData.typeFqn)){
+      methodInformationTypeFqnLookup.put(methodData.typeFqn, mutable.Set.empty)
+    }
+
+    methodInformationTypeFqnLookup(methodData.typeFqn).add(Right(methodData))
+  }
+
+  private def addToMethodIndices(method: Method): Unit = {
+    if(!methodInformationSignatureLookup.contains(method.fullyQualifiedSignature)){
+      methodInformationSignatureLookup.put(method.fullyQualifiedSignature, Left(method))
+    }
+
+    val typeFqn = method.classFile.thisType.fqn
+
+    if(!methodInformationTypeFqnLookup.contains(typeFqn)){
+      methodInformationTypeFqnLookup.put(typeFqn, mutable.Set.empty)
+    }
+
+    methodInformationTypeFqnLookup(typeFqn).add(Left(method))
   }
 
   private def addToTypeIndices(metadata: ArtifactMetadata): Unit = {
     metadata.types.foreach { artifactType =>
       if(artifactType.isInstantiated) instantiatedTypeNames.add(artifactType.fqn)
 
-      //TODO: Build type hierarchy
-    }
-  }
+      typeHierarchy.addType(artifactType.fqn, artifactType.parentType, artifactType.parentInterfaces)
 
-
-  private def obligationInLibraryUid(obligation: InvocationObligation, libIdent: String): String =
-    obligation.declaredTypeName + obligation.methodDescription + libIdent
-
-  private def buildFqnTypeIndex(): Unit = {
-    opalProject.allClassFiles.foreach(cf => fqnTypeIndex.put(cf.thisType.fqn, cf.thisType))
-  }
-
-  private def buildSignatureMethodIndex(): Unit = {
-    opalProject.allMethods.foreach { m =>
-
-      if(!typeFqnMethodObjectIndex.contains(m.classFile.thisType.fqn)){
-        typeFqnMethodObjectIndex.put(m.classFile.thisType.fqn, new mutable.HashSet[Method]())
+      if(!methodInformationTypeFqnLookup.contains(artifactType.fqn)){
+        methodInformationTypeFqnLookup.put(artifactType.fqn, mutable.Set.empty)
       }
-
-      typeFqnMethodObjectIndex(m.classFile.thisType.fqn).add(m)
     }
   }
 
@@ -163,6 +162,10 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
     }
   }
 
+  private def loadAllProjectMethods(): Unit = {
+    opalProject.allMethods.foreach(addToMethodIndices)
+  }
+
   private def loadAllDependencyTypes(): Unit = {
     dependencies.foreach { ident =>
       methodDataAccessor.getArtifactMetadata(ident.libraryIdentifier, ident.version) match {
@@ -172,6 +175,28 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
           log.error(s"Failed to load Dependency metadata for ${ident.libraryIdentifier}", ex)
       }
     }
+  }
+
+  private def loadAllProjectTypes(): Unit = {
+    val opalHierarchy = opalProject.classHierarchy
+
+    opalHierarchy.foreachKnownType { objectType =>
+      val typeFqn = objectType.fqn
+      val parentOpt = opalHierarchy.superclassType(objectType).map(_.fqn)
+      //TODO: Semantics of superinterfaceTypes correct?
+      val interfaces = opalHierarchy.superinterfaceTypes(objectType).map(set => set.map(_.fqn)).getOrElse(Iterable.empty)
+
+      typeHierarchy.addType(typeFqn, parentOpt, interfaces)
+      projectOnly_ObjectTypeFqnLookup.put(typeFqn, objectType)
+
+      if(!methodInformationTypeFqnLookup.contains(typeFqn)){
+        methodInformationTypeFqnLookup.put(typeFqn, mutable.Set.empty)
+      }
+    }
+
+    CallGraphBuilder
+      .getInstantiatedTypeNames(opalProject, projectOnly = false)
+      .foreach(instantiatedTypeNames.add)
   }
 
 }

@@ -71,8 +71,8 @@ class CompositionalReachabilityAnalysisTest extends AnyFlatSpec with must.Matche
     )
     val classesRoot = new File(getClass.getResource("/validproject/classes").getPath)
 
-
-    val regularAnalysis = new RegularOpalReachabilityAnalysis()
+    val dependencyClasses = deps.flatMap(_.classContainer.getClassList(true).get).toList
+    val regularAnalysis = new RegularOpalReachabilityAnalysis(dependencyClasses)
     val compositionalAnalysis = new CompositionalReachabilityAnalysis(new Configuration)
 
     assert(regularAnalysis.analysisPossible(deps.map(_.dependencyIdentifier)))

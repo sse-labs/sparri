@@ -49,10 +49,15 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
 
     def processDependencyMethod(method: Method): Unit = {
 
-      val dataOpt = context.getMethodBySignatureAndClass(method.fullyQualifiedSignature, method.classFile.fqn)
+      val methodOpt = context.signatureLookup(method.fullyQualifiedSignature)
 
-      if(dataOpt.isDefined){
-        processDependencyMethodData(dataOpt.get)
+      if(methodOpt.isDefined){
+        methodOpt.get match {
+          case Left(method) =>
+            processInternalMethod(method)// TODO: We now have JRE Methods with no elastic data. Should be treated like internal methods?
+          case Right(methodData) =>
+            processDependencyMethodData(methodData)
+        }
       } else {
         log.error("No method data in index: " + method.fullyQualifiedSignature)
       }
@@ -80,9 +85,9 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
 
 
       dependencyCallees
-        .foreach(d => if(!context.methodSeen(d.signature)) methodsToResolve.append(Right(d)))
+        .foreach(d => methodsToResolve.append(d))
 
-      methodData.obligations.foreach{ obligation =>
+      /*methodData.obligations.foreach{ obligation =>
         if(!context.obligationResolved(obligation, methodData.analyzedLibrary)){
           context.resolveObligationInLibrary(obligation, methodData.analyzedLibrary)
             .getOrElse({
@@ -91,7 +96,8 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
             })
             .foreach(d => methodsToResolve.append(d))
         }
-      }
+      }*/
+      //TODO: Reintroduce method obligation resolving once context is adapted
 
 
 
