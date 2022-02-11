@@ -125,6 +125,29 @@ class TypeHierarchyNode(val typeFqn: String) {
 
   def interfaces(implicit hierarchy: TypeHierarchy): Iterable[TypeHierarchyNode] = hierarchy.getInterfacesOf(typeFqn)
 
+  def allChildren(reflexive: Boolean = true)(implicit hierarchy: TypeHierarchy): Iterable[TypeHierarchyNode] = {
+
+    val childList: mutable.Set[TypeHierarchyNode] = mutable.HashSet()
+
+    def addChildrenRecursive(node: TypeHierarchyNode): Unit = {
+      childList.add(node)
+
+      node.children.foreach { child =>
+        if(!childList.contains(child)){
+          addChildrenRecursive(child)
+        }
+      }
+    }
+
+    children.foreach(addChildrenRecursive)
+
+    if(reflexive){
+      childList.add(this)
+    }
+
+    children.toSet
+  }
+
   override def equals(obj: Any): Boolean = obj match {
     case other: TypeHierarchyNode => typeFqn.equals(other.typeFqn)
     case _ => false

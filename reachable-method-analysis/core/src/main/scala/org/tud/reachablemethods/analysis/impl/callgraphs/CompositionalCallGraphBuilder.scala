@@ -2,6 +2,7 @@ package org.tud.reachablemethods.analysis.impl.callgraphs
 
 import org.opalj.br.Method
 import org.opalj.br.analyses.Project
+import org.opalj.br.instructions.{INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL}
 import org.tud.reachablemethods.analysis.dataaccess.{ElasticMethodData, InvocationObligation}
 import org.tud.reachablemethods.analysis.impl.CompositionalAnalysisContext
 import org.tud.reachablemethods.analysis.logging.AnalysisLogger
@@ -83,24 +84,21 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
         }
       }
 
-
       dependencyCallees
         .foreach(d => methodsToResolve.append(d))
 
-      /*methodData.obligations.foreach{ obligation =>
+      methodData.obligations.foreach{ obligation =>
         if(!context.obligationResolved(obligation, methodData.analyzedLibrary)){
-          context.resolveObligationInLibrary(obligation, methodData.analyzedLibrary)
-            .getOrElse({
-              //log.warn("Type not found while resolving obligation: " + obligation.declaredTypeName)
-              Iterable.empty
-            })
-            .foreach(d => methodsToResolve.append(d))
+
+          val obligationTargets: Iterable[context.MethodInformation] = context
+            .resolveObligationInLibrary(obligation, methodData.analyzedLibrary)
+            .getOrElse(Iterable.empty)
+
+          obligationTargets.foreach{ target =>
+            methodsToResolve.append(target)
+          }
         }
-      }*/
-      //TODO: Reintroduce method obligation resolving once context is adapted
-
-
-
+      }
     }
 
     def processInternalMethod(method: Method): Unit = {
@@ -109,10 +107,12 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
       context.addMethodSeen(method.fullyQualifiedSignature)
 
       if(method.body.isDefined){
-        getAllCallees(method, opalProject)
-          .foreach{ callee =>
-            if(!context.methodSeen(callee.fullyQualifiedSignature)){
-              methodsToResolve.append(Left(callee))
+        getAllCalleesCompositional(method, opalProject)
+          .foreach { callee =>
+            val signature = if(callee.isLeft) callee.left.get.fullyQualifiedSignature else callee.right.get.signature
+
+            if(!context.methodSeen(signature)){
+              methodsToResolve.append(callee)
             }
           }
       }
@@ -131,4 +131,73 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
   }
 
   override protected def isTypeInstantiated(typeFqn: String): Boolean = context.isTypeInstantiated(typeFqn)
+
+
+  private def getAllCalleesCompositional(method: Method, project: Project[URL]): Array[context.MethodInformation] = {
+    //TODO: Have incomplete type information now. This needs to be redesigned
+    assert(method.body.isDefined)
+
+    method
+      .body
+      .get
+      .instructions
+      .filter(instr => instr != null && instr.isMethodInvocationInstruction)
+      .flatMap {
+        case iv: INVOKEVIRTUAL =>
+          val projectHits: Iterable[context.MethodInformation] = project
+            .virtualCall(method.classFile.thisType, iv)
+            .filter(m => isTypeInstantiated(m.classFile.thisType.fqn))
+            .map(Left(_))
+
+          //TODO: Also query context for possible targets
+
+          projectHits
+        case is: INVOKESTATIC =>
+          val resolvedCall = project.staticCall(method.classFile.thisType, is)
+
+          if(resolvedCall.hasValue){
+            Traversable(Left(resolvedCall.value))
+          } else {
+            val contextResolve = context.resolveNonVirtual(is.declaringClass.fqn, is.methodDescriptor.valueToString)
+
+            if(contextResolve.isDefined){
+              Traversable(contextResolve.get)
+            } else {
+              log.warn("Failed to resolve static call " + is.toString())
+              log.warn("\t- Call contained in " + method.fullyQualifiedSignature)
+              Traversable.empty
+            }
+          }
+
+        case special: INVOKESPECIAL =>
+
+          val resolvedCall = project.specialCall(method.classFile.thisType, special)
+
+          if(resolvedCall.hasValue){
+            Traversable(Left(resolvedCall.value))
+          } else {
+
+            val contextResolve = context.resolveNonVirtual(special.declaringClass.fqn, special.methodDescriptor.valueToString)
+
+            if(contextResolve.isDefined){
+              Traversable(contextResolve.get)
+            } else {
+              log.warn("Failed to resolve special call " + special.toString())
+              log.warn("\t- Call contained in " + method.fullyQualifiedSignature)
+              Traversable.empty
+            }
+
+          }
+
+        case interface: INVOKEINTERFACE =>
+          val projectHits: Iterable[context.MethodInformation] = project
+            .interfaceCall(method.classFile.thisType, interface)
+            .filter(m => isTypeInstantiated(m.classFile.thisType.fqn))
+            .map(Left(_))
+
+          //TODO: Also query context for possible targets of this call
+
+          projectHits
+      }
+  }
 }

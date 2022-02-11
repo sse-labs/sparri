@@ -16,6 +16,8 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
                                    opalProject: Project[URL],
                                    override val log: AnalysisLogger) extends AnalysisLogging {
 
+  type MethodInformation = Either[Method, ElasticMethodData]
+
   // The type hierarchy that will be extended while processing new type information
   private implicit val typeHierarchy: TypeHierarchy = new TypeHierarchy(log)
 
@@ -25,12 +27,12 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
 
   // Lookup maps to speed up analysis performance. Will be extended while new information is loaded
   private val projectOnly_ObjectTypeFqnLookup: mutable.Map[String, ObjectType] = new mutable.HashMap()
-  private val methodInformationSignatureLookup: mutable.Map[String, Either[Method, ElasticMethodData]] = new mutable.HashMap()
-  private val methodInformationTypeFqnLookup: mutable.Map[String, mutable.Set[Either[Method, ElasticMethodData]]] = new mutable.HashMap()
+  private val methodInformationSignatureLookup: mutable.Map[String, MethodInformation] = new mutable.HashMap()
+  private val methodInformationTypeFqnLookup: mutable.Map[String, mutable.Set[MethodInformation]] = new mutable.HashMap()
 
 
 
-  private val uidObligationCache: mutable.Map[String, Option[Iterable[Either[Method, ElasticMethodData]]]] = new mutable.HashMap()
+  private val uidObligationCache: mutable.Map[String, Option[Iterable[MethodInformation]]] = new mutable.HashMap()
 
 
   //---------------------------------------------------
@@ -73,34 +75,45 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
     uidObligationCache.contains(obligationInLibraryUid(obligation, libraryIdent))
   }
 
-  //TODO: Redesign using new type hierarchy
-  /*def resolveObligationInLibrary(obligation: InvocationObligation, libraryIdent: String): Option[Iterable[Either[Method, ElasticMethodData]]]= {
+  def resolveNonVirtual(typeFqn: String, methodDescription: String): Option[MethodInformation] = {
+    methodInformationTypeFqnLookup.get(typeFqn).flatMap { allTypeMethods =>
+      allTypeMethods.find(methodDescriptionMatches(methodDescription, _))
+    }
+  }
+
+  def resolveObligationInLibrary(obligation: InvocationObligation, libraryIdent: String): Option[Iterable[MethodInformation]] = {
     val obligationKey = obligationInLibraryUid(obligation, libraryIdent)
 
     if(uidObligationCache.contains(obligationKey)){
       uidObligationCache(obligationKey)
     } else {
+      val declaredTypeOpt = typeHierarchy.getType(obligation.declaredTypeName)
 
-      val declTypeOpt = typeIndex.get(obligation.declaredTypeName)
-
-      val result = declTypeOpt.map{ declType =>
-
-        classHierarchy.allSubtypesIterator(declType, reflexive = true)
-          .filter(t => instantiatedTypes.contains(t.fqn))
-          .flatMap(t => methodObjectIndex.getOrElse(t.fqn, Iterable.empty))
-          .filter(m => (m.name + m.descriptor.valueToString).equals(obligation.methodDescription))
-          .map(m => if(methodDataIndex.contains(m.fullyQualifiedSignature)) Right(methodDataIndex(m.fullyQualifiedSignature)) else Left(m))
+      val allMatchingMethodsOpt = declaredTypeOpt.map { declaredType =>
+        declaredType
+          .allChildren()
+          .filter(typeNode => isTypeInstantiated(typeNode.typeFqn))
+          .flatMap(typeNode => methodInformationTypeFqnLookup.getOrElse(typeNode.typeFqn, Iterable.empty))
+          .filter(methodInfo => methodDescriptionMatches(obligation.methodDescription, methodInfo))
           .toSet
       }
 
-      uidObligationCache.put(obligationKey, result)
+      uidObligationCache.put(obligationKey, allMatchingMethodsOpt)
 
-      result
+      allMatchingMethodsOpt
     }
-  }*/
+  }
 
   def signatureLookup(signature: String): Option[Either[Method, ElasticMethodData]] = {
     methodInformationSignatureLookup.get(signature)
+  }
+
+  private def methodDescriptionMatches(description: String, methodInfo: MethodInformation): Boolean = methodInfo match {
+    case Left(method) =>
+      (method.name + method.descriptor.valueToString).equals(description)
+    case Right(methodData) =>
+      //TODO: Method data does not support this description format yet (i think)
+      false
   }
 
   private def obligationInLibraryUid(obligation: InvocationObligation, libIdent: String): String =
