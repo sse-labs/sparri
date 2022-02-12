@@ -3,7 +3,7 @@ package org.tud.reachablemethods.analysis.impl.callgraphs
 import org.opalj.br.Method
 import org.opalj.br.analyses.Project
 import org.opalj.br.instructions.{INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL}
-import org.tud.reachablemethods.analysis.dataaccess.{ElasticMethodData, InvocationObligation}
+import org.tud.reachablemethods.analysis.dataaccess.ElasticMethodData
 import org.tud.reachablemethods.analysis.impl.CompositionalAnalysisContext
 import org.tud.reachablemethods.analysis.logging.AnalysisLogger
 
@@ -134,7 +134,6 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
 
 
   private def getAllCalleesCompositional(method: Method, project: Project[URL]): Array[context.MethodInformation] = {
-    //TODO: Have incomplete type information now. This needs to be redesigned
     assert(method.body.isDefined)
 
     method
@@ -149,9 +148,14 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
             .filter(m => isTypeInstantiated(m.classFile.thisType.fqn))
             .map(Left(_))
 
-          //TODO: Also query context for possible targets
+          //TODO: Does 'asObjectType' work here?
+          context.resolveVirtual(iv.declaringClass.asObjectType.fqn, iv.methodDescriptor.valueToString) match {
+            case Some(contextHits) => projectHits ++ contextHits
+            case None =>
+              log.warn(s"No context hits for virtual resolve: $iv")
+              projectHits
+          }
 
-          projectHits
         case is: INVOKESTATIC =>
           val resolvedCall = project.staticCall(method.classFile.thisType, is)
 
@@ -195,9 +199,12 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
             .filter(m => isTypeInstantiated(m.classFile.thisType.fqn))
             .map(Left(_))
 
-          //TODO: Also query context for possible targets of this call
-
-          projectHits
+          context.resolveVirtual(interface.declaringClass.fqn, interface.methodDescriptor.valueToString) match {
+            case Some(contextHits) => projectHits ++ contextHits
+            case None =>
+              log.warn(s"No context hits for interface resolve: $interface")
+              projectHits
+          }
       }
   }
 }

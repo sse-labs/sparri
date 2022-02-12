@@ -5,7 +5,7 @@ import org.opalj.br.analyses.Project
 import org.tud.reachablemethods.analysis.dataaccess.{ArtifactMetadata, ElasticMethodData, InvocationObligation, MethodDataAccessor}
 import org.tud.reachablemethods.analysis.impl.callgraphs.CallGraphBuilder
 import org.tud.reachablemethods.analysis.logging.{AnalysisLogger, AnalysisLogging}
-import org.tud.reachablemethods.analysis.model.{MavenIdentifier, TypeHierarchy}
+import org.tud.reachablemethods.analysis.model.{MavenIdentifier, TypeHierarchy, TypeHierarchyNode}
 
 import java.net.URL
 import scala.collection.mutable
@@ -81,6 +81,71 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
     }
   }
 
+  private def findApplicableMethodInfo(typeNode: TypeHierarchyNode,
+                                       methodDescription: String): Option[MethodInformation] = {
+    val directDefinitionOpt = methodInformationTypeFqnLookup
+      .get(typeNode.typeFqn)
+      .flatMap(methods => methods.find(m => methodDescriptionMatches(methodDescription, m)))
+
+    if(directDefinitionOpt.isDefined) {
+      directDefinitionOpt
+    } else {
+      val parentDefinitionOpt = typeNode
+        .parent
+        .flatMap(parentNode => findApplicableMethodInfo(parentNode, methodDescription))
+
+      if(parentDefinitionOpt.isDefined) {
+        parentDefinitionOpt
+      } else {
+        typeNode
+          .interfaces
+          .collectFirst {
+            case interfaceNode if findApplicableMethodInfo(interfaceNode, methodDescription).isDefined =>
+              findApplicableMethodInfo(interfaceNode, methodDescription).get
+          }
+      }
+    }
+  }
+
+  def resolveVirtual(typeFqn: String, methodDescription: String): Option[Iterable[MethodInformation]] = {
+
+    typeHierarchy.getType(typeFqn) match {
+      case Some(declaredTypeNode) =>
+
+        val targets = mutable.HashSet[MethodInformation]()
+
+        def findTargets(currentTypeNode: TypeHierarchyNode, currentApplicableMethod: MethodInformation): Unit = {
+          targets.add(currentApplicableMethod)
+
+          currentTypeNode
+            .children
+            .foreach{ childNode =>
+              val overriddenMethodDef = methodInformationTypeFqnLookup
+                .get(childNode.typeFqn)
+                .flatMap( methods => methods.find(m => methodDescriptionMatches(methodDescription, m)))
+
+              findTargets(childNode, overriddenMethodDef.getOrElse(currentApplicableMethod))
+            }
+        }
+
+        val declaredTypeCallTarget = findApplicableMethodInfo(declaredTypeNode, methodDescription)
+
+        if(declaredTypeCallTarget.isDefined) {
+          findTargets(declaredTypeNode, declaredTypeCallTarget.get)
+
+          Some(targets.toSet)
+        } else {
+          log.error(s"No applicable method found for type $typeFqn and description $methodDescription")
+          None
+        }
+
+      case None =>
+        log.error(s"Did not find declared type of virtual call: $typeFqn")
+        None
+    }
+
+  }
+
   def resolveObligationInLibrary(obligation: InvocationObligation, libraryIdent: String): Option[Iterable[MethodInformation]] = {
     val obligationKey = obligationInLibraryUid(obligation, libraryIdent)
 
@@ -108,13 +173,13 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
     methodInformationSignatureLookup.get(signature)
   }
 
-  private def methodDescriptionMatches(description: String, methodInfo: MethodInformation): Boolean = methodInfo match {
-    case Left(method) =>
-      (method.name + method.descriptor.valueToString).equals(description)
-    case Right(methodData) =>
-      //TODO: Method data does not support this description format yet (i think)
-      false
+  private def methodDescription(methodInfo: MethodInformation): String = methodInfo match {
+    case Left(method) => method.name + method.descriptor.valueToString
+    case Right(methodData) => methodData.name + methodData.descriptor
   }
+
+  private def methodDescriptionMatches(description: String, methodInfo: MethodInformation): Boolean =
+    methodDescription(methodInfo).equals(description)
 
   private def obligationInLibraryUid(obligation: InvocationObligation, libIdent: String): String =
     obligation.declaredTypeName + obligation.methodDescription + libIdent

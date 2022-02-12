@@ -45,7 +45,7 @@ class CompositionalReachabilityAnalysisTest extends AnyFlatSpec with must.Matche
       new MavenJarFileDependency(MavenIdentifier("com.fasterxml.jackson.module", "jackson-module-jaxb-annotations", "2.9.3"), jmjaFile, None)
     )
 
-    //assert(analysis.analysisPossible(deps.map(_.dependencyIdentifier)))
+    assert(analysis.analysisPossible(deps.map(_.dependencyIdentifier)))
 
     val classesRoot = new File(getClass.getResource("/validproject/classes").getPath)
     val result = analysis.analyzeMavenProject(classesRoot, deps.map(_.dependencyIdentifier), treatProjectAsLibrary = false)

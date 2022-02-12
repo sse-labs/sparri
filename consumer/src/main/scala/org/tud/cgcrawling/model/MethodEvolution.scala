@@ -22,7 +22,13 @@ class MethodEvolution(val identifier: MethodIdentifier) extends CgElementEvoluti
 
 }
 
-class MethodIdentifier(val simpleName: String, val typeFqn: String, val fullSignature: String, val isExternal: Boolean, val isPublic: Boolean, val definingArtifact: Option[MavenIdentifier]) {
+class MethodIdentifier(val simpleName: String,
+                       val methodDescriptor: String,
+                       val typeFqn: String,
+                       val fullSignature: String,
+                       val isExternal: Boolean,
+                       val isPublic: Boolean,
+                       val definingArtifact: Option[MavenIdentifier]) {
 
   override def equals(obj: Any): Boolean = {
     obj match {
@@ -63,7 +69,13 @@ class InvocationObligation(val declaredTypeName: String, val methodName: String,
 object MethodIdentifier {
 
   def fromOpalMethod(m: Method, isExternal: Boolean, definingArtifact: Option[MavenIdentifier]): MethodIdentifier = {
-    new MethodIdentifier(m.name, m.classFile.thisType.fqn, m.fullyQualifiedSignature, isExternal, m.isPublic, definingArtifact)
+    new MethodIdentifier(m.name,
+      m.descriptor.valueToString,
+      m.classFile.thisType.fqn,
+      m.fullyQualifiedSignature,
+      isExternal,
+      m.isPublic,
+      definingArtifact)
   }
 
 }

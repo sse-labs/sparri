@@ -252,6 +252,7 @@ class MethodDataAccessor(config: Configuration, override val log: AnalysisLogger
   private[dataaccess] def hitToMethodData(searchHit: SearchHit, libIdent: String, version: String): ElasticMethodData = {
     val fieldMap = searchHit.sourceAsMap
     val mName = fieldMap(ElasticPropertyNames.nameFieldName).asInstanceOf[String]
+    val mDescriptor = fieldMap(ElasticPropertyNames.descriptorFieldName).asInstanceOf[String]
     val mSig = fieldMap(ElasticPropertyNames.signatureFieldName).asInstanceOf[String]
     val mTypeFqn = fieldMap(ElasticPropertyNames.typeFqnFieldName).asInstanceOf[String]
     val mExtern = fieldMap(ElasticPropertyNames.isExternFieldName).asInstanceOf[Boolean]
@@ -278,7 +279,7 @@ class MethodDataAccessor(config: Configuration, override val log: AnalysisLogger
       .map(obj => obj(ElasticPropertyNames.signatureFieldName).asInstanceOf[String])
       .toList
 
-    ElasticMethodData(mName, mSig, mTypeFqn, mExtern, obligations, callees, mDefiningLib, libIdent, version)
+    ElasticMethodData(mName, mDescriptor, mSig, mTypeFqn, mExtern, obligations, callees, mDefiningLib, libIdent, version)
   }
 
 }
@@ -296,6 +297,7 @@ private object ElasticPropertyNames {
 
   val isExternFieldName = "IsExtern"
   val nameFieldName = "Name"
+  val descriptorFieldName = "Descriptor"
   val signatureFieldName = "Signature"
   val signatureKeywordName = "Signature.keyword"
   val obligationFieldName = "Obligations"
@@ -316,6 +318,7 @@ private object ElasticPropertyNames {
 
   val methodDataRequiredFields = List(
     nameFieldName,
+    descriptorFieldName,
     signatureFieldName,
     typeFqnFieldName,
     isExternFieldName,

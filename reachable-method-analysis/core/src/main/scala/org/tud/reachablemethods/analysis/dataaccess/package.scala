@@ -2,8 +2,16 @@ package org.tud.reachablemethods.analysis
 
 package object dataaccess {
 
-  case class ElasticMethodData(name: String, signature: String, typeFqn: String, isExtern: Boolean, obligations: Iterable[InvocationObligation],
-                               calleeSignatures: Iterable[String], definingLibrary: String, analyzedLibrary: String, libraryVersion: String)
+  case class ElasticMethodData(name: String,
+                               descriptor: String,
+                               signature: String,
+                               typeFqn: String,
+                               isExtern: Boolean,
+                               obligations: Iterable[InvocationObligation],
+                               calleeSignatures: Iterable[String],
+                               definingLibrary: String,
+                               analyzedLibrary: String,
+                               libraryVersion: String)
 
   case class ElasticTypeData(fqn: String, isInstantiated: Boolean, parentType: Option[String], parentInterfaces: Set[String])
 

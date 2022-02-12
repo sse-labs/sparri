@@ -29,6 +29,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   private val isExternFieldName = "IsExtern"
   private val isPublicFieldName = "IsPublic"
   private val nameFieldName = "Name"
+  private val descriptorFieldName = "Descriptor"
   private val signatureFieldName = "Signature"
   private val libraryFieldName = "Library"
   private val libraryKeywordName = "Library.keyword"
@@ -116,6 +117,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
                     isExternFieldName -> methodEvolution.identifier.isExternal,
                     isPublicFieldName -> methodEvolution.identifier.isPublic,
                     nameFieldName -> methodEvolution.identifier.simpleName,
+                    descriptorFieldName -> methodEvolution.identifier.methodDescriptor,
                     signatureFieldName -> methodEvolution.identifier.fullSignature,
                     analyzedLibraryFieldName -> cgEvolution.libraryName,
                     definingLibraryFieldName -> methodEvolution.identifier.definingLibraryName,
@@ -207,6 +209,8 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
           .mapping(properties(
             BooleanField(isExternFieldName),
             KeywordField(nameFieldName),
+            KeywordField(descriptorFieldName),
+            //TODO: Signature might be redundant now that we have TypeFqn, SimpleName and Descriptor
             KeywordField(signatureFieldName),
             KeywordField(analyzedLibraryFieldName),
             KeywordField(definingLibraryFieldName),
