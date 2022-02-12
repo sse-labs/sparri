@@ -5,18 +5,19 @@ import org.scalatest.matchers.must
 import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 
-class PomFileDependencyExtractorTest extends AnyFlatSpec with must.Matchers{
+class PomFileDependencyExtractorTest extends AnyFlatSpec with must.Matchers {
 
   val config: Configuration = new Configuration()
 
   val aetherExtractor = new PomFileDependencyExtractor(config)
+  val jekaExtractor = new JekaDependencyExtractor {}
 
   val identifier1: MavenIdentifier =
     MavenIdentifier(config.mavenRepoBase.toString, "love.forte.simple-robot", "api", "2.3.0")
 
   "The recursive dependency extraction" must "collect dependencies at different depths" in {
 
-    val jekaResult = JekaDependencyExtractor.resolveAllDependencies(identifier1)
+    val jekaResult = jekaExtractor.resolveAllDependencies(identifier1)
     val aetherResult = aetherExtractor.resolveAllDependencies(identifier1)
 
     assert(jekaResult._1.isSuccess)
@@ -29,7 +30,7 @@ class PomFileDependencyExtractorTest extends AnyFlatSpec with must.Matchers{
   }
 
   "The two resolve implementations" must "not differ for direct dependencies" in {
-    val jekaResult = JekaDependencyExtractor.getDeclaredDependencies(identifier1)
+    val jekaResult = jekaExtractor.getDeclaredDependencies(identifier1)
     val aetherResult = aetherExtractor.resolveDependencies(identifier1)
 
     assert(jekaResult.isSuccess)
@@ -48,11 +49,11 @@ class PomFileDependencyExtractorTest extends AnyFlatSpec with must.Matchers{
   "The two resolve implementations" must "should be somewhat equal in execution time" in {
 
     val start = System.currentTimeMillis()
-    JekaDependencyExtractor.getDeclaredDependencies(identifier1)
+    jekaExtractor.getDeclaredDependencies(identifier1)
     val j1 = System.currentTimeMillis()
     aetherExtractor.resolveDependencies(identifier1)
     val a1 = System.currentTimeMillis()
-    val jekaResult = JekaDependencyExtractor.resolveAllDependencies(identifier1)
+    val jekaResult = jekaExtractor.resolveAllDependencies(identifier1)
     val j2 = System.currentTimeMillis()
     val aetherResult = aetherExtractor.resolveAllDependencies(identifier1)
     val a2 = System.currentTimeMillis()

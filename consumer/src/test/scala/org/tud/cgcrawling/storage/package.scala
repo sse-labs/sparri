@@ -26,7 +26,7 @@ package object storage extends LibraryArtifactProcessing{
         for(identifier <- identifierIterable){
           val downloadResponse = downloader.downloadJar(identifier)
 
-          val dependencies = JekaDependencyExtractor.resolveDependencies(identifier) match {
+          val dependencies = new JekaDependencyExtractor {}.resolveDependencies(identifier) match {
             case Success(dependencies) =>
               dependencies.toSet
             case Failure(ex) =>

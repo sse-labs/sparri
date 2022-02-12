@@ -8,7 +8,7 @@ import org.tud.cgcrawling.model.DependencyIdentifier
 import scala.collection.JavaConverters.collectionAsScalaIterableConverter
 import scala.util.Try
 
-object JekaDependencyExtractor extends DependencyExtractor {
+trait JekaDependencyExtractor extends DependencyExtractor {
 
   private def withResolver[T](implicit function: JkDependencyResolver[Void] => T): Try[T] = Try {
     val resolver = JkDependencyResolver.of().addRepos(JkRepo.ofMavenCentral())

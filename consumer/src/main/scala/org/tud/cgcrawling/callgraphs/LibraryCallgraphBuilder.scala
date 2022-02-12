@@ -17,7 +17,7 @@ import scala.util.{Failure, Success, Try}
 
 class LibraryCallgraphBuilder(groupId: String,
                               artifactId: String,
-                              config: Configuration)(implicit system: ActorSystem) extends LibraryArtifactProcessing {
+                              config: Configuration)(implicit system: ActorSystem) extends LibraryArtifactProcessing with JekaDependencyExtractor {
 
   override val repoUri: URI = config.mavenRepoBase
 
@@ -51,7 +51,7 @@ class LibraryCallgraphBuilder(groupId: String,
     val downloadResponse = downloader.downloadJar(identifier)
 
     // Get dependencies
-    val dependencies = JekaDependencyExtractor.getDeclaredDependencies(identifier) match {
+    val dependencies = getDeclaredDependencies(identifier) match {
       case Success(dependencies) => dependencies.toSet
       case Failure(ex) =>
         log.error(s"Failed to extract dependencies for release ${identifier.version} of library ${evolution.libraryName}", ex)
@@ -76,7 +76,7 @@ class LibraryCallgraphBuilder(groupId: String,
   }
 
   private[callgraphs] def getAllThirdPartyClassesWithCache(identifier: MavenIdentifier, loadImplementation: Boolean = false): ClassList = {
-    JekaDependencyExtractor.resolveAllDependencies(identifier)._1 match {
+    resolveAllDependencies(identifier)._1 match {
       case Success(allDependencies) =>
         allDependencies
           .map(_.identifier)
