@@ -149,12 +149,17 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
             .map(Left(_))
 
           //TODO: Does 'asObjectType' work here?
-          context.resolveVirtual(iv.declaringClass.asObjectType.fqn, iv.methodDescriptor.valueToString) match {
-            case Some(contextHits) => projectHits ++ contextHits
-            case None =>
-              log.warn(s"No context hits for virtual resolve: $iv")
-              projectHits
+          if(!iv.declaringClass.isArrayType){
+            context.resolveVirtual(iv.declaringClass.asObjectType.fqn, iv) match {
+              case Some(contextHits) => projectHits ++ contextHits
+              case None =>
+                log.warn(s"No context hits for virtual resolve: $iv")
+                projectHits
+            }
+          } else {
+            projectHits
           }
+
 
         case is: INVOKESTATIC =>
           val resolvedCall = project.staticCall(method.classFile.thisType, is)
@@ -199,7 +204,7 @@ class CompositionalCallGraphBuilder(opalProject: Project[URL],
             .filter(m => isTypeInstantiated(m.classFile.thisType.fqn))
             .map(Left(_))
 
-          context.resolveVirtual(interface.declaringClass.fqn, interface.methodDescriptor.valueToString) match {
+          context.resolveVirtual(interface.declaringClass.fqn, interface) match {
             case Some(contextHits) => projectHits ++ contextHits
             case None =>
               log.warn(s"No context hits for interface resolve: $interface")

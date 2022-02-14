@@ -94,6 +94,8 @@ class CompositionalReachabilityAnalysisTest extends AnyFlatSpec with must.Matche
     val uniqueRegMethods = regMethods.count(regM => !compMethods.contains(regM))
     val uniqueCompMethods = compMethods.count(compM => !regMethods.contains(compM))
 
+    val uniqueRegMethodsSet = regMethods.diff(compMethods)
+
     println(s"Regular result has $uniqueRegMethods unique methods, compositional result has $uniqueCompMethods unique methods.")
   }
 }

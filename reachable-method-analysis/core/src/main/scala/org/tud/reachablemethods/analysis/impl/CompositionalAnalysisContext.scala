@@ -2,12 +2,14 @@ package org.tud.reachablemethods.analysis.impl
 
 import org.opalj.br.{Method, ObjectType}
 import org.opalj.br.analyses.Project
+import org.opalj.br.instructions.InvocationInstruction
 import org.tud.reachablemethods.analysis.dataaccess.{ArtifactMetadata, ElasticMethodData, InvocationObligation, MethodDataAccessor}
 import org.tud.reachablemethods.analysis.impl.callgraphs.CallGraphBuilder
 import org.tud.reachablemethods.analysis.logging.{AnalysisLogger, AnalysisLogging}
 import org.tud.reachablemethods.analysis.model.{MavenIdentifier, TypeHierarchy, TypeHierarchyNode}
 
 import java.net.URL
+import scala.collection.immutable.HashSet
 import scala.collection.mutable
 import scala.util.{Failure, Success}
 
@@ -33,6 +35,7 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
 
 
   private val uidObligationCache: mutable.Map[String, Option[Iterable[MethodInformation]]] = new mutable.HashMap()
+  private val virtualInvocationCache: mutable.Map[String, Option[Iterable[MethodInformation]]] = new mutable.HashMap()
 
 
   //---------------------------------------------------
@@ -81,41 +84,56 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
     }
   }
 
+  /**
+   * Detects the applicable method definition for a given type and method description. The search order is:
+   * 1. Search for methods defined on the given type
+   * 2. If 1.) produces no results, search all parent types recursive
+   * 3. Also search all parent interfaces and merge results
+   *
+   * @param typeNode The type node
+   * @param methodDescription The method description
+   * @return Set of possible applicable methods
+   *
+   * @note <b>The result is an over-approximation.</b> Actually there can only be one applicable method, however, since
+   *       the precise calculation would required more visibility information, we produce multiple possible targets here.
+   */
   private def findApplicableMethodInfo(typeNode: TypeHierarchyNode,
-                                       methodDescription: String): Option[MethodInformation] = {
-    val directDefinitionOpt = methodInformationTypeFqnLookup
+                                       methodDescription: String): Option[Set[MethodInformation]] = {
+    val directDefinitionsOpt = methodInformationTypeFqnLookup
       .get(typeNode.typeFqn)
       .flatMap(methods => methods.find(m => methodDescriptionMatches(methodDescription, m)))
+      .map(result => HashSet(result))
 
-    if(directDefinitionOpt.isDefined) {
-      directDefinitionOpt
+    // If we have a direct definition, it will be the target of the virtual invoke, and we do not have to look further
+    if(directDefinitionsOpt.isDefined) {
+      directDefinitionsOpt
     } else {
+      // Obtain possible targets from parent type
       val parentDefinitionOpt = typeNode
         .parent
         .flatMap(parentNode => findApplicableMethodInfo(parentNode, methodDescription))
 
-      if(parentDefinitionOpt.isDefined) {
-        parentDefinitionOpt
-      } else {
-        typeNode
-          .interfaces
-          .collectFirst {
-            case interfaceNode if findApplicableMethodInfo(interfaceNode, methodDescription).isDefined =>
-              findApplicableMethodInfo(interfaceNode, methodDescription).get
-          }
-      }
+      val interfacesDefinition = typeNode
+        .interfaces
+        .flatMap( interfaceNode => findApplicableMethodInfo(interfaceNode, methodDescription) getOrElse Set.empty)
+
+      Some( parentDefinitionOpt.getOrElse(Set.empty) ++ interfacesDefinition )
     }
   }
 
-  def resolveVirtual(typeFqn: String, methodDescription: String): Option[Iterable[MethodInformation]] = {
+  def resolveVirtual(typeFqn: String, invocationInstruction: InvocationInstruction): Option[Iterable[MethodInformation]] =
+    resolveVirtual(typeFqn, invocationInstruction.name + invocationInstruction.methodDescriptor.valueToString)
+
+  def resolveVirtual(typeFqn: String, methodDescription: String): Option[Iterable[MethodInformation]] =
+    withVirtualInvocationCache(typeFqn, methodDescription){ () =>
 
     typeHierarchy.getType(typeFqn) match {
       case Some(declaredTypeNode) =>
 
         val targets = mutable.HashSet[MethodInformation]()
 
-        def findTargets(currentTypeNode: TypeHierarchyNode, currentApplicableMethod: MethodInformation): Unit = {
-          targets.add(currentApplicableMethod)
+        def findTargets(currentTypeNode: TypeHierarchyNode, currentApplicableMethods: Set[MethodInformation]): Unit = {
+          currentApplicableMethods.foreach(targets.add)
 
           currentTypeNode
             .children
@@ -124,7 +142,7 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
                 .get(childNode.typeFqn)
                 .flatMap( methods => methods.find(m => methodDescriptionMatches(methodDescription, m)))
 
-              findTargets(childNode, overriddenMethodDef.getOrElse(currentApplicableMethod))
+              findTargets(childNode, overriddenMethodDef.map( method => HashSet(method)).getOrElse(currentApplicableMethods))
             }
         }
 
@@ -184,7 +202,22 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
   private def obligationInLibraryUid(obligation: InvocationObligation, libIdent: String): String =
     obligation.declaredTypeName + obligation.methodDescription + libIdent
 
+  //---------------------------------------------------------
+  //  START OF CACHING METHODS
+  //---------------------------------------------------------
 
+  private def withVirtualInvocationCache(typeFqn: String, methodDescription: String)
+                                        (implicit producer: () => Option[Iterable[MethodInformation]]): Option[Iterable[MethodInformation]] ={
+    val invocationKey = typeFqn + methodDescription
+
+    if(virtualInvocationCache.contains(invocationKey)) {
+      virtualInvocationCache(invocationKey)
+    } else {
+      val result = producer.apply
+      virtualInvocationCache.put(invocationKey, result)
+      result
+    }
+  }
 
   //---------------------------------------------------------
   //  START OF INDEX CREATION METHODS
@@ -194,16 +227,17 @@ class CompositionalAnalysisContext(dependencies: Iterable[MavenIdentifier],
 
     if(!methodData.isExtern){
       methodInformationSignatureLookup.put(methodData.signature, Right(methodData))
-    }
 
-    if(!methodInformationTypeFqnLookup.contains(methodData.typeFqn)){
-      methodInformationTypeFqnLookup.put(methodData.typeFqn, mutable.Set.empty)
-    }
+      if(!methodInformationTypeFqnLookup.contains(methodData.typeFqn)){
+        methodInformationTypeFqnLookup.put(methodData.typeFqn, mutable.Set.empty)
+      }
 
-    methodInformationTypeFqnLookup(methodData.typeFqn).add(Right(methodData))
+      methodInformationTypeFqnLookup(methodData.typeFqn).add(Right(methodData))
+    }
   }
 
   private def addToMethodIndices(method: Method): Unit = {
+
     if(!methodInformationSignatureLookup.contains(method.fullyQualifiedSignature)){
       methodInformationSignatureLookup.put(method.fullyQualifiedSignature, Left(method))
     }

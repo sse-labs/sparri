@@ -17,8 +17,6 @@ class RegularOpalReachabilityAnalysis(dependencyClasses: ClassList, override val
 
   override def analyzeProject(projectClasses: ClassList, dependencies: Iterable[MavenIdentifier], treatProjectAsLibrary: Boolean): Try[Set[String]] = {
 
-    //TODO: The new interfaces does not really allow this, since we removed dependency classes from the interface
-    //TODO: Maybe we want to add an overload to the interface?
     log.info("Initializing OPAL analysis infrastructure..")
     val opalProject = OPALProjectHelper.buildOPALProject(projectClasses, dependencyClasses, treatProjectAsLibrary)
     log.info("Done Initializing OPAL.")
