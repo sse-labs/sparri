@@ -209,7 +209,7 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
           .mapping(properties(
             BooleanField(isExternFieldName),
             KeywordField(nameFieldName),
-            KeywordField(descriptorFieldName),
+            TextField(descriptorFieldName),
             //TODO: Signature might be redundant now that we have TypeFqn, SimpleName and Descriptor
             KeywordField(signatureFieldName),
             KeywordField(analyzedLibraryFieldName),
