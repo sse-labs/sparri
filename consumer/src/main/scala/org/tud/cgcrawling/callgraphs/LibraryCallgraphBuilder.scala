@@ -1,7 +1,5 @@
 package org.tud.cgcrawling.callgraphs
 
-import akka.actor.ActorSystem
-import org.opalj.de.DependencyExtractor
 import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.dependencies.JekaDependencyExtractor
@@ -17,7 +15,7 @@ import scala.util.{Failure, Success, Try}
 
 class LibraryCallgraphBuilder(groupId: String,
                               artifactId: String,
-                              config: Configuration)(implicit system: ActorSystem) extends LibraryArtifactProcessing with JekaDependencyExtractor {
+                              config: Configuration) extends LibraryArtifactProcessing with JekaDependencyExtractor {
 
   override val repoUri: URI = config.mavenRepoBase
 

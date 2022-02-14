@@ -17,52 +17,40 @@
 package org.tud.cgcrawling.download
 
 import java.io.{ByteArrayInputStream, InputStream}
-import akka.actor.ActorSystem
-import akka.http.scaladsl.{Http, HttpExt}
-import akka.http.scaladsl.model.{HttpHeader, HttpRequest, HttpResponse, StatusCodes}
-import akka.util.{ByteString, Timeout}
 
-import scala.concurrent.duration.{Duration, DurationInt}
-import scala.concurrent.{Await, Future}
+import org.apache.http.client.methods.{CloseableHttpResponse, HttpGet}
+import org.apache.http.impl.client.HttpClients
+
 import scala.language.postfixOps
-import scala.util.{Failure, Try}
+import scala.util.Try
 
-class HttpDownloader(implicit val system: ActorSystem) {
+class HttpDownloader {
 
-  private val downloadTimeout = Timeout(3 minutes)
-
-  private val ec = system.dispatcher
-
-  val httpExt: HttpExt = Http()
+  private val client = HttpClients.createDefault()
 
   def downloadFromUri(requestedUri: String): Try[InputStream] = {
-    val responseFuture: Future[HttpResponse] =
-      httpExt.singleRequest(HttpRequest(uri = requestedUri))
 
+    val getRequest: HttpGet = new HttpGet(requestedUri)
 
-    Await.result(responseFuture, downloadTimeout.duration) match {
-      case HttpResponse(StatusCodes.OK, _, entity, _) =>
-        Try(new ByteArrayInputStream(Await.result(entity.withoutSizeLimit().dataBytes.runFold(ByteString.empty)(_ ++ _).map(_.toArray)(ec), downloadTimeout.duration)))
-      case resp@HttpResponse(code, _, _, _) =>
-        resp.discardEntityBytes()
-        Failure(new HttpException(code))
+    var closeableResponse: CloseableHttpResponse = null
+
+    val result = Try {
+      closeableResponse = client.execute(getRequest)
+
+      val entityInputStream = closeableResponse.getEntity.getContent
+      val entityBytes = Stream.continually(entityInputStream.read).takeWhile(_ != -1).map(_.toByte).toArray
+
+      new ByteArrayInputStream(entityBytes)
     }
+
+    if(closeableResponse != null) closeableResponse.close()
+
+    result
   }
 
-  def downloadFromUriWithHeaders(requestedUri: String): Try[(InputStream, Seq[HttpHeader])] = {
-    val responseFuture: Future[HttpResponse] =
-      httpExt.singleRequest(HttpRequest(uri = requestedUri))
-
-
-    Await.result(responseFuture, downloadTimeout.duration) match {
-      case HttpResponse(StatusCodes.OK, headers, entity, _) =>
-        Try((
-          new ByteArrayInputStream(Await.result(entity.withoutSizeLimit().dataBytes.runFold(ByteString.empty)(_ ++ _).map(_.toArray)(ec), downloadTimeout.duration)),
-          headers))
-      case resp@HttpResponse(code, _, _, _) =>
-        resp.discardEntityBytes()
-        Failure(new HttpException(code))
-    }
+  def shutdown(): Unit = {
+    client.close()
   }
+
 }
 

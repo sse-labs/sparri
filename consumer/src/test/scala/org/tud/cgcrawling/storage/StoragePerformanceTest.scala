@@ -1,6 +1,5 @@
 package org.tud.cgcrawling.storage
 
-import akka.actor.ActorSystem
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must
 import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
@@ -29,15 +28,14 @@ class StoragePerformanceTest extends AnyFlatSpec with must.Matchers {
   }
 
   private def compareStorageTimesForLibrary(library: (String, String)): Unit = {
-    val system = ActorSystem("PerformanceTestSystem")
 
-    buildEvolutionFor(library._1, library._2, config)(system, log) match {
+    buildEvolutionFor(library._1, library._2, config)(log) match {
       case Some(evo) =>
         log.info("Starting storage run for Neo4j ...")
-        val neo4jDbStats = measureStorageTime(evo, Neo4jOnly)(system)
+        val neo4jDbStats = measureStorageTime(evo, Neo4jOnly)
         log.info(s"Finished storage run for Neo4j: ${neo4jDbStats._1} s Startup, ${neo4jDbStats._2} s Storage")
         log.info("Starting storage run for Hybrid ...")
-        val hybridDbStats = measureStorageTime(evo, Hybrid)(system)
+        val hybridDbStats = measureStorageTime(evo, Hybrid)
         log.info(s"Finished storage run for Hybrid: ${hybridDbStats._1} s Startup, ${hybridDbStats._2} s Storage")
 
         log.info(s"Performance Report for ${evo.libraryName} with ${evo.methodEvolutions().size} methods and ${evo.methodInvocationEvolutions().size} inovcations")
@@ -50,11 +48,9 @@ class StoragePerformanceTest extends AnyFlatSpec with must.Matchers {
     }
 
     log.info("Shutting down system...")
-    Await.result(system.terminate(), 1 minutes)
   }
 
-  private def measureStorageTime(evo: LibraryCallGraphEvolution, handlerType: StorageHandlerType)
-                                (implicit system: ActorSystem): (Long, Long) = {
+  private def measureStorageTime(evo: LibraryCallGraphEvolution, handlerType: StorageHandlerType): (Long, Long) = {
     val startTime: Long = System.currentTimeMillis()
 
     val storageHandler: StorageHandler = handlerType match {

@@ -1,26 +1,19 @@
 package org.tud.cgcrawling.storage
 
-import akka.actor.ActorSystem
 import com.sksamuel.elastic4s.ElasticApi.{search, termQuery}
-import com.sksamuel.elastic4s.akka.{AkkaHttpClient, AkkaHttpClientSettings}
-import com.sksamuel.elastic4s.{ElasticClient, RequestFailure, RequestSuccess}
+import com.sksamuel.elastic4s.{ElasticClient, ElasticProperties, RequestFailure, RequestSuccess}
 import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.model.{LibraryCallGraphEvolution, MethodIdentifier}
 import com.sksamuel.elastic4s.ElasticDsl._
 import com.sksamuel.elastic4s.fields.{BooleanField, KeywordField, NestedField, TextField}
+import com.sksamuel.elastic4s.http.JavaClient
 import com.sksamuel.elastic4s.requests.searches.SearchResponse
-import org.neo4j.driver.Session
-import org.neo4j.driver.Values.parameters
 
-import scala.collection.JavaConverters.asJavaIterableConverter
-import scala.collection.mutable
+
 import scala.concurrent.duration.DurationInt
-import scala.concurrent.ExecutionContext
 import scala.language.postfixOps
-import scala.util.{Failure, Success, Try}
 
-class HybridElasticAndGraphDbStorageHandler(config: Configuration)
-                                           (implicit system: ActorSystem) extends StorageHandler {
+class HybridElasticAndGraphDbStorageHandler(config: Configuration) extends StorageHandler {
 
   private val maxConcurrentEsRequests = 30
   private val neo4jMethodInsertBatchSize = 400
@@ -50,16 +43,14 @@ class HybridElasticAndGraphDbStorageHandler(config: Configuration)
   private val typeParentsFieldName = "TypeParents"
   private val typeInterfacesFieldName = "TypeInterfaces"
 
-  private val clientProps = AkkaHttpClientSettings(Seq(config.elasticClientUri))
+  private val clientProps = ElasticProperties(config.elasticClientUri)
 
   private val elasticClient: ElasticClient =
-    ElasticClient(AkkaHttpClient(clientProps))
+    ElasticClient(JavaClient(clientProps))
 
   setupIndex()
 
   override def storeCallGraphEvolution(cgEvolution: LibraryCallGraphEvolution): GraphDbStorageResult = {
-
-    implicit val ec: ExecutionContext = system.dispatcher
 
     log.info("Starting to store data in ES ...")
 
