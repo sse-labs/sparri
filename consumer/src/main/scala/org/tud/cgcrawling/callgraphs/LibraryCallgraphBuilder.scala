@@ -21,7 +21,7 @@ class LibraryCallgraphBuilder(groupId: String,
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
-  private[callgraphs] val classFileCache: ArtifactClassfileCache = new ArtifactClassfileCache(20)
+  private[callgraphs] val classFileCache: ArtifactClassfileCache = new ArtifactClassfileCache(maxCacheSize = 12)
   private[callgraphs] val downloader: MavenJarDownloader = new MavenJarDownloader()
 
   private val classFqnToDependencyMap: mutable.Map[String, MavenIdentifier] = new mutable.HashMap()

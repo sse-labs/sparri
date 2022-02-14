@@ -7,8 +7,6 @@ import scala.collection.mutable.ListBuffer
 
 class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
 
-  type InstantiatedTypeEvolution = (String, List[String])
-
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
   private val methodEvolutionMap: mutable.Map[MethodIdentifier, MethodEvolution] = new mutable.HashMap()
@@ -21,25 +19,17 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
   private val dependencyEvolutionMap: mutable.Map[DependencyIdentifier, DependencyEvolution] = new mutable.HashMap()
 
 
-  private val releaseList: mutable.ListBuffer[String] = new ListBuffer[String]
+  private val releaseSet: mutable.Set[String] = new mutable.HashSet[String]
 
   private val typeEvolutionMap: mutable.Map[String, TypeEvolution] = new mutable.HashMap()
 
   val libraryName = s"$groupId:$artifactId"
 
-  def releases(): List[String] = releaseList.toList
+  def releases(): Set[String] = releaseSet.toSet
   def methodEvolutions(): Iterable[MethodEvolution] = methodEvolutionMap.values
   def methodInvocationEvolutions(): Iterable[MethodInvocationEvolution] = invocationEvolutionMap.values
   def dependencyEvolutions(): Iterable[DependencyEvolution] = dependencyEvolutionMap.values
   def typeEvolutions(): Iterable[TypeEvolution] = typeEvolutionMap.values
-
-  //TODO: Remove this legacy API
-  def instantiatedTypeEvolutions(): Iterable[InstantiatedTypeEvolution] = typeEvolutionMap
-    .values
-    .filter(tEvo => tEvo.isInstantiatedIn.nonEmpty)
-    .map(tEvo => {
-      (tEvo.typeFqn, tEvo.isInstantiatedIn)
-    })
 
   def numberOfMethodEvolutions(): Int = methodEvolutionMap.size
   def numberOfInvocationEvolutions(): Int = invocationEvolutionMap.size
@@ -47,7 +37,7 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
   def numberOfTypeEvolutions(): Int = typeEvolutionMap.size
 
   def dependenciesAt(release: String): Iterable[DependencyIdentifier] = {
-    if(!releaseList.contains(release))
+    if(!releaseSet.contains(release))
       throw new RuntimeException(s"Unknown release $release")
 
     dependencyEvolutions()
@@ -56,7 +46,7 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
   }
 
   def methodsAt(release: String): Iterable[MethodIdentifier] = {
-    if(!releaseList.contains(release))
+    if(!releaseSet.contains(release))
       throw new RuntimeException(s"Unknown release $release")
 
     methodEvolutions()
@@ -69,7 +59,7 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
   }
 
   def calleesAt(caller: MethodIdentifier, release: String): Iterable[MethodIdentifier] ={
-    if(!releaseList.contains(release))
+    if(!releaseSet.contains(release))
       throw new RuntimeException(s"Unknown release $release")
 
     if(!methodEvolutionMap.contains(caller) || !methodEvolutionMap(caller).isActiveIn.contains(release))
@@ -86,12 +76,12 @@ class LibraryCallGraphEvolution(val groupId: String, val artifactId: String) {
   def applyNewRelease(callgraph: LibraryCallgraph,
                       dependencies: Set[DependencyIdentifier],
                       release: String): Unit = {
-    if(releaseList.contains(release)){
+    if(releaseSet.contains(release)){
       throw new RuntimeException(s"Release has already been applied to CallGraphEvolution: $release")
     }
 
     log.info(s"Processing new release $release for $libraryName")
-    releaseList.append(release)
+    releaseSet.add(release)
 
     callgraph.hierarchy.allTypeNames.foreach{ typeFqn =>
       if(!typeEvolutionMap.contains(typeFqn)){
