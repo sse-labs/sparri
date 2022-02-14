@@ -1,6 +1,5 @@
 package org.tud.reachablemethods.analysis.dataaccess
 
-import akka.actor.ActorSystem
 import akka.http.scaladsl.model.IllegalUriException
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must
@@ -49,12 +48,12 @@ class MethodDataAccessorTest extends AnyFlatSpec with must.Matchers {
 
     val libResult = accessor.getArtifactMetadata(lib, version)
     assert(libResult.isSuccess)
-    assert(libResult.get.instantiatedTypes.nonEmpty)
+    assert(libResult.get.types.nonEmpty)
 
     val methods = accessor.getArtifactMethods(lib, version)
 
     assert(methods.isSuccess && methods.get.nonEmpty)
-    assert(methods.get.size == 3274)
+    assert(methods.get.size == 1637)
   }
 
   private def buildConfiguration(url: String): Configuration = new Configuration {

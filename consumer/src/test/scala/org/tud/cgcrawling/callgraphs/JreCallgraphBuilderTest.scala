@@ -12,7 +12,7 @@ class JreCallgraphBuilderTest extends AnyFlatSpec with must.Matchers {
       case Success(evo) =>
         println("Methods: " + evo.numberOfMethodEvolutions())
         println("Invocations: " + evo.numberOfInvocationEvolutions())
-        println("Instantiated Types: " + evo.numberOfInstantiatedTypeEvolutions())
+        println("Instantiated Types: " + evo.numberOfTypeEvolutions())
       case Failure(ex) => fail(ex)
     }
   }

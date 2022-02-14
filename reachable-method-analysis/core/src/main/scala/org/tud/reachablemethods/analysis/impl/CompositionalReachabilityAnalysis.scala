@@ -15,37 +15,27 @@ class CompositionalReachabilityAnalysis(configuration: Configuration, override v
 
   private val system: ActorSystem = ActorSystem("reachability-analysis")
 
-  override protected val loadDependencyImplementations: Boolean = false
-
   private[impl] val methodAccessor: MethodDataAccessor = new MethodDataAccessor(configuration, log)(system)
 
   methodAccessor.initialize()
 
-  override def analyzeProject(projectClasses: ClassList, dependencyClasses: ClassList,
-                              classFqnDependencyLookup: Map[String, MavenIdentifier], treatProjectAsLibrary: Boolean): Try[Set[String]] = {
+  override def analyzeProject(projectClasses: ClassList,
+                              dependencies: Iterable[MavenIdentifier],
+                              treatProjectAsLibrary: Boolean = false): Try[Set[String]] = {
 
-    val jreIdent = MavenIdentifier("<none>", "<jre>", methodAccessor.getIndexedJreVersion.get)
-    val classFqnLookupWithJRE = classFqnDependencyLookup ++ OPALProjectHelper.jreClasses.map(c => (c._1.fqn, jreIdent)).toMap
-    val allDependencies = classFqnLookupWithJRE.values.toList.distinct
-
-    if(!analysisPossible(allDependencies)){
+    if(!analysisPossible(dependencies)){
       Failure(new IllegalStateException("Cannot perform reachability analysis: requirements not satisfied"))
     } else {
       log.info("Initializing OPAL analysis infrastructure..")
-      val opalProject = OPALProjectHelper.buildOPALProject(projectClasses, dependencyClasses, treatProjectAsLibrary)
+
+      // We always load the local JRE, and no further dependency classes. The local JRE should correspond to the analyses-time JRE
+      val opalProject = OPALProjectHelper.buildOPALProject(projectClasses, List.empty, treatProjectAsLibrary)
       log.info("Done Initializing OPAL.")
 
       val startDownload = System.currentTimeMillis()
-      val analysisContext = new CompositionalAnalysisContext(classFqnLookupWithJRE, methodAccessor, opalProject, log)
 
-      // Add all instantiated types of current project to index
-      analysisContext.indexInstantiatedTypes(CallGraphBuilder.getInstantiatedTypeNames(opalProject, projectOnly = true))
-
-      // Add all instantiated types of dependency projects to index
-      allDependencies.foreach { dependency =>
-        analysisContext.indexInstantiatedTypes(methodAccessor.getArtifactMetadata(dependency.libraryIdentifier,
-          dependency.version).map(_.instantiatedTypes).get) //TODO: Error Handling
-      }
+      // Context will initialize itself. In that, it will download all methods and types for all dependencies.
+      val analysisContext = new CompositionalAnalysisContext(dependencies, methodAccessor, opalProject, log)
 
       val downloadDuration = (System.currentTimeMillis() - startDownload) / 1000
       val startAnalysis = System.currentTimeMillis()

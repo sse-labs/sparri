@@ -5,12 +5,12 @@ import org.scalatest.matchers.must
 import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 
-class PomFileDependencyExtractorTest extends AnyFlatSpec with must.Matchers{
+class PomFileDependencyExtractorTest extends AnyFlatSpec with must.Matchers {
 
   val config: Configuration = new Configuration()
 
-  val jekaExtractor = new JekaDependencyExtractor(config)
   val aetherExtractor = new PomFileDependencyExtractor(config)
+  val jekaExtractor = new JekaDependencyExtractor {}
 
   val identifier1: MavenIdentifier =
     MavenIdentifier(config.mavenRepoBase.toString, "love.forte.simple-robot", "api", "2.3.0")

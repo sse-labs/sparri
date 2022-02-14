@@ -20,14 +20,13 @@ package object storage extends LibraryArtifactProcessing{
 
 
     val downloader = new MavenJarDownloader()
-    val dependencyExtractor = new JekaDependencyExtractor(configuration)
     createIdentifierIterator(groupId, artifactId) match {
 
       case Success(identifierIterable) =>
         for(identifier <- identifierIterable){
           val downloadResponse = downloader.downloadJar(identifier)
 
-          val dependencies = dependencyExtractor.resolveDependencies(identifier) match {
+          val dependencies = new JekaDependencyExtractor {}.resolveDependencies(identifier) match {
             case Success(dependencies) =>
               dependencies.toSet
             case Failure(ex) =>

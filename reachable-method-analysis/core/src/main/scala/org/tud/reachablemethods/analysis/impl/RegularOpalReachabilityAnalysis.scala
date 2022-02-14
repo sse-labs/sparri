@@ -9,14 +9,13 @@ import org.tud.reachablemethods.analysis.opal.OPALProjectHelper
 
 import scala.util.Try
 
-class RegularOpalReachabilityAnalysis(override val log: AnalysisLogger = new AnalysisLogger) extends ReachabilityAnalysis {
-  override protected val loadDependencyImplementations: Boolean = true
+class RegularOpalReachabilityAnalysis(dependencyClasses: ClassList, override val log: AnalysisLogger = new AnalysisLogger) extends ReachabilityAnalysis {
 
   // No need to check index or DB, since dependencies are resolved beforehand!
   override def analysisPossible(dependencies: Iterable[MavenIdentifier]): Boolean = true
 
 
-  override def analyzeProject(projectClasses: ClassList, dependencyClasses: ClassList, classFqnDependencyLookup: Map[String, MavenIdentifier], treatProjectAsLibrary: Boolean): Try[Set[String]] = {
+  override def analyzeProject(projectClasses: ClassList, dependencies: Iterable[MavenIdentifier], treatProjectAsLibrary: Boolean): Try[Set[String]] = {
 
     log.info("Initializing OPAL analysis infrastructure..")
     val opalProject = OPALProjectHelper.buildOPALProject(projectClasses, dependencyClasses, treatProjectAsLibrary)

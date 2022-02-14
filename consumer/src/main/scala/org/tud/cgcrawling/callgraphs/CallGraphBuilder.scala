@@ -1,13 +1,13 @@
 package org.tud.cgcrawling.callgraphs
 
-import org.opalj.br.{ArrayType, ClassHierarchy, Method, MethodDescriptor, ObjectType, ReferenceType, Type}
+import org.opalj.br.{ArrayType, Method, MethodDescriptor, ObjectType, Type}
 import org.opalj.br.analyses.Project
 import org.opalj.br.analyses.cg.InitialEntryPointsKey
 import org.opalj.br.instructions.{GETFIELD, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL, MethodInvocationInstruction, NonVirtualMethodInvocationInstruction}
 import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 import org.tud.cgcrawling.download.MavenDownloadResult
-import org.tud.cgcrawling.model.{InvocationObligation, LibraryCallgraph}
+import org.tud.cgcrawling.model.{ClassHierarchy, InvocationObligation, LibraryCallgraph}
 import org.tud.cgcrawling.opal.OPALProjectHelper
 import org.tud.cgcrawling.opal.OPALProjectHelper.ClassList
 
@@ -39,7 +39,7 @@ object CallGraphBuilder {
     }
   }
 
-  private[callgraphs] def getAllContextDependentInvocations(method: Method, classHierarchy: ClassHierarchy): Array[InvocationObligation] = {
+  private[callgraphs] def getAllContextDependentInvocations(method: Method, classHierarchy: org.opalj.br.ClassHierarchy): Array[InvocationObligation] = {
 
 
     if(method.body.isEmpty){
@@ -168,13 +168,15 @@ object CallGraphBuilder {
     val projectEntryPoints = project.get(InitialEntryPointsKey)
       .filter(m => project.isProjectType(m.classFile.thisType) && m.body.isDefined)
 
+    val hierarchy = ClassHierarchy.fromOPALModel(project.classHierarchy)
+
     // Set of method signatures that the algorithm has already processed. This is needed to avoid running into endless
     // loops when analyzing recursive invocations. Since we are loading the entire CP of the project, Signatures should
     // be unique.
     val methodSignaturesSeen: mutable.HashSet[String] = new mutable.HashSet[String]()
 
     // The LibraryCallgraph instance that will be iteratively constructed and returned at the end of this method
-    val callgraph: LibraryCallgraph = new LibraryCallgraph(initializedTypeNames)
+    val callgraph: LibraryCallgraph = new LibraryCallgraph(initializedTypeNames, hierarchy)
 
     /**
      * Callback that is invoked whenever the callgraph algorithm found a new method

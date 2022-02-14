@@ -1,7 +1,7 @@
 package org.tud.reachablemethods.analysis.dataaccess
 
 import akka.actor.ActorSystem
-import com.sksamuel.elastic4s.ElasticApi.{RichFuture, boolQuery, idsQuery, search, searchScroll, termQuery, termsQuery}
+import com.sksamuel.elastic4s.ElasticApi.{RichFuture, boolQuery, search, searchScroll, termQuery, termsQuery}
 import com.sksamuel.elastic4s.{ElasticClient, RequestFailure, RequestSuccess}
 import com.sksamuel.elastic4s.ElasticDsl.{IndexExistsHandler, SearchHandler, SearchScrollHandler, indexExists}
 import com.sksamuel.elastic4s.akka.{AkkaHttpClient, AkkaHttpClientSettings}
@@ -47,10 +47,6 @@ class MethodDataAccessor(config: Configuration, override val log: AnalysisLogger
         log.debug(s"Query for '$libIdent' yielded $numberOfHits hits in $time ms.")
 
         numberOfHits > 0
-
-      case response: RequestSuccess[_] =>
-        log.error(s"Unknown response type: ${response.result}")
-        false
     }
   }
 
@@ -76,7 +72,7 @@ class MethodDataAccessor(config: Configuration, override val log: AnalysisLogger
       search(config.elasticLibraryIndexName)
         .query(termQuery(ElasticPropertyNames.libraryKeywordName, libIdent))
         .size(1)
-        .sourceInclude(ElasticPropertyNames.dependenciesFieldName, ElasticPropertyNames.instantiatedTypesFieldName)
+        .sourceInclude(ElasticPropertyNames.dependenciesFieldName, ElasticPropertyNames.typesFieldName)
     }.await match {
       case fail: RequestFailure => Failure(fail.error.asException)
 
@@ -99,23 +95,52 @@ class MethodDataAccessor(config: Configuration, override val log: AnalysisLogger
               }
               .toList
 
-            val libInstantiatedTypes = hit.sourceAsMap(ElasticPropertyNames.instantiatedTypesFieldName)
-              .asInstanceOf[Iterable[Map[String, AnyRef]]]
+            val libTypes = hit.sourceAsMap(ElasticPropertyNames.typesFieldName).asInstanceOf[Iterable[Map[String, AnyRef]]]
 
-            val artifactTypes = libInstantiatedTypes
-              .filter{ obj =>
+            val artifactTypes = libTypes
+              .filter { obj =>
                 val typeActiveIn = obj(ElasticPropertyNames.releasesFieldName).asInstanceOf[List[String]]
                 typeActiveIn.contains("*") || typeActiveIn.contains(version)
               }
-              .map(_(ElasticPropertyNames.declaredTypeFieldName).asInstanceOf[String])
+              .map { obj =>
+                val typeFqn = obj(ElasticPropertyNames.typeFqnFieldName).asInstanceOf[String]
+
+                val typeInstantiatedIn = obj(ElasticPropertyNames.instantiatingReleasesFieldName).asInstanceOf[List[String]]
+                val typeInstantiated = typeInstantiatedIn.contains("*") || typeInstantiatedIn.contains(version)
+
+                val typeParents = obj(ElasticPropertyNames.typeParentsFieldName).asInstanceOf[Iterable[Map[String, AnyRef]]]
+
+                val parentOption = typeParents
+                  .filter{ parentEntry =>
+                    val parentActiveIn = parentEntry(ElasticPropertyNames.releasesFieldName).asInstanceOf[List[String]]
+                    parentActiveIn.contains("*") || parentActiveIn.contains(version)
+                  }
+                  .map{ parentEntry =>
+                    parentEntry(ElasticPropertyNames.typeFqnFieldName).asInstanceOf[String]
+                  }
+                  .headOption
+
+                val typeInterfaces = obj(ElasticPropertyNames.typeInterfacesFieldName).asInstanceOf[Iterable[Map[String, AnyRef]]]
+
+                val parentInterfaces = typeInterfaces
+                  .filter{ parentEntry =>
+                    val parentActiveIn = parentEntry(ElasticPropertyNames.releasesFieldName).asInstanceOf[List[String]]
+                    parentActiveIn.contains("*") || parentActiveIn.contains(version)
+                  }
+                  .map { parentEntry =>
+                    parentEntry(ElasticPropertyNames.typeFqnFieldName).asInstanceOf[String]
+                  }
+                  .toSet
+
+
+                ElasticTypeData(typeFqn, typeInstantiated, parentOption, parentInterfaces)
+              }
               .toList
 
             Success(ArtifactMetadata(libIdent, version, artifactTypes, artifactDependencies))
           case None =>
             Failure(new IllegalStateException(s"No library found for identifier: $libIdent"))
         }
-
-      case response: RequestSuccess[_] => Failure(new IllegalStateException("Unknown search response from ElasticSearch"))
     }
   }
 
@@ -124,40 +149,11 @@ class MethodDataAccessor(config: Configuration, override val log: AnalysisLogger
     val request = search(config.elasticMethodIndexName).query(boolQuery.must(
         termQuery(ElasticPropertyNames.analyzedLibraryKeywordName, libIdent),
         termQuery(ElasticPropertyNames.releasesKeywordName, version)
-      )).sourceInclude(ElasticPropertyNames.nameFieldName, ElasticPropertyNames.signatureFieldName, ElasticPropertyNames.isExternFieldName,
-        ElasticPropertyNames.obligationFieldName, ElasticPropertyNames.definingLibraryFieldName, ElasticPropertyNames.calleeFieldName)
+      )).sourceInclude(ElasticPropertyNames.methodDataRequiredFields)
 
-    val hits = scrollAllResults(request).get
-
-    Success(hits.map(hitToMethodData(_, libIdent, version)))
-  }
-
-  def getArtifactMethodByElasticIds(elasticIds: Seq[String], version: String): Try[Seq[ElasticMethodData]] = {
-
-    elasticClient.execute{
-      search(config.elasticMethodIndexName)
-        .query(idsQuery(elasticIds))
-        .size(elasticIds.size)
-        .sourceInclude(ElasticPropertyNames.nameFieldName,ElasticPropertyNames.signatureFieldName, ElasticPropertyNames.isExternFieldName,
-          ElasticPropertyNames.obligationFieldName, ElasticPropertyNames.definingLibraryFieldName, ElasticPropertyNames.analyzedLibraryFieldName, ElasticPropertyNames.calleeFieldName)
-    }.await match {
-      case fail: RequestFailure =>
-        log.error("Failed to query ElasticSearch: " + fail.error.reason)
-        Failure(fail.error.asException)
-
-      case results: RequestSuccess[SearchResponse]  =>
-        val numberOfHits = results.result.totalHits
-        val time = results.result.took
-        log.debug(s"Method by ElasticId query yielded $numberOfHits hits in $time ms.")
-
-        Try(results.result.hits.hits.map{ searchHit =>
-          val libIdent = searchHit.sourceAsMap(ElasticPropertyNames.analyzedLibraryFieldName).asInstanceOf[String]
-          hitToMethodData(searchHit, libIdent, version)
-        }.toSeq)
-      case sth@_ =>
-        log.error(s"Unknown response type while querying for signature")
-        Failure(new IllegalStateException("Unknown search response from ElasticSearch"))
-    }
+    scrollAllResults(request).map(hits => {
+      hits.map(hitToMethodData(_, libIdent, version))
+    })
   }
 
   def getArtifactMethodBySignatures(signatures: Iterable[String], libIdent: String, version: String): Try[Iterable[ElasticMethodData]] = {
@@ -171,9 +167,7 @@ class MethodDataAccessor(config: Configuration, override val log: AnalysisLogger
           termsQuery(ElasticPropertyNames.signatureKeywordName, signatures),
           termQuery(ElasticPropertyNames.analyzedLibraryKeywordName, libIdent),
           termQuery(ElasticPropertyNames.releasesKeywordName, version)
-        )).sourceInclude(ElasticPropertyNames.nameFieldName,ElasticPropertyNames.signatureFieldName, ElasticPropertyNames.isExternFieldName,
-          ElasticPropertyNames.obligationFieldName, ElasticPropertyNames.definingLibraryFieldName, ElasticPropertyNames.calleeFieldName)
-          .size(signatures.size)
+        )).sourceInclude(ElasticPropertyNames.methodDataRequiredFields)
       }.await match {
         case fail: RequestFailure =>
           log.error("Failed to query ElasticSearch: " + fail.error.reason)
@@ -187,10 +181,6 @@ class MethodDataAccessor(config: Configuration, override val log: AnalysisLogger
           Try {
             results.result.hits.hits.map( hit => hitToMethodData(hit, libIdent, version))
           }
-
-        case sth@_ =>
-          log.error(s"Unknown response type while querying for signature")
-          Failure(new IllegalStateException("Unknown search response from ElasticSearch"))
       }
     }
 
@@ -243,11 +233,6 @@ class MethodDataAccessor(config: Configuration, override val log: AnalysisLogger
         }
 
         Success(resultList.toList)
-
-
-      case response: RequestSuccess[_] =>
-        log.error(s"Unknown response type: ${response.result}")
-        Failure(new IllegalStateException("Unknown search response from ElasticSearch"))
     }
   }
 
@@ -265,11 +250,11 @@ class MethodDataAccessor(config: Configuration, override val log: AnalysisLogger
   }
 
   private[dataaccess] def hitToMethodData(searchHit: SearchHit, libIdent: String, version: String): ElasticMethodData = {
-
-    val id = searchHit.id
     val fieldMap = searchHit.sourceAsMap
     val mName = fieldMap(ElasticPropertyNames.nameFieldName).asInstanceOf[String]
+    val mDescriptor = fieldMap(ElasticPropertyNames.descriptorFieldName).asInstanceOf[String]
     val mSig = fieldMap(ElasticPropertyNames.signatureFieldName).asInstanceOf[String]
+    val mTypeFqn = fieldMap(ElasticPropertyNames.typeFqnFieldName).asInstanceOf[String]
     val mExtern = fieldMap(ElasticPropertyNames.isExternFieldName).asInstanceOf[Boolean]
     val mObligations = fieldMap(ElasticPropertyNames.obligationFieldName).asInstanceOf[Iterable[Map[String, AnyRef]]]
     val mDefiningLib = fieldMap(ElasticPropertyNames.definingLibraryFieldName).asInstanceOf[String]
@@ -294,12 +279,13 @@ class MethodDataAccessor(config: Configuration, override val log: AnalysisLogger
       .map(obj => obj(ElasticPropertyNames.signatureFieldName).asInstanceOf[String])
       .toList
 
-    ElasticMethodData(id, mName, mSig, mExtern, obligations, callees, mDefiningLib, libIdent, version)
+    ElasticMethodData(mName, mDescriptor, mSig, mTypeFqn, mExtern, obligations, callees, mDefiningLib, libIdent, version)
   }
 
 }
 
 private object ElasticPropertyNames {
+
   val libraryFieldName = "Library"
   val libraryKeywordName = "Library.keyword"
 
@@ -311,6 +297,7 @@ private object ElasticPropertyNames {
 
   val isExternFieldName = "IsExtern"
   val nameFieldName = "Name"
+  val descriptorFieldName = "Descriptor"
   val signatureFieldName = "Signature"
   val signatureKeywordName = "Signature.keyword"
   val obligationFieldName = "Obligations"
@@ -319,7 +306,23 @@ private object ElasticPropertyNames {
   val declaredTypeFieldName = "DeclaredType"
   val declaredMethodFieldName = "DeclaredMethod"
   val dependenciesFieldName = "Dependencies"
+  val typesFieldName = "Types"
   val instantiatedTypesFieldName = "InstantiatedTypes"
   val scopeFieldName = "Scope"
   val versionFieldName = "Version"
+
+  val instantiatingReleasesFieldName = "InstantiatingReleases"
+  val typeFqnFieldName = "TypeFQN"
+  val typeParentsFieldName = "TypeParents"
+  val typeInterfacesFieldName = "TypeInterfaces"
+
+  val methodDataRequiredFields = List(
+    nameFieldName,
+    descriptorFieldName,
+    signatureFieldName,
+    typeFqnFieldName,
+    isExternFieldName,
+    obligationFieldName,
+    definingLibraryFieldName,
+    calleeFieldName)
 }

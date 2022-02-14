@@ -26,7 +26,6 @@ abstract class CallGraphBuilder(opalProject: Project[URL], override val log: Ana
    * @return Array of potential target methods, may contain duplicates
    */
   protected[callgraphs] def getAllCallees(method: Method, project: Project[URL]): Array[Method] = {
-
     assert(method.body.isDefined)
     method
       .body

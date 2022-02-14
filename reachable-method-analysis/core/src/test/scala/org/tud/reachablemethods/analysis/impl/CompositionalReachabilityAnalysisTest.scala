@@ -45,10 +45,10 @@ class CompositionalReachabilityAnalysisTest extends AnyFlatSpec with must.Matche
       new MavenJarFileDependency(MavenIdentifier("com.fasterxml.jackson.module", "jackson-module-jaxb-annotations", "2.9.3"), jmjaFile, None)
     )
 
-    //assert(analysis.analysisPossible(deps.map(_.dependencyIdentifier)))
+    assert(analysis.analysisPossible(deps.map(_.dependencyIdentifier)))
 
     val classesRoot = new File(getClass.getResource("/validproject/classes").getPath)
-    val result = analysis.analyzeMavenProject(classesRoot, deps, treatProjectAsLibrary = false)
+    val result = analysis.analyzeMavenProject(classesRoot, deps.map(_.dependencyIdentifier), treatProjectAsLibrary = false)
 
     assert(result.isSuccess)
   }
@@ -71,16 +71,16 @@ class CompositionalReachabilityAnalysisTest extends AnyFlatSpec with must.Matche
     )
     val classesRoot = new File(getClass.getResource("/validproject/classes").getPath)
 
-
-    val regularAnalysis = new RegularOpalReachabilityAnalysis()
+    val dependencyClasses = deps.flatMap(_.classContainer.getClassList(true).get).toList
+    val regularAnalysis = new RegularOpalReachabilityAnalysis(dependencyClasses)
     val compositionalAnalysis = new CompositionalReachabilityAnalysis(new Configuration)
 
     assert(regularAnalysis.analysisPossible(deps.map(_.dependencyIdentifier)))
     assert(compositionalAnalysis.analysisPossible(deps.map(_.dependencyIdentifier)))
 
 
-    val regularResult = regularAnalysis.analyzeMavenProject(classesRoot, deps, treatProjectAsLibrary = false)
-    val compositionalResult = compositionalAnalysis.analyzeMavenProject(classesRoot, deps, treatProjectAsLibrary = false)
+    val regularResult = regularAnalysis.analyzeMavenProject(classesRoot, deps.map(_.dependencyIdentifier), treatProjectAsLibrary = false)
+    val compositionalResult = compositionalAnalysis.analyzeMavenProject(classesRoot, deps.map(_.dependencyIdentifier), treatProjectAsLibrary = false)
 
     assert(regularResult.isSuccess)
     assert(compositionalResult.isSuccess)
@@ -93,6 +93,8 @@ class CompositionalReachabilityAnalysisTest extends AnyFlatSpec with must.Matche
 
     val uniqueRegMethods = regMethods.count(regM => !compMethods.contains(regM))
     val uniqueCompMethods = compMethods.count(compM => !regMethods.contains(compM))
+
+    val uniqueRegMethodsSet = regMethods.diff(compMethods)
 
     println(s"Regular result has $uniqueRegMethods unique methods, compositional result has $uniqueCompMethods unique methods.")
   }

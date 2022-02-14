@@ -41,23 +41,32 @@ class CallGraphCrawler(val configuration: Configuration)
 
   def processLibrary(groupId: String, artifactId: String): GraphDbStorageResult = {
 
-    val builder = if(!artifactId.equals("<jre>")) {
+    // Instantiate the LibraryCallgraphBuilder only if the given library is not the JRE. If it is the JRE, we want to
+    // use a dedicated builder
+    var builder = if(!artifactId.equals("<jre>")) {
       Some(new LibraryCallgraphBuilder(groupId, artifactId, configuration))
     } else { None }
 
-
+    // Build CG evolution, use the dedicated JreCallgraphBuilder if the current library is the JRE
     builder.map(_.buildCallgraphEvolution()).getOrElse(JreCallgraphBuilder.buildCallgraphEvolution()) match {
 
       case Success(evolution) =>
 
+        // Shutdown builder (only necessary if not JRE)
         builder.foreach(_.shutdown())
+        builder = null //Free unused class space as soon as possible
+
+        // Print success and statistics
         log.info(s"Finished building CG evolution for ${evolution.libraryName}.")
-        log.info(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.numberOfInstantiatedTypeEvolutions()} instantiated types, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
+        log.info(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.numberOfTypeEvolutions()} types, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
+
+        // Initiate storage
         storageHandler.storeCallGraphEvolution(evolution)
 
       case Failure(ex) =>
         log.error(s"Failed to read versions for library $groupId:$artifactId", ex)
         builder.foreach(_.shutdown())
+        builder = null
         GraphDbStorageResult(s"$groupId:$artifactId", success = false)
     }
 
