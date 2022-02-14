@@ -34,6 +34,17 @@ object OPALProjectHelper {
   private val fullClassFileReader = Project.JavaClassFileReader(projectLogCtx, BaseConfig)
   private val interfaceClassFileReader = Java16LibraryFramework
 
+  private val jreLibraryFolder = {
+    val propValue = System.getProperty("analysisJre")
+
+    if(propValue != null && propValue.nonEmpty) {
+      log.info(s"Loading user-defined JRE for analysis: $propValue")
+      new File(propValue)
+    } else {
+      JRELibraryFolder
+    }
+  }
+
   lazy val jreClassFqns: List[String] = jreClasses.map(_._1.fqn)
 
   lazy val jreClasses: ClassList = {
@@ -45,7 +56,7 @@ object OPALProjectHelper {
         .toList
       directChildJars ++ directory.listFiles.filter(_.isDirectory).flatMap(getJarFilesRecursive).toList
     }
-    getJarFilesRecursive(JRELibraryFolder)
+    getJarFilesRecursive(jreLibraryFolder)
       .filter(f => !f.getName.equals("jfxswt.jar")) // Do not load SWT classes, they depend on eclipse implementations
       .map(f => {
         if(f.getName.endsWith(".jmod"))
