@@ -29,7 +29,7 @@ trait LibraryArtifactProcessing {
         val xml = XML.load(versionListInputStream)
         versionListInputStream.close()
 
-        val result = Try((xml \\ "metadata" \\ "versioning" \\ "versions" \\ "version").map(_.text))
+        val result = Try((xml \\ "metadata" \\ "versioning" \\ "versions" \\ "version").map(_.text).take(3)) //TODO: REVERT!
 
         result
       case Failure(ex) =>

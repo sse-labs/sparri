@@ -249,15 +249,18 @@ object CallGraphBuilder {
       .toSet
   }
 
-  def buildCallgraph(jarFile: MavenDownloadResult, thirdPartyClasses: ClassList, classFqnToIdentMap: Map[String, MavenIdentifier]): CallGraphBuilderResult = {
+  def buildCallgraph(jarFile: MavenDownloadResult,
+                     thirdPartyClasses: ClassList,
+                     classFqnToIdentMap: Map[String, MavenIdentifier],
+                     opalHelper: OPALProjectHelper): CallGraphBuilderResult = {
 
     val projectClasses =
-      OPALProjectHelper.readClassesFromJarStream(jarFile.jarFile.get.is, jarFile.identifier.toJarLocation.toURL, loadImplementation = true).get
+      opalHelper.readClassesFromJarStream(jarFile.jarFile.get.is, jarFile.identifier.toJarLocation.toURL, loadImplementation = true).get
 
     jarFile.jarFile.get.is.close()
 
 
-    Try(OPALProjectHelper.buildOPALProject(projectClasses, thirdPartyClasses)) match {
+    Try(opalHelper.buildOPALProject(projectClasses, thirdPartyClasses)) match {
       case Success(project) =>
         log.info(s"Successfully initialized OPAL project for ${jarFile.identifier.toString}")
 

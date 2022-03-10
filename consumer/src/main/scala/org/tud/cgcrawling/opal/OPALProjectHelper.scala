@@ -7,6 +7,7 @@ import org.opalj.br.{BaseConfig, ClassFile, DeclaredMethod}
 import org.opalj.bytecode.JRELibraryFolder
 import org.opalj.log.{GlobalLogContext, LogContext, OPALLogger, StandardLogContext}
 import org.slf4j.{Logger, LoggerFactory}
+import org.tud.cgcrawling.opal.OPALProjectHelper.ClassList
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, DataInputStream, File, FileInputStream, InputStream}
 import java.net.URL
@@ -16,8 +17,10 @@ import scala.collection.mutable.ListBuffer
 import scala.util.{Failure, Try}
 
 object OPALProjectHelper {
-
   type ClassList = List[(ClassFile, URL)]
+}
+
+class OPALProjectHelper {
 
   private val LOAD_JRE_IMPLEMENTATION = true
 
@@ -57,6 +60,10 @@ object OPALProjectHelper {
         case _ => true
       })
       .flatMap(_.get)
+  }
+
+  def shutdown(): Unit = {
+    //TODO: Free resources?
   }
 
   /**

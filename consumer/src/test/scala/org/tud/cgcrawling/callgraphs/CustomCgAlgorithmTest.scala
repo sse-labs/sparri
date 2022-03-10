@@ -14,6 +14,7 @@ import scala.collection.mutable
 class CustomCgAlgorithmTest extends AnyFlatSpec with must.Matchers {
 
   private val config = new Configuration
+  private val opalHelper = new OPALProjectHelper
 
 
   private val identifier1: MavenIdentifier =
@@ -29,11 +30,11 @@ class CustomCgAlgorithmTest extends AnyFlatSpec with must.Matchers {
 
     assert(downloadResponse.jarFile.isDefined)
 
-    val projectClasses = OPALProjectHelper.readClassesFromJarStream(downloadResponse.jarFile.get.is, downloadResponse.jarFile.get.url, true)
+    val projectClasses = opalHelper.readClassesFromJarStream(downloadResponse.jarFile.get.is, downloadResponse.jarFile.get.url, true)
 
     assert(projectClasses.isSuccess)
 
-    val project = OPALProjectHelper.buildOPALProject(projectClasses.get, thirdPartyClasses)
+    val project = opalHelper.buildOPALProject(projectClasses.get, thirdPartyClasses)
 
     val entries = project.get(InitialEntryPointsKey).filter(m => project.allProjectClassFiles.contains(m.classFile) && m.body.isDefined)
     val reachableMethods: mutable.Set[Method] = new mutable.HashSet[Method]()

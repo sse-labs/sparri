@@ -98,17 +98,22 @@ class LibraryCallgraphBuilderTest extends AnyFlatSpec with must.Matchers {
     println(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
     assert(evolution.releases().nonEmpty)
 
+    System.gc()
+
     evolution
 
   }
 
   "The library callgraph builder" must "process entire libraries" in {
 
-    val builder = new LibraryCallgraphBuilder(identifier1.groupId, identifier1.artifactId, config)
+    var builder = new LibraryCallgraphBuilder(identifier1.groupId, identifier1.artifactId, config)
     val evolutionTry = builder.buildCallgraphEvolution()
 
     assert(evolutionTry.isSuccess)
     val evolution = evolutionTry.get
+    builder.shutdown()
+    builder = null
+    System.gc()
 
     println(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
     assert(evolution.releases().nonEmpty)
@@ -116,8 +121,6 @@ class LibraryCallgraphBuilderTest extends AnyFlatSpec with must.Matchers {
     println("External: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod))
     evolution.methodEvolutions().filter(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod).foreach(a => println(a.identifier.fullSignature))
 
-
-    builder.shutdown()
 
   }
 }

@@ -23,6 +23,7 @@ class LibraryCallgraphBuilder(groupId: String,
 
   private[callgraphs] val classFileCache: ArtifactClassfileCache = new ArtifactClassfileCache(maxCacheSize = 12)
   private[callgraphs] val downloader: MavenJarDownloader = new MavenJarDownloader()
+  private[callgraphs] val opalHelper: OPALProjectHelper = new OPALProjectHelper()
 
   private val classFqnToDependencyMap: mutable.Map[String, MavenIdentifier] = new mutable.HashMap()
 
@@ -64,7 +65,7 @@ class LibraryCallgraphBuilder(groupId: String,
       val allThirdPartyClasses = getAllThirdPartyClassesWithCache(identifier)
 
       // Build Callgraph for entire program
-      val cgResponse = CallGraphBuilder.buildCallgraph(downloadResponse, allThirdPartyClasses, classFqnToDependencyMap.toMap)
+      val cgResponse = CallGraphBuilder.buildCallgraph(downloadResponse, allThirdPartyClasses, classFqnToDependencyMap.toMap, opalHelper)
 
       // Apply the callgraph to the library  evolution object if successful
       if(cgResponse.success) {
@@ -83,7 +84,7 @@ class LibraryCallgraphBuilder(groupId: String,
             val classes = classFileCache.getEntry(ident).getOrElse{
               val response = downloader.downloadJar(ident)
               if(response.jarFile.isDefined){
-                val classes = OPALProjectHelper.readClassesFromJarStream(response.jarFile.get.is, ident.toJarLocation.toURL, loadImplementation) match {
+                val classes = opalHelper.readClassesFromJarStream(response.jarFile.get.is, ident.toJarLocation.toURL, loadImplementation) match {
                   case Success(cfs) =>
                     cfs
                   case Failure(ex) =>
@@ -112,5 +113,6 @@ class LibraryCallgraphBuilder(groupId: String,
     classFileCache.clear()
     classFqnToDependencyMap.clear()
     downloader.shutdown()
+    opalHelper.shutdown()
   }
 }

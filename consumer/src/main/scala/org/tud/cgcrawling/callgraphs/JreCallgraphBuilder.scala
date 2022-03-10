@@ -3,6 +3,7 @@ package org.tud.cgcrawling.callgraphs
 import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 import org.tud.cgcrawling.model.LibraryCallGraphEvolution
+import org.tud.cgcrawling.opal
 import org.tud.cgcrawling.opal.OPALProjectHelper
 
 import scala.util.Try
@@ -20,7 +21,7 @@ object JreCallgraphBuilder {
     val fakeJreIdentifier = MavenIdentifier("", "<none>", "<jre>", jreVersionString)
     val theCallGraphEvolution = new LibraryCallGraphEvolution(fakeJreIdentifier.groupId, fakeJreIdentifier.artifactId)
 
-    val opalProject = OPALProjectHelper.buildJreOPALProject()
+    val opalProject = new opal.OPALProjectHelper().buildJreOPALProject()
 
     // We can use this internal method of the CallGraphBuilder, since it is package private and there is no internal
     // state to worry about (CallGraphBuilder has no state)
