@@ -5,7 +5,7 @@ import scala.collection.mutable.ListBuffer
 
 class TypeEvolution(val typeFqn: String) extends CgElementEvolution {
 
-  private val instantiatedIn: mutable.ListBuffer[String] = new ListBuffer[String]
+  private val instantiatedIn: mutable.Set[String] = new mutable.HashSet[String]
   private val parentTypeMap: mutable.Map[String, Option[String]] = new mutable.HashMap[String, Option[String]]()
   private val parentInterfacesMap: mutable.Map[String, Iterable[String]] = new mutable.HashMap[String, Iterable[String]]()
 
@@ -36,20 +36,20 @@ class TypeEvolution(val typeFqn: String) extends CgElementEvolution {
 
   def setInstantiatedIn(release: String): Unit = {
     activateRelease(release)
-    instantiatedIn.append(release)
+    instantiatedIn.add(release)
   }
 
-  def isInstantiatedIn: List[String] = instantiatedIn.toList
+  def isInstantiatedIn: Set[String] = instantiatedIn.toSet
 
   def parentTypeFqnToReleasesMap: Map[String, Iterable[String]] = {
-    val invertedMap = new mutable.HashMap[String, mutable.ListBuffer[String]]()
+    val invertedMap = new mutable.HashMap[String, mutable.Set[String]]()
 
     for( (release, parentOpt) <- parentTypeMap) {
       if(parentOpt.isDefined){
         if(!invertedMap.contains(parentOpt.get)){
-          invertedMap.put(parentOpt.get, new ListBuffer[String])
+          invertedMap.put(parentOpt.get, mutable.HashSet[String]())
         }
-        invertedMap(parentOpt.get).append(release)
+        invertedMap(parentOpt.get).add(release)
       }
     }
 
@@ -57,16 +57,16 @@ class TypeEvolution(val typeFqn: String) extends CgElementEvolution {
   }
 
   def parentInterfaceFqnToReleasesMap: Map[String, Iterable[String]] = {
-    val invertedMap = new mutable.HashMap[String, mutable.ListBuffer[String]]()
+    val invertedMap = new mutable.HashMap[String, mutable.Set[String]]()
 
     for( (release, interfaces) <- parentInterfacesMap){
       interfaces.foreach{ interface =>
 
         if(!invertedMap.contains(interface)){
-          invertedMap.put(interface, new ListBuffer[String])
+          invertedMap.put(interface, mutable.HashSet[String]())
         }
 
-        invertedMap(interface).append(release)
+        invertedMap(interface).add(release)
       }
     }
 

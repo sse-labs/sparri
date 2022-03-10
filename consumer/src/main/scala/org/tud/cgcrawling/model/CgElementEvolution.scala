@@ -4,11 +4,11 @@ import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 
 trait CgElementEvolution {
-  private val activeIn: mutable.ListBuffer[String] = new ListBuffer[String]
+  private val activeIn: mutable.Set[String] = new mutable.HashSet[String]
 
   def addActiveRelease(release: String): Unit = {
-    if(!activeIn.contains(release)) activeIn.append(release)
+    if(!activeIn.contains(release)) activeIn.add(release)
   }
 
-  def isActiveIn: List[String] = activeIn.toList
+  def isActiveIn: Set[String] = activeIn.toSet
 }

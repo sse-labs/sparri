@@ -1,13 +1,10 @@
 package org.tud.cgcrawling.callgraphs
 
-import akka.actor.ActorSystem
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must
 import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.discovery.maven.MavenIdentifier
 import org.tud.cgcrawling.model.LibraryCallGraphEvolution
-
-import scala.util.{Failure, Success, Try}
 
 class LibraryCallgraphBuilderTest extends AnyFlatSpec with must.Matchers {
 
@@ -70,77 +67,60 @@ class LibraryCallgraphBuilderTest extends AnyFlatSpec with must.Matchers {
   }
 
   "The library callgraph builder" must "download 3rd party dependencies for whole-program analysis" in {
-    val system = ActorSystem("test-lib-cg-builder")
 
-    Try{
-      val builder = new LibraryCallgraphBuilder(identifier5.groupId, identifier5.artifactId, config)(system)
+    val builder = new LibraryCallgraphBuilder(identifier5.groupId, identifier5.artifactId, config)
 
-      val evolution = new LibraryCallGraphEvolution(identifier5.groupId, identifier5.artifactId)
-      builder.processIdentifier(identifier5, evolution)
+    val evolution = new LibraryCallGraphEvolution(identifier5.groupId, identifier5.artifactId)
+    builder.processIdentifier(identifier5, evolution)
 
-      println(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
-      assert(evolution.releases().nonEmpty)
+    println(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
+    assert(evolution.releases().nonEmpty)
 
-      println("Project: " + evolution.methodEvolutions().count(mEvo => !mEvo.identifier.isExternal))
-      println("JRE: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.isExternal && mEvo.identifier.isJREMethod))
-      println("3rd party: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod))
-      println("With defining Artifact: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.definingArtifact.isDefined))
+    println("Project: " + evolution.methodEvolutions().count(mEvo => !mEvo.identifier.isExternal))
+    println("JRE: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.isExternal && mEvo.identifier.isJREMethod))
+    println("3rd party: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod))
+    println("With defining Artifact: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.definingArtifact.isDefined))
 
-      builder.shutdown()
-    } match {
-      case Failure(ex) =>
-        system.terminate()
-        throw ex
-      case _ =>
-    }
+    builder.shutdown()
+
   }
 
   private def buildEvolutionForArtifacts(idents: MavenIdentifier*): LibraryCallGraphEvolution = {
-    val system = ActorSystem("test-lib-cg-builder")
     assert(idents.nonEmpty)
     val firstIdent = idents.head
-    Try{
-      val builder = new LibraryCallgraphBuilder(firstIdent.groupId, firstIdent.artifactId, config)(system)
 
-      val evolution = new LibraryCallGraphEvolution(firstIdent.groupId, firstIdent.artifactId)
+    val builder = new LibraryCallgraphBuilder(firstIdent.groupId, firstIdent.artifactId, config)
 
-      idents.foreach(i => builder.processIdentifier(i, evolution))
+    val evolution = new LibraryCallGraphEvolution(firstIdent.groupId, firstIdent.artifactId)
 
-      println(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
-      assert(evolution.releases().nonEmpty)
+    idents.foreach(i => builder.processIdentifier(i, evolution))
 
-      evolution
-    } match {
-      case Failure(ex) =>
-        system.terminate()
-        fail(ex)
-      case Success(value) => value
-    }
+    println(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
+    assert(evolution.releases().nonEmpty)
+
+    System.gc()
+
+    evolution
+
   }
 
   "The library callgraph builder" must "process entire libraries" in {
-    val system = ActorSystem("test-lib-cg-builder")
 
-    Try{
-      val builder = new LibraryCallgraphBuilder(identifier1.groupId, identifier1.artifactId, config)(system)
-      val evolutionTry = builder.buildCallgraphEvolution()
+    var builder = new LibraryCallgraphBuilder(identifier1.groupId, identifier1.artifactId, config)
+    val evolutionTry = builder.buildCallgraphEvolution()
 
-      assert(evolutionTry.isSuccess)
-      val evolution = evolutionTry.get
+    assert(evolutionTry.isSuccess)
+    val evolution = evolutionTry.get
+    builder.shutdown()
+    builder = null
+    System.gc()
 
-      println(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
-      assert(evolution.releases().nonEmpty)
+    println(s"Got a total of ${evolution.numberOfDependencyEvolutions()} dependencies, ${evolution.releases().size} releases with ${evolution.numberOfMethodEvolutions()} methods and ${evolution.numberOfInvocationEvolutions()} invocations")
+    assert(evolution.releases().nonEmpty)
 
-      println("External: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod))
-      evolution.methodEvolutions().filter(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod).foreach(a => println(a.identifier.fullSignature))
+    println("External: " + evolution.methodEvolutions().count(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod))
+    evolution.methodEvolutions().filter(mEvo => mEvo.identifier.isExternal && !mEvo.identifier.isJREMethod).foreach(a => println(a.identifier.fullSignature))
 
 
-      builder.shutdown()
-    } match {
-      case Failure(ex) =>
-        system.terminate()
-        fail(ex)
-      case _ =>
-    }
   }
 }
