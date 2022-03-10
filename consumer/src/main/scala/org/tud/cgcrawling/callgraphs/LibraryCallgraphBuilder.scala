@@ -1,6 +1,5 @@
 package org.tud.cgcrawling.callgraphs
 
-import akka.actor.ActorSystem
 import org.slf4j.{Logger, LoggerFactory}
 import org.tud.cgcrawling.Configuration
 import org.tud.cgcrawling.dependencies.JekaDependencyExtractor
@@ -16,15 +15,15 @@ import scala.util.{Failure, Success, Try}
 
 class LibraryCallgraphBuilder(groupId: String,
                               artifactId: String,
-                              config: Configuration)(implicit system: ActorSystem) extends LibraryArtifactProcessing {
+                              config: Configuration) extends LibraryArtifactProcessing with JekaDependencyExtractor {
 
   override val repoUri: URI = config.mavenRepoBase
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
-  private[callgraphs] val classFileCache: ArtifactClassfileCache = new ArtifactClassfileCache(20)
+  private[callgraphs] val classFileCache: ArtifactClassfileCache = new ArtifactClassfileCache(maxCacheSize = 12)
   private[callgraphs] val downloader: MavenJarDownloader = new MavenJarDownloader()
-  private[callgraphs] val dependencyExtractor: JekaDependencyExtractor = JekaDependencyExtractor.getInstance(config)
+  private[callgraphs] val opalHelper: OPALProjectHelper = new OPALProjectHelper()
 
   private val classFqnToDependencyMap: mutable.Map[String, MavenIdentifier] = new mutable.HashMap()
 
@@ -51,7 +50,7 @@ class LibraryCallgraphBuilder(groupId: String,
     val downloadResponse = downloader.downloadJar(identifier)
 
     // Get dependencies
-    val dependencies = dependencyExtractor.getDeclaredDependencies(identifier) match {
+    val dependencies = getDeclaredDependencies(identifier) match {
       case Success(dependencies) => dependencies.toSet
       case Failure(ex) =>
         log.error(s"Failed to extract dependencies for release ${identifier.version} of library ${evolution.libraryName}", ex)
@@ -66,7 +65,7 @@ class LibraryCallgraphBuilder(groupId: String,
       val allThirdPartyClasses = getAllThirdPartyClassesWithCache(identifier)
 
       // Build Callgraph for entire program
-      val cgResponse = CallGraphBuilder.buildCallgraph(downloadResponse, allThirdPartyClasses, classFqnToDependencyMap.toMap)
+      val cgResponse = CallGraphBuilder.buildCallgraph(downloadResponse, allThirdPartyClasses, classFqnToDependencyMap.toMap, opalHelper)
 
       // Apply the callgraph to the library  evolution object if successful
       if(cgResponse.success) {
@@ -76,7 +75,7 @@ class LibraryCallgraphBuilder(groupId: String,
   }
 
   private[callgraphs] def getAllThirdPartyClassesWithCache(identifier: MavenIdentifier, loadImplementation: Boolean = false): ClassList = {
-    dependencyExtractor.resolveAllDependencies(identifier)._1 match {
+    resolveAllDependencies(identifier)._1 match {
       case Success(allDependencies) =>
         allDependencies
           .map(_.identifier)
@@ -85,7 +84,7 @@ class LibraryCallgraphBuilder(groupId: String,
             val classes = classFileCache.getEntry(ident).getOrElse{
               val response = downloader.downloadJar(ident)
               if(response.jarFile.isDefined){
-                val classes = OPALProjectHelper.readClassesFromJarStream(response.jarFile.get.is, ident.toJarLocation.toURL, loadImplementation) match {
+                val classes = opalHelper.readClassesFromJarStream(response.jarFile.get.is, ident.toJarLocation.toURL, loadImplementation) match {
                   case Success(cfs) =>
                     cfs
                   case Failure(ex) =>
@@ -114,5 +113,6 @@ class LibraryCallgraphBuilder(groupId: String,
     classFileCache.clear()
     classFqnToDependencyMap.clear()
     downloader.shutdown()
+    opalHelper.shutdown()
   }
 }

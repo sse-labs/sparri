@@ -16,13 +16,11 @@
 
 package org.tud.cgcrawling
 
-import akka.stream.ThrottleMode
-import org.neo4j.driver.Config.ConfigBuilder
+
 import org.neo4j.driver.{AuthTokens, Config, Driver, GraphDatabase, Logging}
 import org.opalj.tac.cg.{AbstractCallGraphKey, TypeBasedPointsToCallGraphKey, XTACallGraphKey}
 
 import java.net.URI
-import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 class Configuration {
 
@@ -32,7 +30,6 @@ class Configuration {
   val CallGraphAlgorithm: AbstractCallGraphKey = XTACallGraphKey
 
   val limit : Int = 100
-  val throttle : Throttle = Throttle(5, 1 second, 5, ThrottleMode.shaping)
 
   val mqUsername: String = "<CHANGEME>"
   val mqPassword: String = "<CHANGEME>"
@@ -42,7 +39,7 @@ class Configuration {
 
   val elasticClientUri: String = "<CHANGEME>"
   val elasticMethodIndexName: String = "methods"
-  val elasticDependencyIndexName: String = "dependencies"
+  val elasticLibraryIndexName: String = "libraries"
 
   val graphDatabaseUrl: String = "<CHANGEME>"
   val graphDatabaseUser: String = "neo4j"
@@ -67,6 +64,4 @@ class Configuration {
   val numberOfStorageThreads: Int = 2
 
   val codeSizeCgCutoffBytes: Int = 1500000
-
-  case class Throttle(element : Int, per : FiniteDuration, maxBurst : Int, mode : ThrottleMode)
 }

@@ -29,13 +29,26 @@ class ArtifactClassfileCache(maxCacheSize: Long) {
   }
 
   def pushEntry(ident: MavenIdentifier, classes: List[(ClassFile, URL)]): List[(ClassFile, URL)] = {
+
     if(hasEntry(ident)){
       accessMap.update(ident, System.currentTimeMillis())
       getEntry(ident).get
     } else {
-      if(theCache.size >= maxCacheSize){
+
+      // If we do not have the entry, we will add it. If we have an entry of the same LIBRARY in the cache,
+      // we will remove that entry, as it is very unlikely that the old entry will be used again once a new
+      // version is loaded. Otherwise, we will remove the entry that has not been used the longest.
+      val sameLibraryEntryOpt = theCache
+        .keys
+        .find(i => i.groupId.equals(ident.groupId) && i.artifactId.equals(ident.artifactId))
+
+      if(sameLibraryEntryOpt.isDefined) {
+        theCache.remove(sameLibraryEntryOpt.get)
+        accessMap.remove(sameLibraryEntryOpt.get)
+      } else if(theCache.size >= maxCacheSize){
         removeInternal()
       }
+
       theCache.put(ident, classes)
       accessMap.put(ident, System.currentTimeMillis())
       classes

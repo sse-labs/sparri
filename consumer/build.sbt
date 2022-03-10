@@ -23,7 +23,7 @@ docker / dockerfile := {
   new Dockerfile {
     from("openjdk:16-jdk")
     add(artifact, artifactTargetPath)
-    entryPoint("java", "-jar", "-Xmx8G", artifactTargetPath)
+    entryPoint("java", "-jar", "-Xmx8G", "-Xss128m", artifactTargetPath)
   }
 }
 
@@ -38,20 +38,12 @@ libraryDependencies ++= Seq(
   "de.opal-project" % "framework_2.12" % opalVersion,
 )
 
-val akkaVersion = "2.6.15"
-val akkaHttpVersion = "10.1.11"
-
-libraryDependencies ++= Seq(
-  "com.typesafe.akka" %% "akka-stream" % akkaVersion,
-  "com.typesafe.akka" %% "akka-http" % akkaHttpVersion
-)
 
 libraryDependencies += "org.neo4j.driver" % "neo4j-java-driver" % "4.3.1"
 
 val elastic4sVersion = "7.14.1"
 libraryDependencies ++= Seq(
-  "com.sksamuel.elastic4s" %% "elastic4s-client-esjava" % elastic4sVersion,
-  "com.sksamuel.elastic4s" %% "elastic4s-client-akka" % elastic4sVersion
+  "com.sksamuel.elastic4s" %% "elastic4s-client-esjava" % elastic4sVersion
 )
 
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.3"

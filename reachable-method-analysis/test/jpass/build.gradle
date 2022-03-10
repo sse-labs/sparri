@@ -1,0 +1,59 @@
+apply plugin: 'java'
+apply plugin: 'distribution'
+
+compileJava.options.encoding = 'UTF-8'
+sourceCompatibility = 1.6
+targetCompatibility = 1.6
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile group: 'com.fasterxml.jackson.dataformat', name: 'jackson-dataformat-xml', version: '2.9.3'
+    testCompile 'junit:junit:4.11'
+}
+
+jar {
+    baseName = 'jpass'
+    version = '0.1.18-SNAPSHOT'
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    manifest {
+        attributes('Main-Class': 'jpass.JPass')
+    }
+    from {
+        configurations.compile.collect { it.isDirectory() ? it : zipTree(it) }
+    }
+}
+
+task copyConfig(type: Copy) {
+    from 'src/main/config'
+    into 'build/libs'
+}
+
+distributions {
+    main {
+        baseName = "$jar.baseName-$jar.version-dist"
+        contents {
+            from jar
+            from { 'src/main/config' }
+            into '/'
+        }
+    }
+}
+
+task bumpVersion {
+    doLast {
+        if (!project.hasProperty('toVersion')) {
+            throw new GradleException("Please provide 'toVersion' property e.g. gradle bumpVersion -PtoVersion=<version>")
+        }
+        def extensions = ['java', 'gradle', 'sbt', 'xml', 'md', 'bat', 'sh', 'txt'].collect { "**/*.$it" }.join(",")
+        def files = new groovy.util.FileNameFinder().getFileNames("$projectDir", extensions)
+        files.each { versionedFile ->
+            def file = new File(versionedFile)
+            file.write(file.getText('UTF-8').replaceAll("$jar.version", "$toVersion"), 'UTF-8')
+        }
+    }
+}
+
+build.dependsOn copyConfig

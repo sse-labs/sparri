@@ -7,6 +7,7 @@ import org.opalj.br.{BaseConfig, ClassFile, DeclaredMethod}
 import org.opalj.bytecode.JRELibraryFolder
 import org.opalj.log.{GlobalLogContext, LogContext, OPALLogger, StandardLogContext}
 import org.slf4j.{Logger, LoggerFactory}
+import org.tud.cgcrawling.opal.OPALProjectHelper.ClassList
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, DataInputStream, File, FileInputStream, InputStream}
 import java.net.URL
@@ -16,8 +17,10 @@ import scala.collection.mutable.ListBuffer
 import scala.util.{Failure, Try}
 
 object OPALProjectHelper {
-
   type ClassList = List[(ClassFile, URL)]
+}
+
+class OPALProjectHelper {
 
   private val LOAD_JRE_IMPLEMENTATION = true
 
@@ -30,8 +33,6 @@ object OPALProjectHelper {
   }
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
-  private val fullClassFileReader = Project.JavaClassFileReader(projectLogCtx, BaseConfig)
-  private val interfaceClassFileReader = Java16LibraryFramework
 
   lazy val jreClassFqns: List[String] = jreClasses.map(_._1.fqn)
 
@@ -61,6 +62,24 @@ object OPALProjectHelper {
       .flatMap(_.get)
   }
 
+  def shutdown(): Unit = {
+    //TODO: Free resources?
+  }
+
+  /**
+   * Builds the ClassFileReader to process ClassFiles with.
+   * @param loadImplementation Decides whether or not the reader loads implementation (code) or interfaces-only
+   * @return ClassFileReader
+   * @note We do not use instance variables here, since the Java16LibraryFramework uses caching, and the caches will
+   *       grow continuously until the class space is exhausted
+   */
+  def getClassFileReader(loadImplementation: Boolean): Java16LibraryFramework = {
+    if(loadImplementation)
+      Project.JavaClassFileReader(projectLogCtx, BaseConfig)
+    else
+      Java16LibraryFramework
+  }
+
   def isThirdPartyMethod(project: Project[URL],method: DeclaredMethod): Boolean = {
     !project.allProjectClassFiles.map(_.thisType).contains(method.declaringClassType) &&
       !jreClasses.map(_._1.thisType).contains(method.declaringClassType)
@@ -68,6 +87,16 @@ object OPALProjectHelper {
 
   def isThirdPartyClassFile(project: Project[URL], cf: ClassFile): Boolean = {
     !project.allProjectClassFiles.contains(cf) && !jreClasses.map(_._1).contains(cf)
+  }
+
+  def buildJreOPALProject(): Project[URL] = {
+    val config = BaseConfig.withValue("org.opalj.br.analyses.cg.InitialEntryPointsKey.analysis",
+      ConfigValueFactory.fromAnyRef("org.opalj.br.analyses.cg.LibraryEntryPointsFinder"))
+
+    val inconsistentExceptionHandler =
+      (_: LogContext, error: InconsistentProjectException) => log.warn("Inconsistent Project Exception: " + error.message)
+
+    Project(jreClasses, List.empty, libraryClassFilesAreInterfacesOnly = true, Traversable.empty, inconsistentExceptionHandler)(config, projectLogger)
   }
 
   def buildOPALProject(projectClasses: ClassList, thirdPartyClasses: ClassList): Project[URL] = {
@@ -88,7 +117,7 @@ object OPALProjectHelper {
     val source = jmod.toURI.toURL
     val entryEnum = zipFile.entries()
 
-    val reader = if(loadImplementation) this.fullClassFileReader else this.interfaceClassFileReader
+    val reader = getClassFileReader(loadImplementation)
 
     while(entryEnum.hasMoreElements){
       val currentEntry = entryEnum.nextElement()
@@ -96,11 +125,6 @@ object OPALProjectHelper {
 
       if (entryName.endsWith(".class")){
         val is = zipFile.getInputStream(currentEntry)
-        /**if(entryName.toLowerCase.contains("methodhandles$lookup.class")){
-          val cf = reader.ClassFile(getEntryByteStream(is))
-          cf.head.methods.foreach(m => println(m.fullyQualifiedSignature))
-          println()
-        }**/
 
         reader
           .ClassFile(getEntryByteStream(is))
@@ -119,7 +143,7 @@ object OPALProjectHelper {
 
     var currentEntry = jarInputStream.getNextJarEntry
 
-    val reader = if(loadImplementation) this.fullClassFileReader else this.interfaceClassFileReader
+    val reader = getClassFileReader(loadImplementation)
 
     while(currentEntry != null){
       val entryName = currentEntry.getName.toLowerCase
