@@ -11,7 +11,7 @@ lazy val common = (project in file("common"))
 	.settings(
 		libraryDependencies ++= dependencies.opal,
 		libraryDependencies ++= Seq(dependencies.logback, dependencies.rabbitMQ, dependencies.jeka, dependencies.mvnarcheologist,
-			dependencies.scalaTest, dependencies.elastic)
+			dependencies.scalaTest, dependencies.akkaStreams, dependencies.apacheHttp)
 	)
 
 lazy val extractor = (project in file("classfile-feature-extractor"))
@@ -41,4 +41,8 @@ lazy val dependencies = new {
 	val rabbitMQ = "com.rabbitmq" % "amqp-client" % "5.13.0"
 	
 	val scalaTest = "org.scalatest" %% "scalatest" % "3.2.9" % "test"
+
+	val akkaStreams = "com.typesafe.akka" %% "akka-stream" % "2.6.18"
+
+	val apacheHttp = "org.apache.httpcomponents" % "httpclient" % "4.5.13"
 }
