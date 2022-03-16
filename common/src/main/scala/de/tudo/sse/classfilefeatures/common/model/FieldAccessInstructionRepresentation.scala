@@ -5,12 +5,17 @@ import FieldAccessTypes.FieldAccessType
 case class FieldAccessInstructionRepresentation(fieldName: String,
                                                 fieldTypeJvmName: String,
                                                 fieldDeclaredClassFqn: String,
-                                                fieldAccessType: FieldAccessType)
+                                                fieldAccessType: FieldAccessType) {
+  def identifier: String = "[" + fieldAccessType.toString + "] " + fieldDeclaredClassFqn + "." + fieldName + ":" + fieldTypeJvmName
+}
 
 object FieldAccessTypes extends Enumeration {
 
   type FieldAccessType = Value
 
-  val Put, Get, PutStatic, GetStatic = Value
+  val Put: Value = Value("Put")
+  val Get: Value = Value("Get")
+  val PutStatic: Value = Value("PutStatic")
+  val GetStatic: Value = Value("GetStatic")
 
 }

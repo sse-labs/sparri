@@ -22,21 +22,18 @@ import org.opalj.tac.cg.{AbstractCallGraphKey, XTACallGraphKey}
 
 import java.net.URI
 
-class Configuration extends MqConnectionConfiguration with PostgreSqlConnectionConfiguration{
+class Configuration extends MqConnectionConfiguration with PostgreSqlConnectionConfiguration {
 
-  val CallGraphAlgorithm: AbstractCallGraphKey = XTACallGraphKey
+  override val mqUsername: String = "my-user"
+  override val mqPassword: String = "abc439"
+  override val mqHost: String = "ls5vs029.cs.tu-dortmund.de"
+  override val mqPort: Int = 8080
+  override val mqQueueName: String = "library-identifiers"
 
-  val limit : Int = 100
-
-  val mqUsername: String = "<CHANGEME>"
-  val mqPassword: String = "<CHANGEME>"
-  val mqHost: String = "<CHANGEME>"
-  val mqPort: Int = 8080
-  val mqQueueName: String = "library-identifiers"
-
-  val codeSizeCgCutoffBytes: Int = 1500000
+  override val postgreSqlUrl: String = "jdbc:postgresql://ls5vs029.cs.tu-dortmund.de:9876/"
+  override val postgresUsername: String = "<CHANGEME>"
+  override val postgresPassword: String = "<CHANGEME>"
 
   val numberOfTransformerThreads: Int = 2
   val numberOfStorageThreads: Int = 2
-
 }

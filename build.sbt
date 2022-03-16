@@ -18,7 +18,7 @@ lazy val extractor = (project in file("classfile-feature-extractor"))
 	.dependsOn(common)
 	.settings(
 		libraryDependencies ++= Seq(dependencies.jeka, dependencies.elastic, dependencies.logback, dependencies.rabbitMQ,
-			dependencies.scalaTest, dependencies.mvnarcheologist),
+			dependencies.scalaTest, dependencies.mvnarcheologist, dependencies.postgresql),
 		libraryDependencies ++= dependencies.opal
 	)
 	
@@ -45,4 +45,6 @@ lazy val dependencies = new {
 	val akkaStreams = "com.typesafe.akka" %% "akka-stream" % "2.6.18"
 
 	val apacheHttp = "org.apache.httpcomponents" % "httpclient" % "4.5.13"
+
+	val postgresql = "org.postgresql" % "postgresql" % "42.3.3"
 }
