@@ -11,6 +11,8 @@ trait ClassfileFeatureStorageHandler {
 
   def verifyConnectivity(): Unit
 
+  def initialize(): Unit
+
   def isLibraryPresent(libraryIdentifier: String): Boolean
 
   def storeLibraryFeatureModel(model: LibraryClassfileFeatureModel): Try[Unit]

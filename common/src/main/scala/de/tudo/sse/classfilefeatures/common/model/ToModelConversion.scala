@@ -1,7 +1,7 @@
 package de.tudo.sse.classfilefeatures.common.model
 
 import de.tudo.sse.classfilefeatures.common.opal.OPALUtilities
-import org.opalj.br.instructions.{GETFIELD, GETSTATIC, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL, Instruction, InvocationInstruction, PUTFIELD, PUTSTATIC}
+import org.opalj.br.instructions.{GETFIELD, GETSTATIC, INVOKEDYNAMIC, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL, Instruction, InvocationInstruction, PUTFIELD, PUTSTATIC}
 import org.opalj.br.{ClassFile, Code, Field, Method}
 
 trait ToModelConversion {
@@ -40,6 +40,7 @@ trait ToModelConversion {
       .filter(OPALUtilities.isInvocationInstruction)
       .map(_.asInvocationInstruction)
       .map(toInvocationRepresentation)
+      .filter( _ != null) //This filters out invokedynamics TODO: Revert
 
     MethodBodyRepresentation(
       maxStack = c.maxStack,
@@ -91,6 +92,10 @@ trait ToModelConversion {
           isInterfaceInvocation = virtual.isInterfaceCall,
           invocationType = InvocationTypes.Virtual
         )
+
+      case dynamic: INVOKEDYNAMIC =>
+        println("Got dynamic: " + dynamic)
+        null
 
       case unknown =>
         throw new Exception(s"Unknown invocation instruction type: $unknown")

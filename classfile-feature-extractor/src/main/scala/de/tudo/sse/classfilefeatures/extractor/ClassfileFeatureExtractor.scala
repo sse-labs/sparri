@@ -37,6 +37,8 @@ class ClassfileFeatureExtractor extends MqStreamingSupport with MavenArtifactDis
    */
   def initialize(): Unit = {
     storageHandler.verifyConnectivity()
+    storageHandler.initialize()
+    log.info("Successfully initialized extractor.")
   }
 
   /**
@@ -85,6 +87,7 @@ class ClassfileFeatureExtractor extends MqStreamingSupport with MavenArtifactDis
             versions
               .map{ v => MavenIdentifier(libraryFeatureModel.groupId, libraryFeatureModel.artifactId, v) }
               .foreach{ identifier => processIdentifier(identifier, libraryFeatureModel)}
+            opalProjectHelper.freeOpalResources()
           } match {
             case Success(_) =>
               log.info(s"Successfully processed features of $libraryIdentifier")

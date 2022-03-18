@@ -14,7 +14,6 @@ class MavenJarDownloader {
   def downloadJar(ident: MavenIdentifier): MavenDownloadResult = {
       downloader.downloadFromUri(ident.toJarLocation.toString) match {
         case Success(jarStream) =>
-          log.info(s"Downloaded ${ident.toString}")
           MavenDownloadResult(ident, Some(OnlineFile(jarStream, ident.toJarLocation.toURL)))
         case Failure(ex) =>
           log.error(s"Failed to download JAR file ${ident.toString}: ${ex.getMessage}")

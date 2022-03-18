@@ -4,7 +4,7 @@ import com.typesafe.config.ConfigValueFactory
 import OPALProjectHelper.ClassList
 import org.opalj.br.analyses.{InconsistentProjectException, Project}
 import org.opalj.br.reader.Java16LibraryFramework
-import org.opalj.br.{BaseConfig, ClassFile}
+import org.opalj.br.{ArrayType, BaseConfig, ClassFile, ObjectType}
 import org.opalj.bytecode.JRELibraryFolder
 import org.opalj.log.{GlobalLogContext, LogContext, OPALLogger, StandardLogContext}
 import org.slf4j.{Logger, LoggerFactory}
@@ -151,9 +151,9 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
    * Frees up resources occupied by OPAL.
    */
   def freeOpalResources(): Unit = {
-    //TODO: We will have to adapt OPAL so that the type caches are being cleared, otherwise we will slowly run out of
-    //TODO: memory while analyzing multiple projects
-    log.warn("freeOpalResources was called, but is currently not implemented")
+    //TODO: Make sure these are the only caches we need to purge
+    ObjectType.clearTypeCache()
+    ArrayType.clearTypeCache()
   }
 
   /**

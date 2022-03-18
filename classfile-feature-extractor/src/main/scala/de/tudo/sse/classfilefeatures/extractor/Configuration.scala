@@ -18,8 +18,6 @@ package de.tudo.sse.classfilefeatures.extractor
 
 import de.tudo.sse.classfilefeatures.common.rabbitmq.MqConnectionConfiguration
 import de.tudo.sse.classfilefeatures.extractor.storage.impl.PostgreSqlConnectionConfiguration
-import org.opalj.tac.cg.{AbstractCallGraphKey, XTACallGraphKey}
-
 import java.net.URI
 
 class Configuration extends MqConnectionConfiguration with PostgreSqlConnectionConfiguration {

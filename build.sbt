@@ -24,7 +24,7 @@ lazy val extractor = (project in file("classfile-feature-extractor"))
 	
 lazy val dependencies = new {
 
-	val opalVersion = "4.0.0"
+	val opalVersion = "4.0.1-SNAPSHOT"
 	val opal = Seq(
 	  "de.opal-project" % "common_2.12" % opalVersion,
 	  "de.opal-project" % "framework_2.12" % opalVersion,
