@@ -16,6 +16,9 @@ class LibraryClassFileModel(val classFileThisTypeFqn: String) extends Conditiona
   private val methodsByIdentifier: mutable.Map[String, LibraryMethodModel] = new mutable.HashMap
   private val fieldDefinitionsByIdentifier: mutable.Map[String, LibraryFieldDefinitionModel] = new mutable.HashMap
 
+  def methodEvolutions: Set[LibraryMethodModel] = methodsByIdentifier.values.toSet
+  def fieldDefinitionEvolutions: Set[LibraryFieldDefinitionModel] = fieldDefinitionsByIdentifier.values.toSet
+
 
 
   override val identifier: String = classFileThisTypeFqn

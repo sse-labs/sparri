@@ -73,10 +73,10 @@ class ClassfileFeatureExtractor extends MqStreamingSupport with MavenArtifactDis
 
   private[extractor] def buildLibraryFeatureModel(libraryIdentifier: String): Future[IdempotentComputationResult[LibraryClassfileFeatureModel]] = Future {
 
-    log.info(s"Got library identifier from queue: $libraryIdentifier")
+    log.info(s"[$libraryIdentifier] Got identifier from queue")
 
     if(storageHandler.isLibraryPresent(libraryIdentifier)){
-      log.warn(s"Not processing $libraryIdentifier, as it is already in the database")
+      log.warn(s"[$libraryIdentifier] Not processing identifier, as it is already in the database")
       IdempotentComputationResult.notExecuted[LibraryClassfileFeatureModel]()
     } else {
       getVersionsForLibrary(libraryIdentifier) match {
@@ -90,15 +90,15 @@ class ClassfileFeatureExtractor extends MqStreamingSupport with MavenArtifactDis
             opalProjectHelper.freeOpalResources()
           } match {
             case Success(_) =>
-              log.info(s"Successfully processed features of $libraryIdentifier")
+              log.info(s"[$libraryIdentifier] Successfully processed features")
               IdempotentComputationResult.success(libraryFeatureModel)
             case Failure(ex) =>
-              log.error(s"Failed to process versions of library $libraryIdentifier", ex)
+              log.error(s"[$libraryIdentifier] Failed to process versions of library", ex)
               IdempotentComputationResult.notSuccessful[LibraryClassfileFeatureModel](ex)
           }
 
         case Failure(ex) =>
-          log.error(s"Failed to generate version list for $libraryIdentifier", ex)
+          log.error(s"[$libraryIdentifier] Failed to generate version list", ex)
           IdempotentComputationResult.notSuccessful[LibraryClassfileFeatureModel](ex)
       }
     }
@@ -112,7 +112,7 @@ class ClassfileFeatureExtractor extends MqStreamingSupport with MavenArtifactDis
         val classRepresentations = opalProjectHelper
           .readClassesFromJarStream(jarFile.is, jarFile.url, loadImplementation = true)
           .get // Exceptions will be handled by surrounding try in "buildLibraryFeatureModel"
-          .map(t => toModel(t._1))
+          .map(t => toModel(t._1, handleFields = true))
 
         featureModel.appendNewRelease(identifier.version, classRepresentations)
 
@@ -127,10 +127,10 @@ class ClassfileFeatureExtractor extends MqStreamingSupport with MavenArtifactDis
 
       storageHandler.storeLibraryFeatureModel(libraryModel) match {
         case Success(_) =>
-          log.info(s"Successfully stored library feature model for ${libraryModel.libraryIdentifier}")
+          log.info(s"[${libraryModel.libraryIdentifier}] Successfully stored library feature model")
         case Failure(ex) =>
           //IMPROVE: Maybe republish errors to queue?
-          log.error(s"Failed to store library feature model for ${libraryModel.libraryIdentifier}", ex)
+          log.error(s"[${libraryModel.libraryIdentifier}] Failed to store library feature model", ex)
       }
     )(streamMaterializer.executionContext)}
   }

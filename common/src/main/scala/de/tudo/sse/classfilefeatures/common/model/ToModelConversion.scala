@@ -94,7 +94,7 @@ trait ToModelConversion {
         )
 
       case dynamic: INVOKEDYNAMIC =>
-        println("Got dynamic: " + dynamic)
+        // IMPROVE: Is there a way to handle dynamics?
         null
 
       case unknown =>

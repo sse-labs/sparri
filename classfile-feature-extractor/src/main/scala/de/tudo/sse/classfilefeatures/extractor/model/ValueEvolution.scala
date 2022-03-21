@@ -20,4 +20,6 @@ class ValueEvolution[T] {
   def asSingleValue: Option[T] = if (hasSingleValue) valueEvolutionMap.keys.headOption else None
 
   def valueToReleasesMap: Map[T, Set[String]] = valueEvolutionMap.mapValues(_.toSet).toMap
+
+  def getReleaseToValueTuples: Seq[(String, T)] = valueEvolutionMap.flatMap(t => t._2.map(r => (r, t._1)).toSeq).toSeq.distinct
 }
