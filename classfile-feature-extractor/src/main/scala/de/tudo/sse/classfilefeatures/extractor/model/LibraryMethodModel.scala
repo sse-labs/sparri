@@ -17,6 +17,9 @@ class LibraryMethodModel(prototypeElement: MethodRepresentation) extends Conditi
   private val invocationsByIdentifier: mutable.Map[String, LibraryInvocationInstructionModel] = new mutable.HashMap
   private val fieldAccessesByIdentifier: mutable.Map[String, LibraryFieldAccessInstructionModel] = new mutable.HashMap
 
+  def invocationEvolutions: Set[LibraryInvocationInstructionModel] = invocationsByIdentifier.values.toSet
+  def fieldAccessEvolutions: Set[LibraryFieldAccessInstructionModel] = fieldAccessesByIdentifier.values.toSet
+
   override val identifier: String = prototypeElement.identifier
 
   override protected def updateModel(release: String, mr: MethodRepresentation): Unit = {
