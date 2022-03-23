@@ -24,12 +24,14 @@ object PostgreSqlTables {
       PostgreSqlTableColumn("FieldType", PostgreSqlDataTypes.Text)
     ))
 
-  //TODO: Supertype, Interfaces, MajorVersion, MinorVersion
   val classFileTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Classfiles", autoIdColumn = true,
     columns = List(
       PostgreSqlTableColumn("LibraryId", PostgreSqlDataTypes.Int),
       PostgreSqlTableColumn("ThisType", PostgreSqlDataTypes.Text),
-      PostgreSqlTableColumn("DefaultFlags", PostgreSqlDataTypes.Int)
+      PostgreSqlTableColumn("DefaultFlags", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("DefaultMajorVersion", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("DefaultMinorVersion", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("DefaultSupertype", PostgreSqlDataTypes.Text, isNullable = true)
     ), fkConstraints = List(
       PostgreSqlForeignKeyConstraint(List("LibraryId"), libraryTable.tableName, List("Id")),
       PostgreSqlForeignKeyConstraint(List("DefaultFlags"), accessFlagsTable.tableName, List("Flags"))
@@ -98,7 +100,8 @@ object PostgreSqlTables {
 
   def allRelationTables: List[PostgreSqlTable] = List(librariesToVersionsTable, classFilesToVersionsTable, fieldDefinitionsToVersionsTable,
     classFileFlagValueTable, fieldDefinitionFlagValueTable, methodsToVersionsTable, methodFlagValueTable, methodMaxStackValueTable, methodMaxLocalsValueTable,
-    fieldAccessesToVersionsTable, invocationInstructionsToVersionsTable)
+    fieldAccessesToVersionsTable, invocationInstructionsToVersionsTable, classFileMajorVersionValueTable, classFileMinorVersionValueTable,
+    classFileSuperTypeValueTable, classFileInterfaceValueTable)
 
   // Entity-to-Active-Version Relations first
   val librariesToVersionsTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Rel_Libraries_VersionNumbers",
@@ -163,7 +166,7 @@ object PostgreSqlTables {
 
 
 
-  // Default Value Exception tables: Flags
+  // Default Value Exception tables
 
   val classFileFlagValueTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Rel_Classfiles_AccessFlags",
     columns = List(
@@ -174,6 +177,50 @@ object PostgreSqlTables {
       PostgreSqlForeignKeyConstraint(List("ClassfileId"), classFileTable.tableName, List("Id")),
       PostgreSqlForeignKeyConstraint(List("VersionId"), versionNumberTable.tableName, List("Id")),
       PostgreSqlForeignKeyConstraint(List("Flags"), accessFlagsTable.tableName, List("Flags"))
+    )
+  )
+
+  val classFileMajorVersionValueTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Rel_Classfiles_MajorVersion",
+    columns = List(
+      PostgreSqlTableColumn("ClassfileId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("VersionId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("MajorVersion", PostgreSqlDataTypes.Int)
+    ), fkConstraints = List(
+      PostgreSqlForeignKeyConstraint(List("ClassfileId"), classFileTable.tableName, List("Id")),
+      PostgreSqlForeignKeyConstraint(List("VersionId"), versionNumberTable.tableName, List("Id"))
+    )
+  )
+
+  val classFileMinorVersionValueTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Rel_Classfiles_MinorVersion",
+    columns = List(
+      PostgreSqlTableColumn("ClassfileId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("VersionId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("MinorVersion", PostgreSqlDataTypes.Int)
+    ), fkConstraints = List(
+      PostgreSqlForeignKeyConstraint(List("ClassfileId"), classFileTable.tableName, List("Id")),
+      PostgreSqlForeignKeyConstraint(List("VersionId"), versionNumberTable.tableName, List("Id"))
+    )
+  )
+
+  val classFileSuperTypeValueTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Rel_Classfiles_SuperType",
+    columns = List(
+      PostgreSqlTableColumn("ClassfileId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("VersionId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("SuperType", PostgreSqlDataTypes.Text, isNullable = true)
+    ), fkConstraints = List(
+      PostgreSqlForeignKeyConstraint(List("ClassfileId"), classFileTable.tableName, List("Id")),
+      PostgreSqlForeignKeyConstraint(List("VersionId"), versionNumberTable.tableName, List("Id"))
+    )
+  )
+
+  val classFileInterfaceValueTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Rel_Classfiles_Interface",
+    columns = List(
+      PostgreSqlTableColumn("ClassfileId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("VersionId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("Interface", PostgreSqlDataTypes.Text)
+    ), fkConstraints = List(
+      PostgreSqlForeignKeyConstraint(List("ClassfileId"), classFileTable.tableName, List("Id")),
+      PostgreSqlForeignKeyConstraint(List("VersionId"), versionNumberTable.tableName, List("Id"))
     )
   )
 

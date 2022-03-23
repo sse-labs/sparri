@@ -40,7 +40,7 @@ trait ToModelConversion {
       .filter(OPALUtilities.isInvocationInstruction)
       .map(_.asInvocationInstruction)
       .map(toInvocationRepresentation)
-      .filter( _ != null) //This filters out invokedynamics TODO: Revert
+      .filter( _ != null) //This filters out invokedynamics
 
     MethodBodyRepresentation(
       maxStack = c.maxStack,

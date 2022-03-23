@@ -10,8 +10,7 @@ class LibraryClassFileModel(val classFileThisTypeFqn: String) extends Conditiona
   val majorVersionEvolution: ValueEvolution[Int] = new ValueEvolution[Int]
   val minorVersionEvolution: ValueEvolution[Int] = new ValueEvolution[Int]
   val superTypeEvolution: ValueEvolution[Option[String]] = new ValueEvolution[Option[String]]
-
-  private val interfacesEvolution: ValueEvolution[String] = new ValueEvolution[String]
+  val interfacesEvolution: ValueEvolution[String] = new ValueEvolution[String]
 
   private val methodsByIdentifier: mutable.Map[String, LibraryMethodModel] = new mutable.HashMap
   private val fieldDefinitionsByIdentifier: mutable.Map[String, LibraryFieldDefinitionModel] = new mutable.HashMap

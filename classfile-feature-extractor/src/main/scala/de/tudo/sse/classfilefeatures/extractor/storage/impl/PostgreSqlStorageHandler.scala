@@ -33,6 +33,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
       stmt.addBatch(table.tableDefinitionSql)
     }
 
+    //TODO: Execute this only once!
     //stmt.addBatch("CREATE INDEX idx_field_signature ON " + PostgreSqlTables.fieldSignatureTable.tableName + " (FieldName, FieldType)")
 
     PostgreSqlTables.allRelationTables.foreach { table =>
@@ -131,7 +132,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
         flagsPrepStmt.close()
         connection.commit()
 
-        log.info(s"[${model.libraryIdentifier}] Start building field index...") //TODO: Speedup this index
+        log.info(s"[${model.libraryIdentifier}] Start building field index...")
         // Assert that all field signature are present and build an id lookup
         val allFieldSignaturesInModel: Set[(String, String)] =
           (model.allClassfileModels.flatMap(_.fieldDefinitionEvolutions).map(lfdm => (lfdm.fieldName, lfdm.fieldTypeJvmName)) ++
@@ -159,6 +160,10 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
 
         val classFileToVersionInsertStmt = connection.prepareStatement(PostgreSqlTables.classFilesToVersionsTable.buildInsertSql(ignoreConflicts = false))
         val classFileToFlagsInsertStmt = connection.prepareStatement(PostgreSqlTables.classFileFlagValueTable.buildInsertSql(ignoreConflicts = false))
+        val classFileToMajorVersionInsertStmt = connection.prepareStatement(PostgreSqlTables.classFileMajorVersionValueTable.buildInsertSql(ignoreConflicts = false))
+        val classFileToMinorVersionInsertStmt = connection.prepareStatement(PostgreSqlTables.classFileMinorVersionValueTable.buildInsertSql(ignoreConflicts = false))
+        val classFileToSuperTypeInsertStmt = connection.prepareStatement(PostgreSqlTables.classFileSuperTypeValueTable.buildInsertSql(ignoreConflicts = false))
+        val classFileToInterfaceInsertStmt = connection.prepareStatement(PostgreSqlTables.classFileInterfaceValueTable.buildInsertSql(ignoreConflicts = false))
 
         val fieldDefinitionInsertStmt = connection.prepareStatement(PostgreSqlTables.fieldDefinitionTable.buildInsertSql(ignoreConflicts = false),
           Statement.RETURN_GENERATED_KEYS)
@@ -170,11 +175,19 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
         model.allClassfileModels.foreach { lcfm =>
 
           val cfDefaultFlags = lcfm.flagsEvolution.getDefaultValue
+          val cfDefaultMajor = lcfm.majorVersionEvolution.getDefaultValue
+          val cfDefaultMinor = lcfm.minorVersionEvolution.getDefaultValue
+          val cfDefaultSuperType = lcfm.superTypeEvolution.getDefaultValue
 
           // Store classfile itself
           classFileInsertStmt.setInt(1, libraryId)
           classFileInsertStmt.setString(2, lcfm.classFileThisTypeFqn)
           classFileInsertStmt.setInt(3, cfDefaultFlags)
+          classFileInsertStmt.setInt(4, cfDefaultMajor)
+          classFileInsertStmt.setInt(5, cfDefaultMinor)
+
+          if(cfDefaultSuperType.isDefined) classFileInsertStmt.setString(6, cfDefaultSuperType.get)
+          else classFileInsertStmt.setNull(6, java.sql.Types.VARCHAR)
 
           classFileInsertStmt.executeUpdate()
 
@@ -189,8 +202,20 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
           storeAllMethods(lcfm, classFileId, versionToIdMap, fieldSignatureToIdMap)
           log.info(s"[${model.libraryIdentifier}] End store methods for ${lcfm.classFileThisTypeFqn}.")
 
-          // Store exceptions from default flag for classfile
+          // Store exceptions from default values for classfile
           storeExceptionsToDefaultValue(lcfm.flagsEvolution, classFileToFlagsInsertStmt, classFileId, versionToIdMap)
+          storeExceptionsToDefaultValue(lcfm.majorVersionEvolution, classFileToMajorVersionInsertStmt, classFileId, versionToIdMap)
+          storeExceptionsToDefaultValue(lcfm.minorVersionEvolution, classFileToMinorVersionInsertStmt, classFileId, versionToIdMap)
+          storeExceptionsToDefaultValue(lcfm.superTypeEvolution, classFileToSuperTypeInsertStmt, classFileId, versionToIdMap)
+
+          lcfm.interfacesEvolution.getReleaseToValueTuples.foreach { case (v: String, interface: String) =>
+            classFileToInterfaceInsertStmt.setInt(1, classFileId)
+            classFileToInterfaceInsertStmt.setInt(2, versionToIdMap(v))
+            classFileToInterfaceInsertStmt.setString(3, interface)
+            classFileToInterfaceInsertStmt.addBatch()
+          }
+
+          classFileToInterfaceInsertStmt.executeBatch()
 
           // Store classfile field definitions
           lcfm.fieldDefinitionEvolutions.foreach { lfdm =>
@@ -237,6 +262,8 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
         classFileInsertStmt.close()
         classFileToVersionInsertStmt.close()
         classFileToFlagsInsertStmt.close()
+        classFileToMajorVersionInsertStmt.close()
+        classFileToMinorVersionInsertStmt.close()
         fieldDefinitionInsertStmt.close()
         fieldDefToVersionInsertStmt.close()
         fieldDefToFlagsInsertStmt.close()
@@ -305,7 +332,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
     }
   }
 
-  private def storeExceptionsToDefaultValue[T <: Int](evo: ValueEvolution[T],
+  private def storeExceptionsToDefaultValue[T](evo: ValueEvolution[T],
                                                       prepStmt: PreparedStatement,
                                                       entityId: Int,
                                                       versionIdLookup: String => Int): Unit = {
@@ -316,13 +343,23 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
       .valueToReleasesMap
       .filterKeys(value => value != evoDefault)
       .flatMap( t => t._2.map(r => (t._1, r)))
-      .foreach { case (flags: Int, release: String) =>
+      .foreach {
+        case (flags: Int, release: String) =>
 
-        prepStmt.setInt(1, entityId)
-        prepStmt.setInt(2, versionIdLookup(release))
-        prepStmt.setInt(3, flags)
-        prepStmt.addBatch()
+          prepStmt.setInt(1, entityId)
+          prepStmt.setInt(2, versionIdLookup(release))
+          prepStmt.setInt(3, flags)
+          prepStmt.addBatch()
 
+        case (superType: Option[String], release: String) =>
+
+          prepStmt.setInt(1, entityId)
+          prepStmt.setInt(2, versionIdLookup(release))
+
+          if(superType.isDefined) prepStmt.setString(3, superType.get)
+          else prepStmt.setNull(3, java.sql.Types.VARCHAR)
+
+          prepStmt.addBatch()
       }
 
     prepStmt.executeBatch()
@@ -362,8 +399,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
     val fieldAccToVersionInsertStmt =
       connection.prepareStatement(PostgreSqlTables.fieldAccessesToVersionsTable.buildInsertSql(ignoreConflicts = false))
 
-    lcfm.methodEvolutions.foreach { lmm =>
-
+    val methodIdLookup = lcfm.methodEvolutions.map { lmm =>
       val methodDefaultFlags = lmm.flagsEvolution.getDefaultValue
       // For MaxStack and MaxLocals there may not be any value at all (in case of abstract methods)
       val methodDefaultMaxStack = lmm.maxStackEvolution.getDefaultValueOpt
@@ -387,18 +423,34 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
 
       val methodId = if(mrs.next())  mrs.getInt(1)
       else throw new Exception(s"Failed to store methods for classfile ${lcfm.classFileThisTypeFqn}")
-      connection.commit()
+
+      (lmm.identifier, methodId)
+    }.toMap
+    methodInsertStmt.close()
+    connection.commit()
+
+    lcfm.methodEvolutions.foreach { lmm =>
+
+      val methodId = methodIdLookup(lmm.identifier)
 
       // Store exceptions to default flag for method
       storeExceptionsToDefaultValue(lmm.flagsEvolution, methodToFlagsInsertStmt, methodId, versionLookup)
 
-      if(methodDefaultMaxStack.isDefined)
+      if(lmm.hasBody) {
         storeExceptionsToDefaultValue(lmm.maxStackEvolution, methodToMaxStackInsertStmt, methodId, versionLookup)
-
-      if(methodDefaultMaxLocals.isDefined)
         storeExceptionsToDefaultValue(lmm.maxLocalsEvolution, methodToMaxLocalsInsertStmt, methodId, versionLookup)
+      }
 
-      lmm.invocationEvolutions.foreach { liim =>
+      lmm.allActiveReleases.foreach { v =>
+
+        methodToVersionInsertStmt.setInt(1, methodId)
+        methodToVersionInsertStmt.setInt(2, versionLookup(v))
+        methodToVersionInsertStmt.addBatch()
+      }
+
+      methodToVersionInsertStmt.executeBatch()
+
+      val invokeIdLookup = lmm.invocationEvolutions.map { liim =>
         invocationInstructionInsertStmt.setInt(1, methodId)
         invocationInstructionInsertStmt.setString(2, liim.targetMethodName)
         invocationInstructionInsertStmt.setString(3, liim.targetMethodJvmDescriptor)
@@ -411,32 +463,40 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
 
         val instructionId = if(irs.next()) irs.getInt(1)
         else throw new Exception(s"Failed to insert instruction $liim")
-        connection.commit()
 
+        (liim.identifier, instructionId)
+      }.toMap
+
+      val fieldAccessIdLookup = lmm.fieldAccessEvolutions.map { lfaim =>
+          fieldAccessInstructionInsertStmt.setInt(1, methodId)
+          invocationInstructionInsertStmt.setInt(2, fieldSignatureLookup(lfaim.fieldName + lfaim.fieldTypeJvmName))
+          invocationInstructionInsertStmt.setString(3, lfaim.fieldDeclaredClassFqn)
+          invocationInstructionInsertStmt.setString(4, lfaim.fieldAccessType.toString)
+
+          invocationInstructionInsertStmt.executeUpdate()
+          val irs = invocationInstructionInsertStmt.getGeneratedKeys
+
+          val instructionId = if(irs.next()) irs.getInt(1)
+          else throw new Exception(s"Failed to insert instruction $lfaim")
+
+          (lfaim.identifier, instructionId)
+      }.toMap
+
+      connection.commit()
+
+
+      lmm.invocationEvolutions.foreach { liim =>
         liim.allActiveReleases.foreach { v =>
-          invocationInstrToVersionInsertStmt.setInt(1, instructionId)
+          invocationInstrToVersionInsertStmt.setInt(1, invokeIdLookup(liim.identifier))
           invocationInstrToVersionInsertStmt.setInt(2, versionLookup(v))
           invocationInstrToVersionInsertStmt.addBatch()
         }
-
         invocationInstrToVersionInsertStmt.executeBatch()
       }
 
       lmm.fieldAccessEvolutions.foreach { lfaim =>
-        fieldAccessInstructionInsertStmt.setInt(1, methodId)
-        invocationInstructionInsertStmt.setInt(2, fieldSignatureLookup(lfaim.fieldName + lfaim.fieldTypeJvmName))
-        invocationInstructionInsertStmt.setString(3, lfaim.fieldDeclaredClassFqn)
-        invocationInstructionInsertStmt.setString(4, lfaim.fieldAccessType.toString)
-
-        invocationInstructionInsertStmt.executeUpdate()
-        val irs = invocationInstructionInsertStmt.getGeneratedKeys
-
-        val instructionId = if(irs.next()) irs.getInt(1)
-        else throw new Exception(s"Failed to insert instruction $lfaim")
-        connection.commit()
-
         lfaim.allActiveReleases.foreach { v =>
-          fieldAccToVersionInsertStmt.setInt(1, instructionId)
+          fieldAccToVersionInsertStmt.setInt(1, fieldAccessIdLookup(lfaim.identifier))
           fieldAccToVersionInsertStmt.setInt(2, versionLookup(v))
           fieldAccToVersionInsertStmt.addBatch()
         }
@@ -444,19 +504,8 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
         fieldAccToVersionInsertStmt.executeBatch()
       }
 
-
-      // Store method-to-version relation
-      lmm.allActiveReleases.foreach { v =>
-
-        methodToVersionInsertStmt.setInt(1, methodId)
-        methodToVersionInsertStmt.setInt(2, versionLookup(v))
-        methodToVersionInsertStmt.addBatch()
-      }
-
-      methodToVersionInsertStmt.executeBatch()
     }
 
-    methodInsertStmt.close()
     methodToFlagsInsertStmt.close()
     methodToMaxStackInsertStmt.close()
     methodToMaxLocalsInsertStmt.close()
