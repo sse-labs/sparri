@@ -1,13 +1,13 @@
-package de.tudo.sse.classfilefeatures.extractor.storage.impl
+package de.tudo.sse.classfilefeatures.common.storage.impl.postgresql
 
-import de.tudo.sse.classfilefeatures.extractor.storage.impl.PostgreSqlDataTypes.PostgreSqlDataType
+import de.tudo.sse.classfilefeatures.common.storage.impl.postgresql.PostgreSqlDataTypes.PostgreSqlDataType
 
 import java.sql.{Connection, PreparedStatement}
 
 object PostgreSqlTables {
 
   def allEntityTables: List[PostgreSqlTable] = List(libraryTable, versionNumberTable, accessFlagsTable, fieldSignatureTable,
-    classFileTable, fieldDefinitionTable, methodTable)
+    classFileTable, fieldDefinitionTable, methodTable, invocationInstructionsTable, fieldAccessInstructionsTable)
 
   val libraryTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Libraries", autoIdColumn = true,
     columns = List(PostgreSqlTableColumn("LibraryName", PostgreSqlDataTypes.Text)))
@@ -25,7 +25,6 @@ object PostgreSqlTables {
     ))
 
   //TODO: Supertype, Interfaces, MajorVersion, MinorVersion
-  //TODO: Instructions for FieldAccess and Invocation
   val classFileTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Classfiles", autoIdColumn = true,
     columns = List(
       PostgreSqlTableColumn("LibraryId", PostgreSqlDataTypes.Int),
@@ -63,13 +62,43 @@ object PostgreSqlTables {
     )
   )
 
+  // IMPROVE: Move Strings to table
+  // IMPROVE: Separate actual invocation definitions and method-to-instruction relation
+  val invocationInstructionsTable: PostgreSqlTable = new PostgreSqlTable(tableName = "InvocationInstructions", autoIdColumn = true,
+    columns = List(
+      PostgreSqlTableColumn("MethodId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("TargetMethodName", PostgreSqlDataTypes.Text),
+      PostgreSqlTableColumn("TargetMethodDescriptor", PostgreSqlDataTypes.Text),
+      PostgreSqlTableColumn("TargetMethodClass", PostgreSqlDataTypes.Text),
+      PostgreSqlTableColumn("IsInterfaceInvocation", PostgreSqlDataTypes.Bool),
+      PostgreSqlTableColumn("InvocationType", PostgreSqlDataTypes.ShortText)
+    ), fkConstraints = List(
+      PostgreSqlForeignKeyConstraint(List("MethodId"), methodTable.tableName, List("Id"))
+    )
+  )
+
+  // IMPROVE: Move Strings to table
+  // IMPROVE: Separate actual invocation definitions and method-to-instruction relation
+  val fieldAccessInstructionsTable: PostgreSqlTable = new PostgreSqlTable(tableName = "FieldAccessInstructions", autoIdColumn = true,
+    columns = List(
+      PostgreSqlTableColumn("MethodId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("FieldSignatureId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("FieldClass", PostgreSqlDataTypes.Text),
+      PostgreSqlTableColumn("AccessType", PostgreSqlDataTypes.ShortText)
+    ), fkConstraints = List(
+      PostgreSqlForeignKeyConstraint(List("MethodId"), methodTable.tableName, List("Id")),
+      PostgreSqlForeignKeyConstraint(List("FieldSignatureId"), fieldSignatureTable.tableName, List("Id"))
+    )
+  )
+
 
   /*  -------------------------------------------------------------
       |                START OF RELATION TABLES                   |
       -------------------------------------------------------------*/
 
   def allRelationTables: List[PostgreSqlTable] = List(librariesToVersionsTable, classFilesToVersionsTable, fieldDefinitionsToVersionsTable,
-    classFileFlagValueTable, fieldDefinitionFlagValueTable, methodsToVersionsTable, methodFlagValueTable, methodMaxStackValueTable, methodMaxLocalsValueTable)
+    classFileFlagValueTable, fieldDefinitionFlagValueTable, methodsToVersionsTable, methodFlagValueTable, methodMaxStackValueTable, methodMaxLocalsValueTable,
+    fieldAccessesToVersionsTable, invocationInstructionsToVersionsTable)
 
   // Entity-to-Active-Version Relations first
   val librariesToVersionsTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Rel_Libraries_VersionNumbers",
@@ -111,6 +140,28 @@ object PostgreSqlTables {
       PostgreSqlForeignKeyConstraint(List("VersionId"), versionNumberTable.tableName, List("Id"))
     )
   )
+
+  val invocationInstructionsToVersionsTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Rel_InvocationInstructions_VersionNumbers",
+    columns = List(
+      PostgreSqlTableColumn("InvocationInstructionId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("VersionId", PostgreSqlDataTypes.Int)
+    ), fkConstraints = List(
+      PostgreSqlForeignKeyConstraint(List("InvocationInstructionId"), invocationInstructionsTable.tableName, List("Id")),
+      PostgreSqlForeignKeyConstraint(List("VersionId"), versionNumberTable.tableName, List("Id"))
+    )
+  )
+
+  val fieldAccessesToVersionsTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Rel_FieldAccesses_VersionNumbers",
+    columns = List(
+      PostgreSqlTableColumn("FieldAccessInstructionId", PostgreSqlDataTypes.Int),
+      PostgreSqlTableColumn("VersionId", PostgreSqlDataTypes.Int)
+    ), fkConstraints = List(
+      PostgreSqlForeignKeyConstraint(List("FieldAccessInstructionId"), fieldAccessInstructionsTable.tableName, List("Id")),
+      PostgreSqlForeignKeyConstraint(List("VersionId"), versionNumberTable.tableName, List("Id"))
+    )
+  )
+
+
 
   // Default Value Exception tables: Flags
 

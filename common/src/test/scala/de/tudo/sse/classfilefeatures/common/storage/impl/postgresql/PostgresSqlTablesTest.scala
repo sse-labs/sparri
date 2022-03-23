@@ -1,4 +1,4 @@
-package de.tudo.sse.classfilefeatures.extractor.storage.impl
+package de.tudo.sse.classfilefeatures.common.storage.impl.postgresql
 
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must
