@@ -54,7 +54,7 @@ lazy val webapi = (project in file("webapi"))
 	
 lazy val dependencies = new {
 
-	val opalVersion = "4.0.1-SNAPSHOT"
+	val opalVersion = "4.0.0"
 	val opal = Seq(
 	  "de.opal-project" % "common_2.12" % opalVersion,
 	  "de.opal-project" % "framework_2.12" % opalVersion,

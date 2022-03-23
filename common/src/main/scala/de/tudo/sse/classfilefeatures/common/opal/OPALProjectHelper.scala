@@ -151,9 +151,11 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
    * Frees up resources occupied by OPAL.
    */
   def freeOpalResources(): Unit = {
-    //TODO: Make sure these are the only caches we need to purge
-    ObjectType.clearTypeCache()
-    ArrayType.clearTypeCache()
+    /*/TODO: Make sure these are the only caches we need to purge
+    //ObjectType.clearTypeCache()
+    //ArrayType.clearTypeCache()*/
+
+    //TODO: Reintroduce modified OPAL version
   }
 
   /**
