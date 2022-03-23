@@ -16,10 +16,33 @@ lazy val common = (project in file("common"))
 
 lazy val extractor = (project in file("classfile-feature-extractor"))
 	.dependsOn(common)
+	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= Seq(dependencies.jeka, dependencies.elastic, dependencies.logback, dependencies.rabbitMQ,
 			dependencies.scalaTest, dependencies.mvnarcheologist, dependencies.postgresql),
-		libraryDependencies ++= dependencies.opal
+		libraryDependencies ++= dependencies.opal,
+
+		assembly / mainClass := Some("de.tudo.sse.classfilefeatures.extractor.Application"),
+		assembly / assemblyJarName := "cf-feature-extractor.jar",
+		assemblyMergeStrategy := {
+			case x: String if x.toLowerCase.contains("manifest.mf") => MergeStrategy.discard
+			case x: String if x.toLowerCase.endsWith(".conf") => MergeStrategy.concat
+			case x => MergeStrategy.first
+		},
+
+		docker / dockerfile := {
+
+			val artifact: File = assembly.value
+			val artifactTargetPath = s"/app/${artifact.name}"
+
+			new Dockerfile {
+				from("openjdk:16-jdk")
+				add(artifact, artifactTargetPath)
+				entryPoint("java", "-jar", "-Xmx8G", "-Xss128m", artifactTargetPath)
+			}
+		},
+
+		docker / imageNames := Seq(ImageName(s"cf-feature-extractor:latest"))
 	)
 
 lazy val webapi = (project in file("webapi"))
