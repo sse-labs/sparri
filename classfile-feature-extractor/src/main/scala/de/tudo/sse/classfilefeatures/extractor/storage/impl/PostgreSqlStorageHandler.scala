@@ -1,25 +1,24 @@
 package de.tudo.sse.classfilefeatures.extractor.storage.impl
 
-import de.tudo.sse.classfilefeatures.common.storage.impl.postgresql.PostgreSqlTables
+import de.tudo.sse.classfilefeatures.common.storage.impl.postgresql
+import de.tudo.sse.classfilefeatures.common.storage.impl.postgresql.{PostgreSqlConnectionConfiguration, PostgreSqlConnectivity, PostgreSqlTables}
 import de.tudo.sse.classfilefeatures.extractor.model.{LibraryClassFileModel, LibraryClassfileFeatureModel, ValueEvolution}
 import de.tudo.sse.classfilefeatures.extractor.storage.ClassfileFeatureStorageHandler
-import de.tudo.sse.classfilefeatures.extractor.storage.impl.PostgreSqlStorageHandler.buildConnection
 
-import java.sql.{Connection, DriverManager, PreparedStatement, Statement}
-import java.util.Properties
+import java.sql.{Connection, PreparedStatement, Statement}
 import java.util.concurrent.locks.ReentrantLock
 import scala.util.{Success, Try}
 
-class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extends ClassfileFeatureStorageHandler {
+class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extends ClassfileFeatureStorageHandler with PostgreSqlConnectivity {
+
+  override protected val connectionConfiguration: postgresql.PostgreSqlConnectionConfiguration = config
 
   private val libraryIndexRWLock: ReentrantLock = new ReentrantLock()
-
-  private lazy val connection = buildConnection(config.postgreSqlUrl, config.postgresUsername, config.postgresPassword)
 
   override def verifyConnectivity(): Unit = {
 
     // connection is a lazy val, so any errors while building it will be thrown here!
-    if(!connection.isValid(30)){
+    if (!connection.isValid(30)) {
       throw new IllegalStateException("PostgreSQL connection not valid.")
     }
   }
@@ -40,7 +39,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
       stmt.addBatch(table.tableDefinitionSql)
     }
 
-    if(stmt.executeBatch().contains(Statement.EXECUTE_FAILED)){
+    if (stmt.executeBatch().contains(Statement.EXECUTE_FAILED)) {
       stmt.close()
       throw new Exception("Failed to create tables in database")
     }
@@ -54,7 +53,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
 
     var libraryPresent = false
 
-    try{
+    try {
       val queryStmt = connection.prepareStatement("SELECT LibraryName FROM Libraries WHERE Libraries.LibraryName = ?;")
       queryStmt.setString(1, libraryIdentifier)
       val result = queryStmt.executeQuery()
@@ -82,7 +81,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
     try {
       libraryWasPresent = isLibraryPresent(model.libraryIdentifier)
 
-      if(!libraryWasPresent){
+      if (!libraryWasPresent) {
 
         // Insert library into index table before releasing the lock
         val prepStmt = connection.prepareStatement(PostgreSqlTables.libraryTable.buildInsertSql(ignoreConflicts = false),
@@ -93,7 +92,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
 
         val result = prepStmt.getGeneratedKeys
 
-        if(result.next()){
+        if (result.next()) {
           libraryId = result.getInt(1)
         }
 
@@ -105,7 +104,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
     }
 
 
-    if(libraryWasPresent){
+    if (libraryWasPresent) {
       // If the library was present before, we don't have to do anything
       Success()
     } else {
@@ -117,7 +116,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
         connection.commit()
 
         // Adds all flags to table. No need to store id mapping, flag value is PK
-        val allFlagsInModel = model.allClassfileModels.flatMap(_.flagsEvolution.valueToReleasesMap.keySet)++
+        val allFlagsInModel = model.allClassfileModels.flatMap(_.flagsEvolution.valueToReleasesMap.keySet) ++
           model.allClassfileModels.flatMap(_.fieldDefinitionEvolutions).flatMap(_.flagsEvolution.valueToReleasesMap.keySet) ++
           model.allClassfileModels.flatMap(_.methodEvolutions).flatMap(_.flagsEvolution.valueToReleasesMap.keySet)
         connection.commit()
@@ -136,9 +135,9 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
         // Assert that all field signature are present and build an id lookup
         val allFieldSignaturesInModel: Set[(String, String)] =
           (model.allClassfileModels.flatMap(_.fieldDefinitionEvolutions).map(lfdm => (lfdm.fieldName, lfdm.fieldTypeJvmName)) ++
-          model.allClassfileModels.flatMap(_.methodEvolutions).flatMap(_.fieldAccessEvolutions).map( lfaim => (lfaim.fieldName, lfaim.fieldTypeJvmName))).toSet
+            model.allClassfileModels.flatMap(_.methodEvolutions).flatMap(_.fieldAccessEvolutions).map(lfaim => (lfaim.fieldName, lfaim.fieldTypeJvmName))).toSet
 
-        val fieldSignatureToIdMap = allFieldSignaturesInModel.map( sig => (sig._1 + sig._2, assertFieldSignaturePresentAndGetId(connection, sig._1, sig._2) )).toMap
+        val fieldSignatureToIdMap = allFieldSignaturesInModel.map(sig => (sig._1 + sig._2, assertFieldSignaturePresentAndGetId(connection, sig._1, sig._2))).toMap
         connection.commit()
         log.info(s"[${model.libraryIdentifier}] Done building field index.")
 
@@ -186,15 +185,15 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
           classFileInsertStmt.setInt(4, cfDefaultMajor)
           classFileInsertStmt.setInt(5, cfDefaultMinor)
 
-          if(cfDefaultSuperType.isDefined) classFileInsertStmt.setString(6, cfDefaultSuperType.get)
+          if (cfDefaultSuperType.isDefined) classFileInsertStmt.setString(6, cfDefaultSuperType.get)
           else classFileInsertStmt.setNull(6, java.sql.Types.VARCHAR)
 
           classFileInsertStmt.executeUpdate()
 
           val rs = classFileInsertStmt.getGeneratedKeys
 
-          val classFileId = if(rs.next()) rs.getInt(1)
-            else throw new Exception(s"Failed to store classfile ${lcfm.classFileThisTypeFqn}")
+          val classFileId = if (rs.next()) rs.getInt(1)
+          else throw new Exception(s"Failed to store classfile ${lcfm.classFileThisTypeFqn}")
           connection.commit()
 
           // Store all methods of classfile
@@ -231,8 +230,8 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
 
             val fdrs = fieldDefinitionInsertStmt.getGeneratedKeys
 
-            val fieldDefinitionId = if(fdrs.next()) fdrs.getInt(1)
-              else throw new Exception(s"Failed to store classfile field definition for ${lcfm.classFileThisTypeFqn}")
+            val fieldDefinitionId = if (fdrs.next()) fdrs.getInt(1)
+            else throw new Exception(s"Failed to store classfile field definition for ${lcfm.classFileThisTypeFqn}")
 
             // Store exceptions from default flag for field definition
             storeExceptionsToDefaultValue(lfdm.flagsEvolution, fieldDefToFlagsInsertStmt, fieldDefinitionId, versionToIdMap)
@@ -285,7 +284,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
 
     val checkIdResult = checkIdStmt.executeQuery()
 
-    if(checkIdResult.next()){
+    if (checkIdResult.next()) {
       val res = checkIdResult.getInt(1)
       res
     } else {
@@ -297,7 +296,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
 
       val insertIdResult = insertIdStmt.getGeneratedKeys
 
-      if(insertIdResult.next()){
+      if (insertIdResult.next()) {
         val res = insertIdResult.getInt(1)
         res
       } else {
@@ -314,7 +313,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
 
     val checkIdResult = checkIdStmt.executeQuery()
 
-    if(checkIdResult.next()){
+    if (checkIdResult.next()) {
       checkIdResult.getInt(1)
     } else {
       val insertIdStmt = connection.prepareStatement(PostgreSqlTables.versionNumberTable.buildInsertSql(ignoreConflicts = false),
@@ -324,7 +323,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
 
       val insertIdResult = insertIdStmt.getGeneratedKeys
 
-      if(insertIdResult.next()){
+      if (insertIdResult.next()) {
         insertIdResult.getInt(1)
       } else {
         throw new Exception("Failed to insert version number")
@@ -333,16 +332,16 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
   }
 
   private def storeExceptionsToDefaultValue[T](evo: ValueEvolution[T],
-                                                      prepStmt: PreparedStatement,
-                                                      entityId: Int,
-                                                      versionIdLookup: String => Int): Unit = {
+                                               prepStmt: PreparedStatement,
+                                               entityId: Int,
+                                               versionIdLookup: String => Int): Unit = {
 
     val evoDefault = evo.getDefaultValue
 
     evo
       .valueToReleasesMap
       .filterKeys(value => value != evoDefault)
-      .flatMap( t => t._2.map(r => (t._1, r)))
+      .flatMap(t => t._2.map(r => (t._1, r)))
       .foreach {
         case (flags: Int, release: String) =>
 
@@ -356,7 +355,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
           prepStmt.setInt(1, entityId)
           prepStmt.setInt(2, versionIdLookup(release))
 
-          if(superType.isDefined) prepStmt.setString(3, superType.get)
+          if (superType.isDefined) prepStmt.setString(3, superType.get)
           else prepStmt.setNull(3, java.sql.Types.VARCHAR)
 
           prepStmt.addBatch()
@@ -410,10 +409,10 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
       methodInsertStmt.setString(3, lmm.jvmMethodDescriptor)
       methodInsertStmt.setInt(4, methodDefaultFlags)
 
-      if(methodDefaultMaxStack.isDefined) methodInsertStmt.setInt(5, methodDefaultMaxStack.get)
+      if (methodDefaultMaxStack.isDefined) methodInsertStmt.setInt(5, methodDefaultMaxStack.get)
       else methodInsertStmt.setNull(5, java.sql.Types.INTEGER)
 
-      if(methodDefaultMaxLocals.isDefined) methodInsertStmt.setInt(6, methodDefaultMaxLocals.get)
+      if (methodDefaultMaxLocals.isDefined) methodInsertStmt.setInt(6, methodDefaultMaxLocals.get)
       else methodInsertStmt.setNull(6, java.sql.Types.INTEGER)
 
       methodInsertStmt.setBoolean(7, lmm.hasBody)
@@ -421,7 +420,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
       methodInsertStmt.executeUpdate()
       val mrs = methodInsertStmt.getGeneratedKeys
 
-      val methodId = if(mrs.next())  mrs.getInt(1)
+      val methodId = if (mrs.next()) mrs.getInt(1)
       else throw new Exception(s"Failed to store methods for classfile ${lcfm.classFileThisTypeFqn}")
 
       (lmm.identifier, methodId)
@@ -436,7 +435,7 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
       // Store exceptions to default flag for method
       storeExceptionsToDefaultValue(lmm.flagsEvolution, methodToFlagsInsertStmt, methodId, versionLookup)
 
-      if(lmm.hasBody) {
+      if (lmm.hasBody) {
         storeExceptionsToDefaultValue(lmm.maxStackEvolution, methodToMaxStackInsertStmt, methodId, versionLookup)
         storeExceptionsToDefaultValue(lmm.maxLocalsEvolution, methodToMaxLocalsInsertStmt, methodId, versionLookup)
       }
@@ -461,25 +460,25 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
         invocationInstructionInsertStmt.executeUpdate()
         val irs = invocationInstructionInsertStmt.getGeneratedKeys
 
-        val instructionId = if(irs.next()) irs.getInt(1)
+        val instructionId = if (irs.next()) irs.getInt(1)
         else throw new Exception(s"Failed to insert instruction $liim")
 
         (liim.identifier, instructionId)
       }.toMap
 
       val fieldAccessIdLookup = lmm.fieldAccessEvolutions.map { lfaim =>
-          fieldAccessInstructionInsertStmt.setInt(1, methodId)
-          invocationInstructionInsertStmt.setInt(2, fieldSignatureLookup(lfaim.fieldName + lfaim.fieldTypeJvmName))
-          invocationInstructionInsertStmt.setString(3, lfaim.fieldDeclaredClassFqn)
-          invocationInstructionInsertStmt.setString(4, lfaim.fieldAccessType.toString)
+        fieldAccessInstructionInsertStmt.setInt(1, methodId)
+        invocationInstructionInsertStmt.setInt(2, fieldSignatureLookup(lfaim.fieldName + lfaim.fieldTypeJvmName))
+        invocationInstructionInsertStmt.setString(3, lfaim.fieldDeclaredClassFqn)
+        invocationInstructionInsertStmt.setString(4, lfaim.fieldAccessType.toString)
 
-          invocationInstructionInsertStmt.executeUpdate()
-          val irs = invocationInstructionInsertStmt.getGeneratedKeys
+        invocationInstructionInsertStmt.executeUpdate()
+        val irs = invocationInstructionInsertStmt.getGeneratedKeys
 
-          val instructionId = if(irs.next()) irs.getInt(1)
-          else throw new Exception(s"Failed to insert instruction $lfaim")
+        val instructionId = if (irs.next()) irs.getInt(1)
+        else throw new Exception(s"Failed to insert instruction $lfaim")
 
-          (lfaim.identifier, instructionId)
+        (lfaim.identifier, instructionId)
       }.toMap
 
       connection.commit()
@@ -515,27 +514,4 @@ class PostgreSqlStorageHandler(config: PostgreSqlConnectionConfiguration) extend
     fieldAccessInstructionInsertStmt.close()
     fieldAccToVersionInsertStmt.close()
   }
-}
-
-
-object PostgreSqlStorageHandler {
-
-  def buildConnection(url: String, username: String, password: String): Connection = {
-    Class.forName("org.postgresql.Driver")
-
-    val props = new Properties()
-    props.setProperty("user", username)
-    props.setProperty("password", password)
-
-    DriverManager.getConnection(url, props)
-  }
-
-}
-
-trait PostgreSqlConnectionConfiguration {
-
-  val postgreSqlUrl: String
-  val postgresUsername: String
-  val postgresPassword: String
-
 }

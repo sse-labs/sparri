@@ -47,9 +47,32 @@ lazy val extractor = (project in file("classfile-feature-extractor"))
 
 lazy val webapi = (project in file("webapi"))
 	.dependsOn(common)
+	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= Seq(dependencies.akkaStreams, dependencies.akkaHttp, dependencies.akkaActors, dependencies.akkaSprayJson,
-			dependencies.logback, dependencies.postgresql)
+			dependencies.logback, dependencies.postgresql),
+
+		assembly / mainClass := Some("de.tudo.sse.classfilefeatures.webapi.Application"),
+		assembly / assemblyJarName := "cf-webapi.jar",
+		assemblyMergeStrategy := {
+			case x: String if x.toLowerCase.contains("manifest.mf") => MergeStrategy.discard
+			case x: String if x.toLowerCase.endsWith(".conf") => MergeStrategy.concat
+			case x => MergeStrategy.first
+		},
+
+		docker / dockerfile := {
+
+			val artifact: File = assembly.value
+			val artifactTargetPath = s"/app/${artifact.name}"
+
+			new Dockerfile {
+				from("openjdk:16-jdk")
+				add(artifact, artifactTargetPath)
+				entryPoint("java", "-jar", "-Xmx8G", "-Xss128m", artifactTargetPath)
+			}
+		},
+
+		docker / imageNames := Seq(ImageName(s"cf-webapi:latest"))
 	)
 	
 lazy val dependencies = new {
