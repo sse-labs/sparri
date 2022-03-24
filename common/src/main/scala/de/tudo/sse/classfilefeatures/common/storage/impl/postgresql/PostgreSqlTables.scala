@@ -41,8 +41,8 @@ object PostgreSqlTables {
   val methodTable: PostgreSqlTable = new PostgreSqlTable(tableName = "Methods", autoIdColumn = true,
     columns = List(
       PostgreSqlTableColumn("ClassfileId", PostgreSqlDataTypes.Int),
-      PostgreSqlTableColumn("Name", PostgreSqlDataTypes.ShortText),
-      PostgreSqlTableColumn("Descriptor", PostgreSqlDataTypes.Text),
+      PostgreSqlTableColumn("Name", PostgreSqlDataTypes.Text),
+      PostgreSqlTableColumn("Descriptor", PostgreSqlDataTypes.LongText),
       PostgreSqlTableColumn("DefaultFlags", PostgreSqlDataTypes.Int),
       PostgreSqlTableColumn("DefaultMaxStack", PostgreSqlDataTypes.Int, isNullable = true),
       PostgreSqlTableColumn("DefaultMaxLocals", PostgreSqlDataTypes.Int, isNullable = true),
@@ -70,7 +70,7 @@ object PostgreSqlTables {
     columns = List(
       PostgreSqlTableColumn("MethodId", PostgreSqlDataTypes.Int),
       PostgreSqlTableColumn("TargetMethodName", PostgreSqlDataTypes.Text),
-      PostgreSqlTableColumn("TargetMethodDescriptor", PostgreSqlDataTypes.Text),
+      PostgreSqlTableColumn("TargetMethodDescriptor", PostgreSqlDataTypes.LongText),
       PostgreSqlTableColumn("TargetMethodClass", PostgreSqlDataTypes.Text),
       PostgreSqlTableColumn("IsInterfaceInvocation", PostgreSqlDataTypes.Bool),
       PostgreSqlTableColumn("InvocationType", PostgreSqlDataTypes.ShortText)
@@ -457,6 +457,7 @@ object PostgreSqlDataTypes extends Enumeration {
 
   val Text: Value = Value("VARCHAR(1024)")
   val ShortText: Value = Value("VARCHAR(255)")
+  val LongText: Value = Value("VARCHAR(4096)")
   val Int: Value = Value("Int")
   val AutoId: Value = Value("SERIAL")
   val Bool: Value = Value("BOOLEAN")
