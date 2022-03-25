@@ -17,8 +17,7 @@
 package de.tudo.sse.classfilefeatures.extractor
 
 import de.tudo.sse.classfilefeatures.common.rabbitmq.MqConnectionConfiguration
-import de.tudo.sse.classfilefeatures.extractor.storage.impl.PostgreSqlConnectionConfiguration
-import java.net.URI
+import de.tudo.sse.classfilefeatures.common.storage.impl.postgresql.PostgreSqlConnectionConfiguration
 
 class Configuration extends MqConnectionConfiguration with PostgreSqlConnectionConfiguration {
 
