@@ -1,5 +1,6 @@
 package de.tudo.sse.classfilefeatures.webapi.core
 
+import de.tudo.sse.classfilefeatures.common.model.ClassFileRepresentation
 import de.tudo.sse.classfilefeatures.webapi.model.{LibraryInformation, ReleaseInformation}
 import de.tudo.sse.classfilefeatures.webapi.storage.ClassfileDataAccessor
 
@@ -37,6 +38,10 @@ class RequestHandler(dataAccessor: ClassfileDataAccessor){
     ReleaseInformation(libraryName,
       releaseName,
       dataAccessor.getReleaseClassNames(libraryName, releaseName))
+  }
+
+  def getClassInfo(libraryName: String, releaseName: String, className: String): ClassFileRepresentation = {
+    ???
   }
 
 
