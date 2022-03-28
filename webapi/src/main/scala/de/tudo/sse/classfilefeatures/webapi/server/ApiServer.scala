@@ -4,10 +4,10 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.Http.ServerBinding
-import akka.http.scaladsl.model.StatusCodes
-import akka.http.scaladsl.model.StatusCodes.NotImplemented
+import akka.http.scaladsl.model.{HttpRequest, StatusCodes}
+import akka.http.scaladsl.model.StatusCodes.{NotFound, NotImplemented}
 import akka.http.scaladsl.server.Directives.{complete, path, pathPrefix}
-import akka.http.scaladsl.server.{PathMatcher1, Route}
+import akka.http.scaladsl.server.{PathMatcher1, RequestContext, Route}
 import de.tudo.sse.classfilefeatures.webapi.core.RequestHandler
 
 import scala.concurrent.Future
@@ -17,28 +17,73 @@ class ApiServer(requestHandler: RequestHandler)(private implicit val theSystem: 
 
   private val http = Http()
 
-  private val dummyClassfileMatcher: PathMatcher1[String] = Segment / "dummy-classfiles"
+  private val routes: Route =
+    pathPrefix("api") {
 
-  private val routes: Route = pathPrefix("api") {
+      extractRequest { implicit request =>
 
-      pathPrefix("libraries") {
-        pathEnd {
-          //TODO: Serialization, Pagination
-          complete("[" + requestHandler.getLibraries().mkString(", ") + "]")
-        } ~ pathPrefix(Segment){ libraryName =>
-          ensureLibraryPresent(libraryName) {
+        pathPrefix("libraries") {
+          pathEnd { allLibrariesRoute() } ~
+          pathPrefix(Segment){ libraryName =>
 
-            pathEnd {
-              complete("")
-            } ~ path(dummyClassfileMatcher) { version =>
-              ensureArtifactPresent(libraryName, version) {
-                complete(NotImplemented)
+            ensureLibraryPresent(libraryName) {
+
+              pathEnd { singleLibraryRoute(libraryName) } ~
+              pathPrefix("classes") {
+                pathEnd { allLibraryClassfilesRoute(libraryName) } ~
+                pathPrefix(Segment) { className => singleLibraryClassfileRoute(libraryName, className)}
+              } ~
+              pathPrefix(Segment){ releaseName =>
+                ensureArtifactPresent(libraryName, releaseName) {
+                  pathEnd { singleReleaseRoute(libraryName, releaseName) } ~
+                  pathPrefix("classes") {
+                    pathEnd { allReleaseClassfilesRoute(libraryName, releaseName) } ~
+                      pathPrefix(Segment) { className => singleReleaseClassfileRoute(libraryName, releaseName, className)}
+                  }
+                }
               }
             }
           }
         }
       }
+   }
 
+
+  private def allLibrariesRoute()(implicit request: HttpRequest): Route = {
+    //TODO: Serialization, Pagination
+    complete("[" + requestHandler.getLibraries().mkString(", ") + "]")
+  }
+
+  private def singleLibraryRoute(libName: String)(implicit request: HttpRequest): Route = {
+    complete(NotImplemented)
+  }
+
+  private def singleReleaseRoute(libName: String, release: String)(implicit request: HttpRequest): Route = {
+    complete(NotImplemented)
+  }
+
+  private def allLibraryClassfilesRoute(libName: String)(implicit request: HttpRequest): Route = {
+    complete(NotImplemented)
+  }
+
+  private def allReleaseClassfilesRoute(libName: String, releaseName: String)(implicit request: HttpRequest): Route = {
+    complete(NotImplemented)
+  }
+
+  private def singleLibraryClassfileRoute(libName: String, className: String)(implicit request: HttpRequest): Route = {
+    if(requestHandler.hasLibraryClass(libName, className)){
+      complete(NotImplemented)
+    } else {
+      complete(NotFound, s"Class $className has not been found for library $libName")
+    }
+  }
+
+  private def singleReleaseClassfileRoute(libName: String, releaseName: String, className: String)(implicit request: HttpRequest): Route = {
+    if(requestHandler.hasReleaseClass(libName, releaseName, className)){
+      complete(NotImplemented)
+    } else {
+      complete(NotFound, s"Class $className has not been found for release $releaseName of library $libName")
+    }
   }
 
 
