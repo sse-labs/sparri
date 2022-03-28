@@ -1,5 +1,6 @@
 package de.tudo.sse.classfilefeatures.webapi.core
 
+import de.tudo.sse.classfilefeatures.webapi.model.{LibraryInformation, ReleaseInformation}
 import de.tudo.sse.classfilefeatures.webapi.storage.ClassfileDataAccessor
 
 class RequestHandler(dataAccessor: ClassfileDataAccessor){
@@ -26,7 +27,17 @@ class RequestHandler(dataAccessor: ClassfileDataAccessor){
     existingResourcesCache.getWithCache(ident, () => dataAccessor.hasReleaseClass(libraryName, releaseName, className))
   }
 
-  def releasesForLibrary(libraryName: String): Array[String] = Array.empty
+  def getLibraryInfo(libraryName: String): LibraryInformation = {
+    LibraryInformation(libraryName,
+      dataAccessor.getReleaseNames(libraryName),
+      dataAccessor.getLibraryClassNames(libraryName))
+  }
+
+  def getReleaseInfo(libraryName: String, releaseName: String): ReleaseInformation = {
+    ReleaseInformation(libraryName,
+      releaseName,
+      dataAccessor.getReleaseClassNames(libraryName, releaseName))
+  }
 
 
 }

@@ -5,15 +5,18 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.Http.ServerBinding
 import akka.http.scaladsl.model.{HttpRequest, StatusCodes}
-import akka.http.scaladsl.model.StatusCodes.{NotFound, NotImplemented}
-import akka.http.scaladsl.server.Directives.{complete, path, pathPrefix}
-import akka.http.scaladsl.server.{PathMatcher1, RequestContext, Route}
+import akka.http.scaladsl.model.StatusCodes.{BadRequest, NotFound, NotImplemented}
+import akka.http.scaladsl.server.Directives.{complete, pathPrefix}
+import akka.http.scaladsl.server.Route
 import de.tudo.sse.classfilefeatures.webapi.core.RequestHandler
+import de.tudo.sse.classfilefeatures.webapi.model.JsonSupport
+import spray.json.enrichAny
 
 import scala.concurrent.Future
 import scala.language.postfixOps
+import scala.util.{Success, Try}
 
-class ApiServer(requestHandler: RequestHandler)(private implicit val theSystem: ActorSystem) {
+class ApiServer(requestHandler: RequestHandler)(private implicit val theSystem: ActorSystem) extends JsonSupport{
 
   private val http = Http()
 
@@ -50,16 +53,23 @@ class ApiServer(requestHandler: RequestHandler)(private implicit val theSystem: 
 
 
   private def allLibrariesRoute()(implicit request: HttpRequest): Route = {
-    //TODO: Serialization, Pagination
-    complete("[" + requestHandler.getLibraries().mkString(", ") + "]")
+    val skipTry = getHeaderValueRaw("skip").map(v => Try(v.toInt)).getOrElse(Success(0))
+    val limitTry = getHeaderValueRaw("limit").map(v => Try(v.toInt)).getOrElse(Success(500))
+
+    if(skipTry.isFailure || limitTry.isFailure){
+      complete(BadRequest, "Header values for skip or limit are not valid integers")
+    } else {
+      complete(requestHandler.getLibraries(skipTry.get, limitTry.get).toJson)
+    }
+
   }
 
   private def singleLibraryRoute(libName: String)(implicit request: HttpRequest): Route = {
-    complete(NotImplemented)
+    complete(requestHandler.getLibraryInfo(libName).toJson)
   }
 
   private def singleReleaseRoute(libName: String, release: String)(implicit request: HttpRequest): Route = {
-    complete(NotImplemented)
+    complete(requestHandler.getReleaseInfo(libName, release).toJson)
   }
 
   private def allLibraryClassfilesRoute(libName: String)(implicit request: HttpRequest): Route = {
@@ -104,6 +114,9 @@ class ApiServer(requestHandler: RequestHandler)(private implicit val theSystem: 
     if(requestHandler.hasRelease(libraryName, version)) route
     else complete(StatusCodes.NotFound, s"Version '$version' not found for library '$libraryName'")
   }
+
+  private def getHeaderValueRaw(headerName: String)(implicit request: HttpRequest): Option[String] =
+    request.headers.find(h => h.name().equalsIgnoreCase(headerName)).map(_.value())
 
 
 }
