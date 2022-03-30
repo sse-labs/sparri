@@ -1,5 +1,7 @@
 package de.tudo.sse.classfilefeatures.webapi.storage
 
+import de.tudo.sse.classfilefeatures.common.model.ClassFileRepresentation
+
 trait ClassfileDataAccessor {
 
   def verifyConnectivity(): Unit
@@ -22,6 +24,8 @@ trait ClassfileDataAccessor {
   def getReleaseNames(libraryName: String): Array[String]
 
   def getReleaseClassNames(libraryName: String, releaseName: String): Array[String]
+
+  def getClassRepresentation(libraryName: String, releaseName: String, className: String): ClassFileRepresentation
 
 
 }

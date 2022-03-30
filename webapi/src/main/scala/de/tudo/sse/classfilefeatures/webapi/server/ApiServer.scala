@@ -90,7 +90,7 @@ class ApiServer(requestHandler: RequestHandler)(private implicit val theSystem: 
 
   private def singleReleaseClassfileRoute(libName: String, releaseName: String, className: String)(implicit request: HttpRequest): Route = {
     if(requestHandler.hasReleaseClass(libName, releaseName, className)){
-      complete(NotImplemented)
+      complete(requestHandler.getClassInfo(libName, releaseName, className).toJson)
     } else {
       complete(NotFound, s"Class $className has not been found for release $releaseName of library $libName")
     }
