@@ -3,7 +3,7 @@ package de.tudo.sse.classfilefeatures.webapi.storage.impl
 import de.tudo.sse.classfilefeatures.common.model.{ClassFileRepresentation, FieldDefinitionRepresentation}
 import de.tudo.sse.classfilefeatures.common.storage.impl.postgresql.{PostgreSqlConnectionConfiguration, PostgreSqlConnectivity}
 import de.tudo.sse.classfilefeatures.webapi.storage.ClassfileDataAccessor
-import de.tudo.sse.classfilefeatures.webapi.storage.impl.PostgreSqlStorageModel.{FieldDefinitionEntry, MethodDefinitionEntry}
+import de.tudo.sse.classfilefeatures.webapi.storage.impl.PostgreSqlStorageModel.{FieldAccessInstructionEntry, FieldDefinitionEntry, InvocationInstructionEntry, MethodDefinitionEntry}
 
 import java.sql.PreparedStatement
 import scala.collection.mutable
@@ -132,6 +132,7 @@ class PostgreSqlDataAccessor(override protected val connectionConfiguration: Pos
 
     val versionId = getIdForVersion(releaseName)
 
+    //IMPROVE: Merge queries where possible
     val stmt = connection.prepareStatement("SELECT Classfiles.Id, Classfiles.ThisType, Classfiles.DefaultFlags, " +
       "Classfiles.DefaultMajorVersion, Classfiles.DefaultMinorVersion, Classfiles.DefaultSuperType FROM Libraries " +
       "LEFT JOIN Classfiles ON Libraries.Id = Classfiles.LibraryId " +
@@ -270,7 +271,55 @@ class PostgreSqlDataAccessor(override protected val connectionConfiguration: Pos
         if(exceptionalMaxStack.isDefined) currentEntry.maxStack = Option(exceptionalMaxStack.get)
         if(exceptionalMaxLocals.isDefined) currentEntry.maxLocals = Option(exceptionalMaxLocals.get)
 
-        //TODO: Instructions
+        val invocationsStmt = connection.prepareStatement("SELECT InvocationInstructions.Id, InvocationInstructions.TargetMethodName, " +
+          "InvocationInstructions.TargetMethodDescriptor, InvocationInstructions.TargetMethodClass, InvocationInstructions.IsInterfaceInvocation, " +
+          "InvocationInstructions.InvocationType FROM InvocationInstructions " +
+          "LEFT JOIN Rel_InvocationInstructions_VersionNumbers ON InvocationInstructions.Id = Rel_InvocationInstructions_VersionNumbers.InvocationInstructionId " +
+          "WHERE InvocationInstructions.MethodId = ? AND Rel_InvocationInstructions_VersionNumbers.VersionId = ?")
+
+        invocationsStmt.setInt(1, currentEntry.dbId)
+        invocationsStmt.setInt(2, versionId)
+
+        val invocationsRs = invocationsStmt.executeQuery()
+        val invocationDefs = new mutable.HashSet[InvocationInstructionEntry]
+
+        while(invocationsRs.next()){
+          invocationDefs.add(new InvocationInstructionEntry(invocationsRs.getInt(1),
+            invocationsRs.getString(2),
+            invocationsRs.getString(3),
+            invocationsRs.getString(4),
+            invocationsRs.getBoolean(5),
+            invocationsRs.getString(6)
+          ))
+        }
+
+        invocationsStmt.close()
+        currentEntry.invocationInstructions = invocationDefs.toArray
+
+
+        val fieldAccStmt = connection.prepareStatement("SELECT FieldAccessInstructions.Id, FieldSignatures.FieldName, " +
+          "FieldSignatures.FieldType, FieldAccessInstructions.FieldClass, FieldAccessInstructions.AccessType FROM FieldAccessInstructions " +
+          "LEFT JOIN FieldSignatures ON FieldAccessInstructions.FieldSignatureId = FieldSignatures.Id " +
+          "LEFT JOIN Rel_FieldAccesses_VersionNumbers ON FieldAccessInstructions.Id = Rel_FieldAccesses_VersionNumbers.FieldAccessInstructionId " +
+          "WHERE FieldAccessInstructions.MethodId = ? AND Rel_FieldAccesses_VersionNumbers.VersionId = ?")
+
+        fieldAccStmt.setInt(1, currentEntry.dbId)
+        fieldAccStmt.setInt(2, versionId)
+
+        val fieldAccRs = fieldAccStmt.executeQuery()
+        val fieldAccDefs = new mutable.HashSet[FieldAccessInstructionEntry]
+
+        while(fieldAccRs.next()){
+          fieldAccDefs.add(new FieldAccessInstructionEntry(fieldAccRs.getInt(1),
+            fieldAccRs.getString(2),
+            fieldAccRs.getString(3),
+            fieldAccRs.getString(4),
+            fieldAccRs.getString(5)
+          ))
+        }
+
+        fieldAccStmt.close()
+        currentEntry.fieldAccessInstructions = fieldAccDefs.toArray
 
         methodDefs.add(currentEntry)
       }

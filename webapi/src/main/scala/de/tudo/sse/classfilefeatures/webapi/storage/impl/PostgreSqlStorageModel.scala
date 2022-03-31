@@ -1,6 +1,7 @@
 package de.tudo.sse.classfilefeatures.webapi.storage.impl
 
-import de.tudo.sse.classfilefeatures.common.model.{MethodBodyRepresentation, MethodRepresentation}
+import de.tudo.sse.classfilefeatures.common.model.InvocationTypes.InvocationType
+import de.tudo.sse.classfilefeatures.common.model.{FieldAccessInstructionRepresentation, FieldAccessTypes, InvocationInstructionRepresentation, InvocationTypes, MethodBodyRepresentation, MethodRepresentation}
 
 private[impl] object PostgreSqlStorageModel {
 
@@ -42,17 +43,42 @@ private[impl] object PostgreSqlStorageModel {
     var maxStack: Option[Int] = defaultMaxStack
     var maxLocals: Option[Int] = defaultMaxLocals
 
+    var invocationInstructions: Array[InvocationInstructionEntry] = Array.empty
+    var fieldAccessInstructions: Array[FieldAccessInstructionEntry] = Array.empty
+
     def toModel: MethodRepresentation = {
 
       val bodyOption: Option[MethodBodyRepresentation] = if(hasBody) {
-        //TODO: Instructions
-        Some(MethodBodyRepresentation(maxStack.get, maxLocals.get, Seq.empty, Seq.empty))
+
+        Some(MethodBodyRepresentation(maxStack.get, maxLocals.get, invocationInstructions.map(_.toModel),
+          fieldAccessInstructions.map(_.toModel)))
       } else {
         None
       }
 
       MethodRepresentation(flags, name, descriptor, bodyOption)
     }
+  }
+
+  class InvocationInstructionEntry (val dbId: Int,
+                                    val methodName: String,
+                                    val methodDescriptor: String,
+                                    val declaredClass: String,
+                                    val isInterfaceInvocation: Boolean,
+                                    val invocationType: String){
+
+    def toModel: InvocationInstructionRepresentation = InvocationInstructionRepresentation(methodName, methodDescriptor,
+      declaredClass, isInterfaceInvocation, InvocationTypes.withName(invocationType))
+
+  }
+
+  class FieldAccessInstructionEntry (val dbId: Int,
+                                     val fieldName: String,
+                                     val fieldType: String,
+                                     val declaredClass: String,
+                                     val accessType: String){
+    def toModel: FieldAccessInstructionRepresentation = FieldAccessInstructionRepresentation(fieldName, fieldType, declaredClass,
+      FieldAccessTypes.withName(accessType))
   }
 
 }

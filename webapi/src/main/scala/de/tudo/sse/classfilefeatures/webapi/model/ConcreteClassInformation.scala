@@ -1,7 +1,7 @@
 package de.tudo.sse.classfilefeatures.webapi.model
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import de.tudo.sse.classfilefeatures.common.model.{ClassFileRepresentation, FieldDefinitionRepresentation, MethodRepresentation}
+import de.tudo.sse.classfilefeatures.common.model.{ClassFileRepresentation, FieldAccessInstructionRepresentation, FieldDefinitionRepresentation, InvocationInstructionRepresentation, MethodRepresentation}
 import org.opalj.bi.{ACC_ENUM, ACC_FINAL, ACC_INTERFACE, ACC_MODULE, ACC_PRIVATE, ACC_PROTECTED, ACC_PUBLIC, ACC_STATIC, ACC_TRANSIENT, ACC_VOLATILE}
 import org.opalj.br.ClassFile.{annotationMask, classCategoryMask}
 import spray.json.{DefaultJsonProtocol, JsonFormat}
@@ -38,7 +38,19 @@ final case class MethodDefinitionInformation(methodName: String,
                                              accessInformation: ClassMemberAccessInformation,
                                              hasBody: Boolean,
                                              maxStack: Option[Int],
-                                             maxLocals: Option[Int])
+                                             maxLocals: Option[Int],
+                                             invocations: Array[InvocationInformation],
+                                             fieldAccesses: Array[FieldAccessInformation])
+
+final case class InvocationInformation(methodName: String,
+                                       methodDescriptor: String,
+                                       declaredClass: String,
+                                       invocationType: String)
+
+final case class FieldAccessInformation(fieldName: String,
+                                        fieldType: String,
+                                        declaredClass: String,
+                                        accessType: String)
 
 final case class ClassMemberAccessInformation(isPublic: Boolean,
                                               isPrivate: Boolean,
@@ -92,9 +104,17 @@ object ConcreteClassInformationBuilder {
       buildClassMemberAccessInfo(mr.flags),
       mr.body.isDefined,
       mr.body.map(_.maxStack),
-      mr.body.map(_.maxLocals)
+      mr.body.map(_.maxLocals),
+      mr.body.map(b => b.invocations.map(fromRepresentation)).getOrElse(Seq.empty).toArray,
+      mr.body.map(b => b.fieldAccesses.map(fromRepresentation)).getOrElse(Seq.empty).toArray
     )
   }
+
+  def fromRepresentation(iir: InvocationInstructionRepresentation): InvocationInformation = InvocationInformation(iir.targetMethodName,
+    iir.targetMethodJvmDescriptor, iir.targetMethodDeclaredClassFqn, iir.invocationType.toString)
+
+  def fromRepresentation(fair: FieldAccessInstructionRepresentation): FieldAccessInformation = FieldAccessInformation(fair.fieldName,
+    fair.fieldTypeJvmName, fair.fieldDeclaredClassFqn, fair.fieldAccessType.toString)
 
   private def buildClassMemberAccessInfo(flags: Int): ClassMemberAccessInformation = {
     val isTransient = (ACC_TRANSIENT.mask & flags) != 0
@@ -113,11 +133,15 @@ trait ConcreteClassInformationJsonSupport extends SprayJsonSupport with DefaultJ
 
   implicit val classAccessInfoFormat: JsonFormat[ClassAccessInformation] = jsonFormat6(ClassAccessInformation)
 
-  implicit val fieldAccessInfoFormat: JsonFormat[ClassMemberAccessInformation] = jsonFormat7(ClassMemberAccessInformation)
+  implicit val classMemberAccessInfoFormat: JsonFormat[ClassMemberAccessInformation] = jsonFormat7(ClassMemberAccessInformation)
 
   implicit val fieldDefinitionInfoFormat: JsonFormat[FieldDefinitionInformation] = jsonFormat4(FieldDefinitionInformation)
 
-  implicit val methodDefinitionInfoFormat: JsonFormat[MethodDefinitionInformation] = jsonFormat7(MethodDefinitionInformation)
+  implicit val invocationInfoFormat: JsonFormat[InvocationInformation] = jsonFormat4(InvocationInformation)
+
+  implicit val fieldAccessInfoFormat: JsonFormat[FieldAccessInformation] = jsonFormat4(FieldAccessInformation)
+
+  implicit val methodDefinitionInfoFormat: JsonFormat[MethodDefinitionInformation] = jsonFormat9(MethodDefinitionInformation)
 
   implicit val classInfoFormat: JsonFormat[ConcreteClassInformation] = jsonFormat11(ConcreteClassInformation)
 
