@@ -132,7 +132,6 @@ class PostgreSqlDataAccessor(override protected val connectionConfiguration: Pos
 
     val versionId = getIdForVersion(releaseName)
 
-    //IMPROVE: Merge queries where possible
     val stmt = connection.prepareStatement("SELECT Classfiles.Id, Classfiles.ThisType, Classfiles.DefaultFlags, " +
       "Classfiles.DefaultMajorVersion, Classfiles.DefaultMinorVersion, Classfiles.DefaultSuperType FROM Libraries " +
       "LEFT JOIN Classfiles ON Libraries.Id = Classfiles.LibraryId " +
@@ -227,15 +226,83 @@ class PostgreSqlDataAccessor(override protected val connectionConfiguration: Pos
       fieldDefStmt.close()
 
       // -------------------------
+      // |   ALL INVOCATIONS     |
+      // -------------------------
+
+      val allInvocationsStmt = connection.prepareStatement("SELECT Methods.Id, InvocationInstructions.TargetMethodName, " +
+        "InvocationInstructions.TargetMethodDescriptor, InvocationInstructions.TargetMethodClass, InvocationInstructions.IsInterfaceInvocation, " +
+        "InvocationInstructions.InvocationType FROM Methods " +
+        "JOIN InvocationInstructions ON Methods.Id = InvocationInstructions.MethodId " +
+        "JOIN Rel_InvocationInstructions_VersionNumbers ON InvocationInstructions.Id = Rel_InvocationInstructions_VersionNumbers.InvocationInstructionId " +
+        "WHERE Methods.ClassfileId = ? AND Rel_InvocationInstructions_VersionNumbers.VersionId = ?")
+
+      allInvocationsStmt.setInt(1, entry.dbId)
+      allInvocationsStmt.setInt(2, versionId)
+
+      val allInvocationsRs = allInvocationsStmt.executeQuery()
+      val allInvocationDefs = new mutable.HashSet[InvocationInstructionEntry]
+
+      while(allInvocationsRs.next()){
+        allInvocationDefs.add(new InvocationInstructionEntry(allInvocationsRs.getInt(1),
+          allInvocationsRs.getString(2),
+          allInvocationsRs.getString(3),
+          allInvocationsRs.getString(4),
+          allInvocationsRs.getBoolean(5),
+          allInvocationsRs.getString(6)
+        ))
+      }
+
+      allInvocationsStmt.close()
+
+      // -------------------------
+      // |   ALL FIELD ACCESSES  |
+      // -------------------------
+
+      val allFieldAccStmt = connection.prepareStatement("SELECT Methods.Id, FieldSignatures.FieldName, " +
+        "FieldSignatures.FieldType, FieldAccessInstructions.FieldClass, FieldAccessInstructions.AccessType FROM Methods " +
+        "JOIN FieldAccessInstructions ON Methods.Id = FieldAccessInstructions.MethodId " +
+        "JOIN FieldSignatures ON FieldAccessInstructions.FieldSignatureId = FieldSignatures.Id " +
+        "JOIN Rel_FieldAccesses_VersionNumbers ON FieldAccessInstructions.Id = Rel_FieldAccesses_VersionNumbers.FieldAccessInstructionId " +
+        "WHERE Methods.ClassfileId = ? AND Rel_FieldAccesses_VersionNumbers.VersionId = ?")
+
+      allFieldAccStmt.setInt(1, entry.dbId)
+      allFieldAccStmt.setInt(2, versionId)
+
+      val allFieldAccRs = allFieldAccStmt.executeQuery()
+      val allFieldAccDefs = new mutable.HashSet[FieldAccessInstructionEntry]
+
+      while(allFieldAccRs.next()){
+        allFieldAccDefs.add(new FieldAccessInstructionEntry(allFieldAccRs.getInt(1),
+          allFieldAccRs.getString(2),
+          allFieldAccRs.getString(3),
+          allFieldAccRs.getString(4),
+          allFieldAccRs.getString(5)
+        ))
+      }
+
+      allFieldAccStmt.close()
+
+      // -------------------------
       // |     METHODS           |
       // -------------------------
 
       val methodStmt = connection.prepareStatement("SELECT Methods.Id, Methods.Name, Methods.Descriptor, Methods.HasBody, " +
-        "Methods.DefaultFlags, Methods.DefaultMaxStack, Methods.DefaultMaxLocals FROM Methods " +
+        "Rel_Methods_AccessFlags.Flags, Methods.DefaultFlags, " +
+        "Rel_Method_MaxStack.MaxStack, Methods.DefaultMaxStack, " +
+        "Rel_Method_MaxLocals.MaxLocals, Methods.DefaultMaxLocals FROM Methods " +
         "LEFT JOIN Rel_Methods_VersionNumbers ON Methods.Id = Rel_Methods_VersionNumbers.MethodId " +
-        "WHERE Methods.ClassfileId = ? AND Rel_Methods_VersionNumbers.VersionId = ?")
+        "LEFT JOIN Rel_Methods_AccessFlags ON Methods.Id = Rel_Methods_AccessFlags.MethodId " +
+        "LEFT JOIN Rel_Method_MaxStack ON Methods.Id = Rel_Method_MaxStack.MethodId " +
+        "LEFT JOIN Rel_Method_MaxLocals ON Methods.Id = Rel_Method_MaxLocals.MethodId " +
+        "WHERE Methods.ClassfileId = ? AND Rel_Methods_VersionNumbers.VersionId = ? " +
+        "AND (Rel_Methods_AccessFlags.VersionId IS NULL OR Rel_Methods_AccessFlags.VersionId = ?) " +
+        "AND (Rel_Method_MaxStack.VersionId IS NULL OR Rel_Method_MaxStack.VersionId = ?) " +
+        "AND (Rel_Method_MaxLocals.VersionId IS NULL OR Rel_Method_MaxLocals.VersionId = ?)")
       methodStmt.setInt(1, entry.dbId)
       methodStmt.setInt(2, versionId)
+      methodStmt.setInt(3, versionId)
+      methodStmt.setInt(4, versionId)
+      methodStmt.setInt(5, versionId)
 
       val methodRs = methodStmt.executeQuery()
 
@@ -243,83 +310,38 @@ class PostgreSqlDataAccessor(override protected val connectionConfiguration: Pos
 
       while(methodRs.next()){
 
+        var flags = methodRs.getInt(5)
+        if(methodRs.wasNull()) flags = methodRs.getInt(6)
+
+        // MaxStack -> exceptional value. If not defined -> default value. If not defined -> None
+        var maxStack: Option[Int] = Some(methodRs.getInt(7))
+        if(methodRs.wasNull()){
+          maxStack = Some(methodRs.getInt(8))
+          if(methodRs.wasNull()) maxStack = None
+        }
+
+        // MaxLocals -> exceptional value. If not defined -> default value. If not defined -> None
+        var maxLocals: Option[Int] = Some(methodRs.getInt(9))
+        if(methodRs.wasNull()){
+          maxLocals = Some(methodRs.getInt(10))
+          if(methodRs.wasNull()) maxLocals = None
+        }
+
         val currentEntry = new MethodDefinitionEntry(methodRs.getInt(1),
           methodRs.getString(2),
           methodRs.getString(3),
           methodRs.getBoolean(4),
-          methodRs.getInt(5),
-          Option(methodRs.getInt(6)),
-          Option(methodRs.getInt(7)))
+          flags,
+          maxStack,
+          maxLocals)
 
-        val methodFlagsStmt = connection.prepareStatement("SELECT Rel_Methods_AccessFlags.Flags FROM Rel_Methods_AccessFlags " +
-          "WHERE Rel_Methods_AccessFlags.MethodId = ? AND Rel_Methods_AccessFlags.VersionId = ?")
-        val methodMaxStackStmt = connection.prepareStatement("SELECT Rel_Method_MaxStack.MaxStack FROM Rel_Method_MaxStack " +
-          "WHERE Rel_Method_MaxStack.MethodId = ? AND Rel_Method_MaxStack.VersionId = ?")
-        val methodMaxLocalsStmt = connection.prepareStatement("SELECT Rel_Method_MaxLocals.MaxLocals FROM Rel_Method_MaxLocals " +
-          "WHERE Rel_Method_MaxLocals.MethodId = ? AND Rel_Method_MaxLocals.VersionId = ?")
+        currentEntry.invocationInstructions = allInvocationDefs
+          .filter(entry => entry.methodDbId == currentEntry.dbId)
+          .toArray
 
-        List(methodFlagsStmt, methodMaxStackStmt, methodMaxLocalsStmt).foreach{ stmt =>
-          stmt.setInt(1, currentEntry.dbId)
-          stmt.setInt(2, versionId)
-        }
-
-        val exceptionalFlag = resultAsIntOptional(methodFlagsStmt)
-        val exceptionalMaxStack = resultAsIntOptional(methodMaxStackStmt)
-        val exceptionalMaxLocals = resultAsIntOptional(methodMaxLocalsStmt)
-
-        if(exceptionalFlag.isDefined) currentEntry.flags = exceptionalFlag.get
-        if(exceptionalMaxStack.isDefined) currentEntry.maxStack = Option(exceptionalMaxStack.get)
-        if(exceptionalMaxLocals.isDefined) currentEntry.maxLocals = Option(exceptionalMaxLocals.get)
-
-        val invocationsStmt = connection.prepareStatement("SELECT InvocationInstructions.Id, InvocationInstructions.TargetMethodName, " +
-          "InvocationInstructions.TargetMethodDescriptor, InvocationInstructions.TargetMethodClass, InvocationInstructions.IsInterfaceInvocation, " +
-          "InvocationInstructions.InvocationType FROM InvocationInstructions " +
-          "LEFT JOIN Rel_InvocationInstructions_VersionNumbers ON InvocationInstructions.Id = Rel_InvocationInstructions_VersionNumbers.InvocationInstructionId " +
-          "WHERE InvocationInstructions.MethodId = ? AND Rel_InvocationInstructions_VersionNumbers.VersionId = ?")
-
-        invocationsStmt.setInt(1, currentEntry.dbId)
-        invocationsStmt.setInt(2, versionId)
-
-        val invocationsRs = invocationsStmt.executeQuery()
-        val invocationDefs = new mutable.HashSet[InvocationInstructionEntry]
-
-        while(invocationsRs.next()){
-          invocationDefs.add(new InvocationInstructionEntry(invocationsRs.getInt(1),
-            invocationsRs.getString(2),
-            invocationsRs.getString(3),
-            invocationsRs.getString(4),
-            invocationsRs.getBoolean(5),
-            invocationsRs.getString(6)
-          ))
-        }
-
-        invocationsStmt.close()
-        currentEntry.invocationInstructions = invocationDefs.toArray
-
-
-        val fieldAccStmt = connection.prepareStatement("SELECT FieldAccessInstructions.Id, FieldSignatures.FieldName, " +
-          "FieldSignatures.FieldType, FieldAccessInstructions.FieldClass, FieldAccessInstructions.AccessType FROM FieldAccessInstructions " +
-          "LEFT JOIN FieldSignatures ON FieldAccessInstructions.FieldSignatureId = FieldSignatures.Id " +
-          "LEFT JOIN Rel_FieldAccesses_VersionNumbers ON FieldAccessInstructions.Id = Rel_FieldAccesses_VersionNumbers.FieldAccessInstructionId " +
-          "WHERE FieldAccessInstructions.MethodId = ? AND Rel_FieldAccesses_VersionNumbers.VersionId = ?")
-
-        fieldAccStmt.setInt(1, currentEntry.dbId)
-        fieldAccStmt.setInt(2, versionId)
-
-        val fieldAccRs = fieldAccStmt.executeQuery()
-        val fieldAccDefs = new mutable.HashSet[FieldAccessInstructionEntry]
-
-        while(fieldAccRs.next()){
-          fieldAccDefs.add(new FieldAccessInstructionEntry(fieldAccRs.getInt(1),
-            fieldAccRs.getString(2),
-            fieldAccRs.getString(3),
-            fieldAccRs.getString(4),
-            fieldAccRs.getString(5)
-          ))
-        }
-
-        fieldAccStmt.close()
-        currentEntry.fieldAccessInstructions = fieldAccDefs.toArray
+        currentEntry.fieldAccessInstructions = allFieldAccDefs.
+          filter(entry => entry.methodDbId == currentEntry.dbId)
+          .toArray
 
         methodDefs.add(currentEntry)
       }

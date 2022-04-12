@@ -4,7 +4,8 @@ import akka.actor.ActorSystem
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.Http.ServerBinding
-import akka.http.scaladsl.model.{HttpRequest, StatusCodes}
+import akka.http.scaladsl.model.HttpEntity.{ChunkStreamPart, Chunked}
+import akka.http.scaladsl.model.{ContentTypes, HttpRequest, HttpResponse, StatusCodes}
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, NotFound, NotImplemented}
 import akka.http.scaladsl.server.Directives.{complete, pathPrefix}
 import akka.http.scaladsl.server.Route
@@ -41,7 +42,14 @@ class ApiServer(requestHandler: RequestHandler)(private implicit val theSystem: 
                   pathEnd { singleReleaseRoute(libraryName, releaseName) } ~
                   pathPrefix("classes") {
                     pathEnd { allReleaseClassfilesRoute(libraryName, releaseName) } ~
-                      pathPrefix(Segment) { className => singleReleaseClassfileRoute(libraryName, releaseName, className)}
+                    pathPrefix(Segment) { className =>
+
+                      ensureReleaseClassPresent(libraryName, releaseName, className){
+                        pathEnd { singleReleaseClassfileRoute(libraryName, releaseName, className) } ~
+                        pathPrefix("dummy") { singleReleaseClassfileDummyRoute(libraryName, releaseName, className) }
+                      }
+
+                    }
                   }
                 }
               }
@@ -89,11 +97,16 @@ class ApiServer(requestHandler: RequestHandler)(private implicit val theSystem: 
   }
 
   private def singleReleaseClassfileRoute(libName: String, releaseName: String, className: String)(implicit request: HttpRequest): Route = {
-    if(requestHandler.hasReleaseClass(libName, releaseName, className)){
-      complete(requestHandler.getClassInfo(libName, releaseName, className).toJson)
-    } else {
-      complete(NotFound, s"Class $className has not been found for release $releaseName of library $libName")
-    }
+    complete(requestHandler.getClassInfo(libName, releaseName, className).toJson)
+  }
+
+  private def singleReleaseClassfileDummyRoute(libName: String, releaseName: String, className: String)(implicit request: HttpRequest): Route = {
+    val contentSource = requestHandler
+      .getSingleClassFile(libName, releaseName, className)
+      .grouped(500)
+      .map(chunkBytes => ChunkStreamPart(chunkBytes.toArray))
+
+    complete(HttpResponse(entity = Chunked(ContentTypes.`application/octet-stream`, contentSource)))
   }
 
 
@@ -113,6 +126,11 @@ class ApiServer(requestHandler: RequestHandler)(private implicit val theSystem: 
   private def ensureArtifactPresent(libraryName: String, version: String)(implicit route: Route): Route = {
     if(requestHandler.hasRelease(libraryName, version)) route
     else complete(StatusCodes.NotFound, s"Version '$version' not found for library '$libraryName'")
+  }
+
+  private def ensureReleaseClassPresent(libraryName: String, version: String, className: String)(implicit route: Route): Route = {
+    if(requestHandler.hasReleaseClass(libraryName, version, className)) route
+    else complete(StatusCodes.NotFound, s"Class '$className' not found for version '$version' of library '$libraryName'")
   }
 
   private def getHeaderValueRaw(headerName: String)(implicit request: HttpRequest): Option[String] =

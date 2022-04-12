@@ -31,7 +31,6 @@ final case class FieldDefinitionInformation(fieldName: String,
                                             flags: Int,
                                             accessInformation: ClassMemberAccessInformation)
 
-//TODO: Instructions
 final case class MethodDefinitionInformation(methodName: String,
                                              methodDescriptor: String,
                                              flags: Int,

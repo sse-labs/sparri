@@ -32,16 +32,12 @@ private[impl] object PostgreSqlStorageModel {
   }
 
   class MethodDefinitionEntry (val dbId: Int,
-                              val name: String,
-                              val descriptor: String,
-                              val hasBody: Boolean,
-                              defaultFlags: Int,
-                              defaultMaxStack: Option[Int],
-                              defaultMaxLocals: Option[Int]) {
-
-    var flags: Int = defaultFlags
-    var maxStack: Option[Int] = defaultMaxStack
-    var maxLocals: Option[Int] = defaultMaxLocals
+                               val name: String,
+                               val descriptor: String,
+                               val hasBody: Boolean,
+                               val flags: Int,
+                               val maxStack: Option[Int],
+                               val maxLocals: Option[Int]) {
 
     var invocationInstructions: Array[InvocationInstructionEntry] = Array.empty
     var fieldAccessInstructions: Array[FieldAccessInstructionEntry] = Array.empty
@@ -60,7 +56,7 @@ private[impl] object PostgreSqlStorageModel {
     }
   }
 
-  class InvocationInstructionEntry (val dbId: Int,
+  class InvocationInstructionEntry (val methodDbId: Int,
                                     val methodName: String,
                                     val methodDescriptor: String,
                                     val declaredClass: String,
@@ -72,7 +68,7 @@ private[impl] object PostgreSqlStorageModel {
 
   }
 
-  class FieldAccessInstructionEntry (val dbId: Int,
+  class FieldAccessInstructionEntry (val methodDbId: Int,
                                      val fieldName: String,
                                      val fieldType: String,
                                      val declaredClass: String,

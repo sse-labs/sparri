@@ -7,7 +7,7 @@ import akka.stream.{Materializer, Supervision}
 import akka.stream.scaladsl.Sink
 import de.tudo.sse.classfilefeatures.common.download.{MavenDownloadResult, MavenJarDownloader}
 import de.tudo.sse.classfilefeatures.common.maven.model.MavenIdentifier
-import de.tudo.sse.classfilefeatures.common.model.ToModelConversion
+import de.tudo.sse.classfilefeatures.common.model.conversion.ToModelConversion
 import de.tudo.sse.classfilefeatures.common.opal.OPALProjectHelper
 import de.tudo.sse.classfilefeatures.common.rabbitmq.MqStreamingSupport
 import de.tudo.sse.classfilefeatures.extractor.model.LibraryClassfileFeatureModel

@@ -1,5 +1,6 @@
-package de.tudo.sse.classfilefeatures.common.model
+package de.tudo.sse.classfilefeatures.common.model.conversion
 
+import de.tudo.sse.classfilefeatures.common.model._
 import de.tudo.sse.classfilefeatures.common.opal.OPALUtilities
 import org.opalj.br.instructions.{GETFIELD, GETSTATIC, INVOKEDYNAMIC, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL, Instruction, InvocationInstruction, PUTFIELD, PUTSTATIC}
 import org.opalj.br.{ClassFile, Code, Field, Method}
@@ -13,8 +14,8 @@ trait ToModelConversion {
     thisTypeFqn = cf.thisType.fqn,
     superTypeFqn = cf.superclassType.map(_.fqn),
     interfacesFqn = cf.interfaceTypes.map(_.fqn),
-    methodRepresentations = cf.methods.map( m => toModel(m, handleFields)),
-    fieldRepresentations = if(handleFields) cf.fields.map(f => toModel(f)) else Seq.empty[FieldDefinitionRepresentation]
+    methodRepresentations = cf.methods.map(m => toModel(m, handleFields)),
+    fieldRepresentations = if (handleFields) cf.fields.map(f => toModel(f)) else Seq.empty[FieldDefinitionRepresentation]
   )
 
 
@@ -27,7 +28,7 @@ trait ToModelConversion {
 
   def toModel(c: Code, handleFields: Boolean): MethodBodyRepresentation = {
 
-    val fieldAccessRepresentations = if(handleFields) {
+    val fieldAccessRepresentations = if (handleFields) {
       c
         .instructions
         .filter(OPALUtilities.isFieldAccessInstruction)
@@ -40,7 +41,7 @@ trait ToModelConversion {
       .filter(OPALUtilities.isInvocationInstruction)
       .map(_.asInvocationInstruction)
       .map(toInvocationRepresentation)
-      .filter( _ != null) //This filters out invokedynamics
+      .filter(_ != null) //This filters out invokedynamics
 
     MethodBodyRepresentation(
       maxStack = c.maxStack,

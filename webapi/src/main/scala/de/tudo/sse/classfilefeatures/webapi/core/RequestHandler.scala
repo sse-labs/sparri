@@ -1,8 +1,12 @@
 package de.tudo.sse.classfilefeatures.webapi.core
 
+import akka.NotUsed
+import akka.stream.scaladsl.Source
 import de.tudo.sse.classfilefeatures.common.model.ClassFileRepresentation
+import de.tudo.sse.classfilefeatures.common.model.conversion.ClassfileCreators
 import de.tudo.sse.classfilefeatures.webapi.model.{ConcreteClassInformation, ConcreteClassInformationBuilder, LibraryInformation, ReleaseInformation}
 import de.tudo.sse.classfilefeatures.webapi.storage.ClassfileDataAccessor
+import org.opalj.bc.Assembler
 
 class RequestHandler(dataAccessor: ClassfileDataAccessor){
 
@@ -46,6 +50,15 @@ class RequestHandler(dataAccessor: ClassfileDataAccessor){
       releaseName,
       dataAccessor.getClassRepresentation(libraryName, releaseName, className)
     )
+  }
+
+  def getSingleClassFile(libraryName: String, releaseName: String, className: String): Source[Byte, NotUsed] = {
+    val classRep = dataAccessor.getClassRepresentation(libraryName, releaseName, className)
+    val dummyClassFile = ClassfileCreators.buildSimpleCreator(Seq(classRep)).toDummyClassFile(classRep)
+
+    val classBytes = Assembler(org.opalj.ba.toDA(dummyClassFile))
+
+    Source.fromIterator(() => classBytes.iterator)
   }
 
 
