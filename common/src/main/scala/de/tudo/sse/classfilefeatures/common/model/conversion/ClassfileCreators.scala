@@ -21,7 +21,7 @@ class OpalClassfileCreator(classfileRepresentations: Seq[ClassFileRepresentation
     .map(cfr => (cfr.thisTypeFqn, (cfr.flags & ACC_INTERFACE.mask) == ACC_INTERFACE.mask))
     .toMap
 
-  override def typeIsInterface(typeFqn: String): Boolean = isInterfaceMap(typeFqn)
+  override def typeIsInterface(typeFqn: String): Boolean = isInterfaceMap.getOrElse(typeFqn, false)
 
   override def supportSimpleAi: Boolean = true
 }

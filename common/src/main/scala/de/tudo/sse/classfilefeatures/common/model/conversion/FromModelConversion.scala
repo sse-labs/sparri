@@ -29,9 +29,8 @@ trait FromModelConversion {
           if (!aiSupportArtificialFields.contains(instruction.targetMethodDeclaredClassFqn)) {
             val fieldName = s"artificial_ai_support_field_${aiSupportArtificialFields.size}"
 
-            //TODO: Does the mix of ObjectTypeFQN and FieldName work?
             val artificialField = FieldDefinitionRepresentation(ACC_PRIVATE.mask & ACC_STATIC.mask,
-              fieldName, instruction.targetMethodDeclaredClassFqn)
+              fieldName, ObjectType(instruction.targetMethodDeclaredClassFqn).toJVMTypeName)
 
             aiSupportArtificialFields.put(instruction.targetMethodDeclaredClassFqn, artificialField)
           }

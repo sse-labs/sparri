@@ -5,8 +5,9 @@ import akka.http.scaladsl.Http
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.Http.ServerBinding
 import akka.http.scaladsl.model.HttpEntity.{ChunkStreamPart, Chunked}
-import akka.http.scaladsl.model.{ContentTypes, HttpRequest, HttpResponse, StatusCodes}
+import akka.http.scaladsl.model.{ContentTypes, HttpHeader, HttpRequest, HttpResponse, StatusCodes}
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, NotFound, NotImplemented}
+import akka.http.scaladsl.model.headers.{ContentDispositionTypes, RawHeader, `Content-Disposition`}
 import akka.http.scaladsl.server.Directives.{complete, pathPrefix}
 import akka.http.scaladsl.server.Route
 import de.tudo.sse.classfilefeatures.webapi.core.RequestHandler
@@ -40,6 +41,7 @@ class ApiServer(requestHandler: RequestHandler)(private implicit val theSystem: 
               pathPrefix(Segment){ releaseName =>
                 ensureArtifactPresent(libraryName, releaseName) {
                   pathEnd { singleReleaseRoute(libraryName, releaseName) } ~
+                  pathPrefix("jar") { singleReleaseJarDummyRoute(libraryName, releaseName) }~
                   pathPrefix("classes") {
                     pathEnd { allReleaseClassfilesRoute(libraryName, releaseName) } ~
                     pathPrefix(Segment) { className =>
@@ -80,6 +82,18 @@ class ApiServer(requestHandler: RequestHandler)(private implicit val theSystem: 
     complete(requestHandler.getReleaseInfo(libName, release).toJson)
   }
 
+  private def singleReleaseJarDummyRoute(libName: String, release: String)(implicit request: HttpRequest): Route = {
+    val contentSource = requestHandler
+      .getJar(libName, release)
+      .grouped(500)
+      .map(chunkBytes => ChunkStreamPart(chunkBytes.toArray))
+
+    val response = HttpResponse(entity = Chunked(ContentTypes.`application/octet-stream`, contentSource))
+      .withHeaders(`Content-Disposition`(ContentDispositionTypes.attachment, Map("filename" -> s"$release-DUMMY.jar")))
+
+    complete(response)
+  }
+
   private def allLibraryClassfilesRoute(libName: String)(implicit request: HttpRequest): Route = {
     complete(NotImplemented)
   }
@@ -106,7 +120,10 @@ class ApiServer(requestHandler: RequestHandler)(private implicit val theSystem: 
       .grouped(500)
       .map(chunkBytes => ChunkStreamPart(chunkBytes.toArray))
 
-    complete(HttpResponse(entity = Chunked(ContentTypes.`application/octet-stream`, contentSource)))
+    val response = HttpResponse(entity = Chunked(ContentTypes.`application/octet-stream`, contentSource))
+      .withHeaders(RawHeader("content-disposition", "attachment; filename=\"" + className + ".class\""))
+
+    complete(response)
   }
 
 

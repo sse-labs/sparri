@@ -2,11 +2,13 @@ package de.tudo.sse.classfilefeatures.webapi.core
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
-import de.tudo.sse.classfilefeatures.common.model.ClassFileRepresentation
 import de.tudo.sse.classfilefeatures.common.model.conversion.ClassfileCreators
 import de.tudo.sse.classfilefeatures.webapi.model.{ConcreteClassInformation, ConcreteClassInformationBuilder, LibraryInformation, ReleaseInformation}
 import de.tudo.sse.classfilefeatures.webapi.storage.ClassfileDataAccessor
 import org.opalj.bc.Assembler
+
+import java.io.ByteArrayOutputStream
+import java.util.jar.{JarEntry, JarOutputStream}
 
 class RequestHandler(dataAccessor: ClassfileDataAccessor){
 
@@ -59,6 +61,41 @@ class RequestHandler(dataAccessor: ClassfileDataAccessor){
     val classBytes = Assembler(org.opalj.ba.toDA(dummyClassFile))
 
     Source.fromIterator(() => classBytes.iterator)
+  }
+
+  def getJar(libraryName: String, releaseName: String): Source[Byte, NotUsed] = {
+
+    val allClassReps = getReleaseInfo(libraryName, releaseName)
+      .classNames
+      .map(className => dataAccessor.getClassRepresentation(libraryName, releaseName, className))
+
+    val classFileCreator = ClassfileCreators.buildCreatorWithAiSupport(allClassReps)
+
+    val byteStream = new ByteArrayOutputStream()
+    val jarStream = new JarOutputStream(byteStream)
+
+    allClassReps.foreach { cfr =>
+
+      val brClassObj = classFileCreator.toDummyClassFile(cfr)
+      val classBytes = Assembler(org.opalj.ba.toDA(brClassObj))
+
+      val entryName = brClassObj.thisType.packageName + "/" + brClassObj.thisType.simpleName + ".class"
+      val jarEntry = new JarEntry(entryName)
+      jarEntry.setTime( System.currentTimeMillis / 1000)
+
+      jarStream.putNextEntry(jarEntry)
+      jarStream.write(classBytes)
+      jarStream.closeEntry()
+
+    }
+
+    val jarBytes = byteStream.toByteArray
+
+    jarStream.close()
+
+    //TODO: Cache calculates JARs!
+
+    Source.fromIterator(() => jarBytes.iterator)
   }
 
 
