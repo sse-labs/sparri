@@ -50,7 +50,7 @@ lazy val webapi = (project in file("webapi"))
 	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= Seq(dependencies.akkaStreams, dependencies.akkaHttp, dependencies.akkaActors, dependencies.akkaSprayJson,
-			dependencies.logback, dependencies.postgresql),
+			dependencies.logback, dependencies.postgresql, dependencies.rabbitMQ),
 
 		assembly / mainClass := Some("de.tudo.sse.classfilefeatures.webapi.Application"),
 		assembly / assemblyJarName := "cf-webapi.jar",

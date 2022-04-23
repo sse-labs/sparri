@@ -2,17 +2,25 @@ package de.tudo.sse.classfilefeatures.webapi.core
 
 import akka.NotUsed
 import akka.stream.scaladsl.Source
+import de.tudo.sse.classfilefeatures.common.model.ClassFileRepresentation
 import de.tudo.sse.classfilefeatures.common.model.conversion.ClassfileCreators
+import de.tudo.sse.classfilefeatures.common.rabbitmq.MqMessageWriter
+import de.tudo.sse.classfilefeatures.webapi.Configuration
 import de.tudo.sse.classfilefeatures.webapi.model.{ConcreteClassInformation, ConcreteClassInformationBuilder, LibraryInformation, ReleaseInformation}
 import de.tudo.sse.classfilefeatures.webapi.storage.ClassfileDataAccessor
 import org.opalj.bc.Assembler
+import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.ByteArrayOutputStream
 import java.util.jar.{JarEntry, JarOutputStream}
+import scala.util.{Failure, Success, Try}
 
-class RequestHandler(dataAccessor: ClassfileDataAccessor){
+class RequestHandler(val configuration: Configuration, dataAccessor: ClassfileDataAccessor){
+
+  private val log: Logger = LoggerFactory.getLogger(getClass)
 
   private val existingResourcesCache: SimpleValueCache[Boolean] = new SimpleValueCache[Boolean]()
+  private val classFileCache: ObjectCache[ClassFileRepresentation] = new ObjectCache[ClassFileRepresentation](5000)
 
   def getLibraries(offset: Int = 0, count: Int = 100): Array[String] =
     dataAccessor.getLibraryNames(offset, count)
@@ -55,7 +63,9 @@ class RequestHandler(dataAccessor: ClassfileDataAccessor){
   }
 
   def getSingleClassFile(libraryName: String, releaseName: String, className: String): Source[Byte, NotUsed] = {
-    val classRep = dataAccessor.getClassRepresentation(libraryName, releaseName, className)
+    val classRep = classFileCache.getWithCache( libraryName + releaseName + className,
+      () => dataAccessor.getClassRepresentation(libraryName, releaseName, className))
+
     val dummyClassFile = ClassfileCreators.buildSimpleCreator(Seq(classRep)).toDummyClassFile(classRep)
 
     val classBytes = Assembler(org.opalj.ba.toDA(dummyClassFile))
@@ -65,10 +75,14 @@ class RequestHandler(dataAccessor: ClassfileDataAccessor){
 
   def getJar(libraryName: String, releaseName: String): Source[Byte, NotUsed] = {
 
+    log.info(s"Starting to build dummy JAR for $libraryName:$releaseName. Retrieving data...")
+
     val allClassReps = getReleaseInfo(libraryName, releaseName)
       .classNames
-      .map(className => dataAccessor.getClassRepresentation(libraryName, releaseName, className))
+      .map(className => classFileCache.getWithCache( libraryName + releaseName + className,
+        () => dataAccessor.getClassRepresentation(libraryName, releaseName, className)))
 
+    log.info("Done retrieving data. Building JAR ...")
     val classFileCreator = ClassfileCreators.buildCreatorWithAiSupport(allClassReps)
 
     val byteStream = new ByteArrayOutputStream()
@@ -89,13 +103,33 @@ class RequestHandler(dataAccessor: ClassfileDataAccessor){
 
     }
 
+    jarStream.close()
     val jarBytes = byteStream.toByteArray
 
-    jarStream.close()
+    log.info("Done building JAR.")
 
     //TODO: Cache calculates JARs!
 
     Source.fromIterator(() => jarBytes.iterator)
+  }
+
+  def processEnqueueLibraryRequest(libraryName: String): Boolean = {
+
+    Try {
+      val writer = new MqMessageWriter(configuration)
+      writer.initialize()
+
+      writer.appendToQueue(libraryName)
+
+      writer.shutdown()
+    } match {
+      case Success(_) => true
+      case Failure(ex) =>
+        log.error(s"Failed to enqueue library $libraryName", ex)
+        false
+    }
+
+
   }
 
 

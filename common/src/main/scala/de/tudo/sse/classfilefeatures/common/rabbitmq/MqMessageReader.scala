@@ -5,21 +5,11 @@ import org.slf4j.{Logger, LoggerFactory}
 
 import scala.util.{Failure, Success, Try}
 
-class MqMessageReader(configuration: MqConnectionConfiguration) {
+class MqMessageReader(configuration: MqConnectionConfiguration) extends MqConnectionBuilder {
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
-  val connection: Connection = {
-    val factory = new ConnectionFactory
-
-    factory.setUsername(configuration.mqUsername)
-    factory.setPassword(configuration.mqPassword)
-    factory.setVirtualHost("/")
-    factory.setHost(configuration.mqHost)
-    factory.setPort(configuration.mqPort)
-
-    factory.newConnection("incremental-cg-crawler-consumer")
-  }
+  val connection: Connection = buildConnection(configuration, "incremental-cg-crawler-consumer")
 
   val channel: Channel = connection.createChannel()
 

@@ -20,7 +20,7 @@ class ClassfileWebApi {
   private final val theSystem: ActorSystem = ActorSystem("cf-webapi-system")
 
   private[webapi] lazy val dataAccessor: ClassfileDataAccessor = new PostgreSqlDataAccessor(configuration)
-  private[webapi] lazy val requestHandler: RequestHandler = new RequestHandler(dataAccessor)
+  private[webapi] lazy val requestHandler: RequestHandler = new RequestHandler(configuration, dataAccessor)
   private[webapi] lazy val server: ApiServer = new ApiServer(requestHandler)(theSystem)
 
   private var dbInitialized = false
