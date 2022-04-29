@@ -1,0 +1,478 @@
+openapi: 3.0.0
+info:
+  version: "0.0.1"
+  title: "Online Static Analysis Interface"
+servers:
+  - url: "http://ls5vs029.cs.tu-dortmund.de:9090/api"
+    description: "Production Server with real data"
+  - url: "http://localhost:33449/api"
+    description: "Local instance for debugging"
+paths:
+
+  /packages:
+    get:
+      tags: ["Package Related Information"]
+      description: "asd"
+      parameters:
+        - name: skip
+          description: "Pagination: Number of package names to skip"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          description: "Pagination: Number of package names to retrieve"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 500
+      responses:
+        '200':
+          description: "List of all package names that have been indexed at this point."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/StringList"
+          
+  /packages/{packageName}:
+    get:
+      tags: ["Package Related Information"]
+      description: "Retrieves information about a single software package"
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If the package is not found, 404 is returned."
+          
+  /packages/{packageName}/classes:
+    get:
+      tags: ["Package Related Information"]
+      description: "asd"
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If the package is not found, 404 is returned."
+  
+  /packages/{packageName}/classes/{className}:
+    get:
+      tags: ["Package Related Information"]
+      description: "asd"
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: className
+          description: "Unique name of a class inside the given software package"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If either the package or the class are not found, 404 is returned."
+          
+  /packages/{packageName}/versions:
+    get:
+      tags: ["Package Related Information"]
+      description: "Retrieves the list of versions for the given package"
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If the package is not found, 404 is returned."
+          
+  /packages/{packageName}/results:
+    get:
+      tags: ["Package Related Information", "Analysis Related Information"]
+      description: ""
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If the package is not found, 404 is returned."
+          
+  /packages/{packageName}/results/{analysisName}:
+    get:
+      tags: ["Package Related Information", "Analysis Related Information"]
+      description: ""
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: analysisName
+          description: "Unique name of an analysis that was executed for the given software artifact"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If either the package or the analysis are not found, 404 is returned."
+          
+  /packages/{packageName}/versions/{versionName}:
+    get:
+      tags: ["Package Related Information"]
+      description: ""
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionName
+          description: "Unique name of the artifact version."
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If either the package or the version are not found, 404 is returned."
+  
+  /packages/{packageName}/versions/{versionName}/jarfile:
+    get:
+      tags: ["Package Related Information"]
+      description: ""
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionName
+          description: "Unique name of the artifact version."
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If either the package or the version are not found, 404 is returned."
+  
+  /packages/{packageName}/versions/{versionName}/classes:
+    get:
+      tags: ["Package Related Information"]
+      description: ""
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionName
+          description: "Unique name of the artifact version."
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If either the package or the version are not found, 404 is returned."
+          
+  /packages/{packageName}/versions/{versionName}/results:
+    get:
+      tags: ["Package Related Information", "Analysis Related Information"]
+      description: ""
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionName
+          description: "Unique name of the artifact version."
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If either the package or the version are not found, 404 is returned."
+          
+  /packages/{packageName}/versions/{versionName}/results/{analysisName}:
+    get:
+      tags: ["Package Related Information", "Analysis Related Information"]
+      description: ""
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionName
+          description: "Unique name of the artifact version."
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: analysisName
+          description: "Unique name of an analysis that was executed for the given software artifact."
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If either the package, the version or the analysis are not found, 404 is returned."
+  
+  /packages/{packageName}/versions/{versionName}/classes/{className}:
+    get:
+      tags: ["Package Related Information"]
+      description: ""
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionName
+          description: "Unique name of the artifact version"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: className
+          description: "Unique name of a class inside the given software artifact"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If either the package, the version or the class are not found, 404 is returned."
+          
+  /packages/{packageName}/versions/{versionName}/classes/{className}/classfile:
+    get:
+      tags: ["Package Related Information"]
+      description: ""
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionName
+          description: "Unique name of the artifact version"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: className
+          description: "Unique name of a class inside the given software artifact"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If either the package, the version or the class are not found, 404 is returned."
+          
+  /packages/{packageName}/versions/{versionName}/classes/{className}/results:
+    get:
+      tags: ["Package Related Information", "Analysis Related Information"]
+      description: ""
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionName
+          description: "Unique name of the artifact version"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: className
+          description: "Unique name of a class inside the given software artifact"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If either the package, the version or the class are not found, 404 is returned."
+  
+  /packages/{packageName}/versions/{versionName}/classes/{className}/results/{analysisName}:
+    get:
+      tags: ["Package Related Information", "Analysis Related Information"]
+      description: ""
+      parameters:
+        - name: packageName
+          description: "Unique name of the software package (library name)"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: versionName
+          description: "Unique name of the artifact version"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: className
+          description: "Unique name of a class inside the given software artifact"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: analysisName
+          description: "Unique name of an analysis that was executed for the given software artifact"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If either the package, the version, the class or the analysis are not found, 404 is returned."
+          
+  /analyses:
+    get:
+      tags: ["Analysis Related Information"]
+      description: ""
+      responses:
+        '200':
+          description: ""
+  
+  /analyses/{analysisName}:
+    get:
+      tags: ["Analysis Related Information"]
+      description: ""
+      parameters:
+        - name: analysisName
+          description: "Unique name of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If the analysis is not found, 404 is returned."
+  
+  /analyses/{analysisName}/processed:
+    get:
+      tags: ["Analysis Related Information"]
+      description: ""
+      parameters:
+        - name: analysisName
+          description: "Unique name of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If the analysis is not found, 404 is returned."
+  
+  /analysis/{analysisName}/results:
+    get:
+      tags: ["Analysis Related Information"]
+      description: ""
+      parameters:
+        - name: analysisName
+          description: "Unique name of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ""
+        '404':
+          description: "If the analysis is not found, 404 is returned."
+          
+  /processing/enqueuePackage:
+    post:
+      tags: ["Processing Related Enpoints"]
+      description: ""
+      responses:
+        '200':
+          description: ""
+  
+  /processing/runAnalysis:
+    post:
+      tags: ["Processing Related Enpoints"]
+      description: ""
+      responses:
+        '200':
+          description: ""
+
+components:
+  schemas:
+    StringList:
+      type: array
+      items:
+        type: string
+        
+  

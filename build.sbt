@@ -50,7 +50,7 @@ lazy val webapi = (project in file("webapi"))
 	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= Seq(dependencies.akkaStreams, dependencies.akkaHttp, dependencies.akkaActors, dependencies.akkaSprayJson,
-			dependencies.logback, dependencies.postgresql, dependencies.rabbitMQ),
+			dependencies.logback, dependencies.postgresql, dependencies.rabbitMQ, dependencies.akkaHttpCors),
 
 		assembly / mainClass := Some("de.tudo.sse.classfilefeatures.webapi.Application"),
 		assembly / assemblyJarName := "cf-webapi.jar",
@@ -106,4 +106,6 @@ lazy val dependencies = new {
 	val akkaActors = "com.typesafe.akka" %% "akka-actor" % akkaVersion
 	val akkaHttp = "com.typesafe.akka" %% "akka-http" % akkaHttpVersion
 	val akkaSprayJson = "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion
+
+	val akkaHttpCors = "ch.megard" %% "akka-http-cors" % "1.1.3"
 }

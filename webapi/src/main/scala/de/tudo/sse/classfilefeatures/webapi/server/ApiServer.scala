@@ -1,16 +1,15 @@
 package de.tudo.sse.classfilefeatures.webapi.server
 
 import akka.actor.ActorSystem
-
 import akka.http.scaladsl.Http
 import akka.http.scaladsl.Http.ServerBinding
-
 import de.tudo.sse.classfilefeatures.webapi.core.RequestHandler
+import de.tudo.sse.classfilefeatures.webapi.server.routes.ApiRouteDefinitions
 
 import scala.concurrent.Future
 
 class ApiServer(override val requestHandler: RequestHandler)
-               (override implicit val theSystem: ActorSystem) extends RouteDefinitions {
+               (implicit val theSystem: ActorSystem) extends ApiRouteDefinitions {
 
   private val http = Http()
 
