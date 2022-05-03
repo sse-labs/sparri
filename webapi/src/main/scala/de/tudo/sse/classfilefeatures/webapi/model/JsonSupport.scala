@@ -7,3 +7,5 @@ trait JsonSupport extends CoreModelJsonSupport
   with ReleaseInformationJsonSupport
   with ConcreteClassInformationJsonSupport
   with RequestsJsonSupport
+  with LibraryClassActivationInformationJsonSupport
+  with LibraryClassInformationJsonSupport

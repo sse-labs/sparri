@@ -2,8 +2,10 @@ package de.tudo.sse.classfilefeatures.webapi.storage.impl
 
 import de.tudo.sse.classfilefeatures.common.model.{ClassFileRepresentation, FieldDefinitionRepresentation}
 import de.tudo.sse.classfilefeatures.common.storage.impl.postgresql.{PostgreSqlConnectionConfiguration, PostgreSqlConnectivity}
+import de.tudo.sse.classfilefeatures.webapi.model.{LibraryClassActivationInformation, LibraryClassInformation}
 import de.tudo.sse.classfilefeatures.webapi.storage.ClassfileDataAccessor
 import de.tudo.sse.classfilefeatures.webapi.storage.impl.PostgreSqlStorageModel.{FieldAccessInstructionEntry, FieldDefinitionEntry, InvocationInstructionEntry, MethodDefinitionEntry}
+import de.tudo.sse.classfilefeatures.webapi.storage.model.LibraryClassInformationStorageModel
 
 import java.sql.PreparedStatement
 import scala.collection.mutable
@@ -76,13 +78,138 @@ class PostgreSqlDataAccessor(override protected val connectionConfiguration: Pos
   }
 
   override def getLibraryClassNames(libraryName: String): Array[String] = {
-    val stmt = connection.prepareStatement("SELECT Classfiles.ThisType FROM Libraries " +
+    val stmt = connection.prepareStatement("SELECT Classfiles.ThisType, VersionNumbers.VersionNumber FROM Libraries " +
       "LEFT JOIN Classfiles ON Libraries.Id = Classfiles.LibraryId " +
+      "LEFT JOIN Rel_Classfiles_VersionNumbers ON Classfiles.Id = Rel_Classfiles_VersionNumbers.ClassfileId " +
+      "LEFT JOIN VersionNumbers ON Rel_Classfiles_VersionNumbers.VersionId = VersionNumbers.Id " +
       "WHERE Libraries.LibraryName = ?")
 
     stmt.setString(1, libraryName)
 
     resultsAsStringArray(stmt)
+  }
+
+  override def getLibraryClassActivationInformation(libraryName: String): Array[(String, Set[String])] = {
+    val stmt = connection.prepareStatement("SELECT Classfiles.ThisType, VersionNumbers.VersionNumber FROM Libraries " +
+      "LEFT JOIN Classfiles ON Libraries.Id = Classfiles.LibraryId " +
+      "LEFT JOIN Rel_Classfiles_VersionNumbers ON Classfiles.Id = Rel_Classfiles_VersionNumbers.ClassfileId " +
+      "LEFT JOIN VersionNumbers ON Rel_Classfiles_VersionNumbers.VersionId = VersionNumbers.Id " +
+      "WHERE Libraries.LibraryName = ?")
+
+    stmt.setString(1, libraryName)
+
+    val rs = stmt.executeQuery()
+
+    val classToVersionMap = new mutable.HashMap[String, mutable.HashSet[String]]()
+
+    while(rs.next()){
+      val className = rs.getString(1)
+      val version = rs.getString(2)
+
+      if(!classToVersionMap.contains(className)){
+        classToVersionMap.put(className, mutable.HashSet(version))
+      } else {
+        classToVersionMap(className).add(version)
+      }
+    }
+
+
+    classToVersionMap
+      .map( t => (t._1, t._2.toSet))
+      .toArray
+  }
+
+  override def getLibraryClassInformation(libraryName: String, className: String): LibraryClassInformationStorageModel = {
+    val stmt = connection.prepareStatement("SELECT Classfiles.Id, VersionNumbers.VersionNumber, ClassFiles.DefaultFlags, ClassFiles.DefaultSuperType FROM Libraries " +
+      "LEFT JOIN Classfiles ON Libraries.Id = Classfiles.LibraryId " +
+      "LEFT JOIN Rel_Classfiles_VersionNumbers ON Classfiles.Id = Rel_Classfiles_VersionNumbers.ClassfileId " +
+      "LEFT JOIN VersionNumbers ON Rel_Classfiles_VersionNumbers.VersionId = VersionNumbers.Id " +
+      "WHERE Libraries.LibraryName = ? AND Classfiles.ThisType = ?")
+
+    stmt.setString(1, libraryName)
+    stmt.setString(2, className)
+
+    val rs = stmt.executeQuery()
+
+    var classFileId = -1
+    val activeIn = new mutable.HashSet[String]()
+    var defaultFlags = -1
+    var defaultSuperType: Option[String] = None
+
+    while(rs.next()) {
+      classFileId = rs.getInt(1)
+      activeIn.add(rs.getString(2))
+      defaultFlags = rs.getInt(3)
+
+      defaultSuperType = Option(rs.getString(4))
+    }
+
+    stmt.close()
+
+    val superTypeStmt = connection.prepareStatement("SELECT Rel_Classfiles_SuperType.SuperType, VersionNumbers.VersionNumber FROM Rel_Classfiles_SuperType " +
+      "LEFT JOIN VersionNumbers ON Rel_Classfiles_SuperType.VersionId = VersionNumbers.Id " +
+      "WHERE Rel_Classfiles_SuperType.ClassfileId = ?")
+
+    superTypeStmt.setInt(1, classFileId)
+    val superTypeResult = superTypeStmt.executeQuery()
+    val superTypeValueToVersionsMap = new mutable.HashMap[Option[String], mutable.Set[String]]()
+
+    while(superTypeResult.next()){
+      val superTypeValue = Option(superTypeResult.getString(1))
+      val versionString = superTypeResult.getString(2)
+
+      if(!superTypeValueToVersionsMap.contains(superTypeValue)) superTypeValueToVersionsMap.put(superTypeValue, mutable.HashSet(versionString))
+      else superTypeValueToVersionsMap(superTypeValue).add(versionString)
+    }
+    superTypeStmt.close()
+
+    val defaultSuperTypeAppliesTo = activeIn.toSet.diff(superTypeValueToVersionsMap.values.flatten.toSet)
+    superTypeValueToVersionsMap.put(defaultSuperType, mutable.Set(defaultSuperTypeAppliesTo.toSeq :_*))
+
+    val flagsStmt = connection.prepareStatement("SELECT Rel_Classfiles_AccessFlags.Flags, VersionNumbers.VersionNumber FROM Rel_Classfiles_AccessFlags " +
+      "LEFT JOIN VersionNumbers ON Rel_Classfiles_AccessFlags.VersionId = VersionNumbers.Id " +
+      "WHERE Rel_Classfiles_AccessFlags.ClassfileId = ?")
+
+    flagsStmt.setInt(1, classFileId)
+    val flagsResult = flagsStmt.executeQuery()
+    val flagsValueToVersionsMap = new mutable.HashMap[Int, mutable.Set[String]]()
+
+    while(flagsResult.next()){
+      val flagsValue = flagsResult.getInt(1)
+      val versionString = flagsResult.getString(2)
+
+      if(!flagsValueToVersionsMap.contains(flagsValue)) flagsValueToVersionsMap.put(flagsValue, mutable.HashSet(versionString))
+      else flagsValueToVersionsMap(flagsValue).add(versionString)
+    }
+    flagsStmt.close()
+
+    val defaultFlagsApplyTo = activeIn.toSet.diff(flagsValueToVersionsMap.values.flatten.toSet)
+    flagsValueToVersionsMap.put(defaultFlags, mutable.Set(defaultFlagsApplyTo.toSeq :_*))
+
+    val methodsStmt = connection.prepareStatement("SELECT Methods.Name, Methods.Descriptor, VersionNumbers.VersionNumber FROM Methods " +
+      "LEFT JOIN Rel_Methods_VersionNumbers ON Rel_Methods_VersionNumbers.MethodId = Methods.Id " +
+      "LEFT JOIN VersionNumbers ON Rel_Methods_VersionNumbers.VersionId = VersionNumbers.Id " +
+      "WHERE Methods.ClassfileId = ?")
+
+    methodsStmt.setInt(1, classFileId)
+    val methodsResult = methodsStmt.executeQuery()
+    val methodValueToVersionsMap = new mutable.HashMap[String, mutable.Set[String]]()
+
+    while(methodsResult.next()){
+      val methodName = methodsResult.getString(1) + methodsResult.getString(2)
+      val versionString = methodsResult.getString(3)
+
+      if(!methodValueToVersionsMap.contains(methodName)) methodValueToVersionsMap.put(methodName, mutable.HashSet(versionString))
+      else methodValueToVersionsMap(methodName).add(versionString)
+    }
+
+    methodsStmt.close()
+
+    LibraryClassInformationStorageModel(className,
+      activeIn.toArray,
+      superTypeValueToVersionsMap.mapValues(_.toArray).toMap,
+      flagsValueToVersionsMap.mapValues(_.toArray).toMap,
+      methodValueToVersionsMap.mapValues(_.toArray).toMap)
   }
 
   override def getReleaseClassNames(libraryName: String, releaseName: String): Array[String] = {

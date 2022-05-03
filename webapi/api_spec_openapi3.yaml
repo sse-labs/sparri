@@ -12,7 +12,7 @@ paths:
   /packages:
     get:
       tags: ["Package Related Information"]
-      description: "asd"
+      description: "Returns a paginated list of all package names that have been indexed at this point."
       parameters:
         - name: skip
           description: "Pagination: Number of package names to skip"
@@ -49,14 +49,18 @@ paths:
             type: string
       responses:
         '200':
-          description: ""
+          description: "A Package Information object containing all classes, versions and the package name"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageInformation"
         '404':
           description: "If the package is not found, 404 is returned."
           
   /packages/{packageName}/classes:
     get:
       tags: ["Package Related Information"]
-      description: "asd"
+      description: "Returns a list of class information objects for classes that are present in at least one artifact of this package."
       parameters:
         - name: packageName
           description: "Unique name of the software package (library name)"
@@ -66,14 +70,18 @@ paths:
             type: string
       responses:
         '200':
-          description: ""
+          description: "List of all classes that are contained in at least one artifact of this package"
+          content:
+            application/json:
+              schema:
+               $ref: "#/components/schemas/PackageClassList"
         '404':
           description: "If the package is not found, 404 is returned."
   
   /packages/{packageName}/classes/{className}:
     get:
       tags: ["Package Related Information"]
-      description: "asd"
+      description: "Returns a package class information object for the given class in the context of the given package"
       parameters:
         - name: packageName
           description: "Unique name of the software package (library name)"
@@ -89,7 +97,11 @@ paths:
             type: string
       responses:
         '200':
-          description: ""
+          description: "Package class information object for the given class."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PackageClassInformation"
         '404':
           description: "If either the package or the class are not found, 404 is returned."
           
@@ -474,5 +486,58 @@ components:
       type: array
       items:
         type: string
+    
+    ConditionallyActiveElementEntry:
+      type: object
+      properties:
+        'alwaysActive':
+          type: boolean
+        'activeIn':
+          type: array
+          items:
+            type: string
+        
+    PackageInformation:
+      type: object
+      properties:
+        'classes':
+          $ref: '#/components/schemas/StringList'
+        'versions':
+          $ref: '#/components/schemas/StringList'
+        'name':
+          type: string
+    
+    PackageClassList:
+      type: array
+      items:
+        type: object
+        properties:
+          'thisType':
+            type: string
+          'alwaysActive':
+            type: boolean
+          'activeIn':
+            $ref: '#/components/schemas/StringList'
+    
+    PackageClassInformation:
+      type: object
+      properties:
+        'thisType':
+          type: string
+        'activeIn':
+          $ref: '#/components/schemas/StringList'
+        'superTypes':
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ConditionallyActiveElementEntry'
+        'flags':
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ConditionallyActiveElementEntry'
+        'methods':
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/ConditionallyActiveElementEntry'
+          
         
   

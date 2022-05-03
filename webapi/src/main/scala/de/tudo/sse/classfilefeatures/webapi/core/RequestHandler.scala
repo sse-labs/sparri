@@ -6,7 +6,7 @@ import de.tudo.sse.classfilefeatures.common.model.ClassFileRepresentation
 import de.tudo.sse.classfilefeatures.common.model.conversion.ClassfileCreators
 import de.tudo.sse.classfilefeatures.common.rabbitmq.MqMessageWriter
 import de.tudo.sse.classfilefeatures.webapi.Configuration
-import de.tudo.sse.classfilefeatures.webapi.model.{ConcreteClassInformation, ConcreteClassInformationBuilder, LibraryInformation, ReleaseInformation}
+import de.tudo.sse.classfilefeatures.webapi.model.{ConcreteClassInformation, ConcreteClassInformationBuilder, ConditionallyActiveElementEntry, LibraryClassActivationInformation, LibraryClassInformation, LibraryInformation, ReleaseInformation}
 import de.tudo.sse.classfilefeatures.webapi.storage.ClassfileDataAccessor
 import org.opalj.bc.Assembler
 import org.slf4j.{Logger, LoggerFactory}
@@ -45,7 +45,35 @@ class RequestHandler(val configuration: Configuration, dataAccessor: ClassfileDa
   def getLibraryInfo(libraryName: String): LibraryInformation = {
     LibraryInformation(libraryName,
       dataAccessor.getReleaseNames(libraryName),
-      dataAccessor.getLibraryClassNames(libraryName))
+      dataAccessor.getLibraryClassActivationInformation(libraryName).map(_._1))
+  }
+
+  def getLibraryClassActivationInformation(libraryName: String): Array[LibraryClassActivationInformation] = {
+    val totalReleaseCountForLibrary = dataAccessor.getReleaseNames(libraryName).length
+
+    dataAccessor
+      .getLibraryClassActivationInformation(libraryName)
+      .map{ tuple =>
+        val alwaysActive = tuple._2.size == totalReleaseCountForLibrary
+
+        LibraryClassActivationInformation(tuple._1, if(alwaysActive) Array.empty[String] else tuple._2.toArray, alwaysActive)
+      }
+  }
+
+  def getLibraryClassInformation(libraryName: String, className: String): LibraryClassInformation = {
+    val infoObj = dataAccessor.getLibraryClassInformation(libraryName, className)
+
+    def toConditionallyActiveEntryObj(a: Array[String]): ConditionallyActiveElementEntry ={
+      val alwaysActive = a.length == infoObj.activeIn.length
+      ConditionallyActiveElementEntry( if(alwaysActive) Array.empty[String] else a, alwaysActive)
+    }
+
+    LibraryClassInformation(infoObj.className,
+      infoObj.activeIn,
+      infoObj.supertypes.mapValues( toConditionallyActiveEntryObj ),
+      infoObj.flags.map(t => (String.valueOf(t._1), toConditionallyActiveEntryObj(t._2))),
+      infoObj.methodNames.mapValues( toConditionallyActiveEntryObj ))
+
   }
 
   def getReleaseInfo(libraryName: String, releaseName: String): ReleaseInformation = {

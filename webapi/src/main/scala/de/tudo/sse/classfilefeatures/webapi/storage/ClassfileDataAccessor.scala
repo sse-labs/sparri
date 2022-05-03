@@ -1,6 +1,7 @@
 package de.tudo.sse.classfilefeatures.webapi.storage
 
 import de.tudo.sse.classfilefeatures.common.model.ClassFileRepresentation
+import de.tudo.sse.classfilefeatures.webapi.storage.model.LibraryClassInformationStorageModel
 
 trait ClassfileDataAccessor {
 
@@ -20,6 +21,10 @@ trait ClassfileDataAccessor {
   def getLibraryNames(offset: Int = 0, count: Int = 100): Array[String]
 
   def getLibraryClassNames(libraryName: String): Array[String]
+
+  def getLibraryClassActivationInformation(libraryName: String): Array[(String, Set[String])]
+
+  def getLibraryClassInformation(libraryName: String, className: String): LibraryClassInformationStorageModel
 
   def getReleaseNames(libraryName: String): Array[String]
 

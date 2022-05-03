@@ -1,7 +1,6 @@
 package de.tudo.sse.classfilefeatures.webapi.server.routes
 
 import akka.http.scaladsl.model.HttpRequest
-import akka.http.scaladsl.model.StatusCodes.BadRequest
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import spray.json.enrichAny
@@ -70,11 +69,11 @@ trait PackageRouteDefinitions extends BasicRouteDefinition {
     complete(requestHandler.getLibraryInfo(packageName).toJson)
   }
   private def allPackageClassesRoute(packageName: String)(implicit request: HttpRequest): Route = get {
-    __TODO__completeNotImplemented
+    complete(requestHandler.getLibraryClassActivationInformation(packageName).toJson)
   }
 
   private def singlePackageClassRoute(packageName: String, className: String)(implicit request: HttpRequest): Route = get {
-    __TODO__completeNotImplemented
+    complete(requestHandler.getLibraryClassInformation(packageName, className).toJson)
   }
 
   private def singleArtifactRoute(packageName: String, versionName: String)(implicit request: HttpRequest): Route = get {
