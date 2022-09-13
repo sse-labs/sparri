@@ -9,6 +9,196 @@ servers:
     description: "Local instance for debugging"
 paths:
 
+  /entities:
+    get:
+      tags: ["Entity Related Information"]
+      description: "Returns a paginated list of all program entities index at this point."
+      parameters:
+        - name: skip
+          description: "Pagination: Number of entities to skip"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          description: "Pagination: Number of entities to retrieve"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 500
+        - name: language
+          description: "Programming language to filter for"
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: kind
+          description: "Entity kind to filter for"
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: parent
+          description: "Entity parent identifier to filter for"
+          in: query
+          required: false
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "List of all entities matching the requested filters."
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProgramEntity"
+  
+  /entities/{entityIdent}:
+    get:
+      tags: ["Entity Related Information"]
+      description: "Returns information on the program entity with the given identifier."
+      parameters:
+        - name: entityIdent
+          description: "Identifier of the entity to retrieve"
+          in: path
+          required: true
+          schema:
+            type: string
+        
+      responses:
+        '200':
+          description: "Requested Program Entity is returned"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProgramEntity"
+        '404':
+          description: "If the entity identifier is not found, 404 is returned."
+  
+  /entities/{entityIdent}/children:
+    get:
+      tags: ["Entity Related Information"]
+      description: "Returns a paginated list of program entities that are children of the program entity with the given identifier."
+      parameters:
+        - name: entityIdent
+          description: "Identifier of the entity to retrieve children for"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: skip
+          description: "Pagination: Number of entities to skip"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          description: "Pagination: Number of entities to retrieve"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 500
+        
+      responses:
+        '200':
+          description: "List of children for the given program entity"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProgramEntity"
+        '404':
+          description: "If the entity identifier is not found, 404 is returned."
+          
+  
+  /entities/{entityIdent}/processedBy:
+    get:
+      tags: ["Entity Related Information"]
+      description: "Returns a paginated list of analysis runs that processed the program entity with the given identifier."
+      parameters:
+        - name: entityIdent
+          description: "Identifier of the entity to retrieve analysis runs for"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: skip
+          description: "Pagination: Number of runs to skip"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          description: "Pagination: Number of runs to retrieve"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 500
+        
+      responses:
+        '200':
+          description: "List of analysis runs"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnalysisRunInformation"
+        '404':
+          description: "If the entity identifier is not found, 404 is returned."  
+
+  /entities/{entityIdent}/results:
+    get:
+      tags: ["Entity Related Information"]
+      description: "Returns a paginated list of analysis results for the program entity with the given identifier."
+      parameters:
+        - name: entityIdent
+          description: "Identifier of the entity to retrieve results for"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: skip
+          description: "Pagination: Number of results to skip"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          description: "Pagination: Number of results to retrieve"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 500
+        - name: analysis
+          description: "Filter for analysis names"
+          in: query
+          required: false
+          schema:
+            type: string
+        
+      responses:
+        '200':
+          description: "List of results being returned"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '404':
+          description: "If the entity identifier is not found, 404 is returned."
+
   /packages:
     get:
       tags: ["Package Related Information"]
@@ -124,7 +314,7 @@ paths:
           
   /packages/{packageName}/results:
     get:
-      tags: ["Package Related Information", "Analysis Related Information"]
+      tags: ["Package Related Information"]
       description: ""
       parameters:
         - name: packageName
@@ -141,7 +331,7 @@ paths:
           
   /packages/{packageName}/results/{analysisName}:
     get:
-      tags: ["Package Related Information", "Analysis Related Information"]
+      tags: ["Package Related Information"]
       description: ""
       parameters:
         - name: packageName
@@ -233,7 +423,7 @@ paths:
           
   /packages/{packageName}/versions/{versionName}/results:
     get:
-      tags: ["Package Related Information", "Analysis Related Information"]
+      tags: ["Package Related Information"]
       description: ""
       parameters:
         - name: packageName
@@ -256,7 +446,7 @@ paths:
           
   /packages/{packageName}/versions/{versionName}/results/{analysisName}:
     get:
-      tags: ["Package Related Information", "Analysis Related Information"]
+      tags: ["Package Related Information"]
       description: ""
       parameters:
         - name: packageName
@@ -343,7 +533,7 @@ paths:
           
   /packages/{packageName}/versions/{versionName}/classes/{className}/results:
     get:
-      tags: ["Package Related Information", "Analysis Related Information"]
+      tags: ["Package Related Information"]
       description: ""
       parameters:
         - name: packageName
@@ -372,7 +562,7 @@ paths:
   
   /packages/{packageName}/versions/{versionName}/classes/{className}/results/{analysisName}:
     get:
-      tags: ["Package Related Information", "Analysis Related Information"]
+      tags: ["Package Related Information"]
       description: ""
       parameters:
         - name: packageName
@@ -408,15 +598,36 @@ paths:
   /analyses:
     get:
       tags: ["Analysis Related Information"]
-      description: ""
+      description: "Returns a paginated list of all analyses registered"
+      parameters:
+        - name: skip
+          description: "Pagination: Number of analyses to skip"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          description: "Pagination: Number of analyses to retrieve"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 50
       responses:
         '200':
-          description: ""
+          description: "List of analysis informations"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnalysisInformation"
   
   /analyses/{analysisName}:
     get:
       tags: ["Analysis Related Information"]
-      description: ""
+      description: "Returns information on the analysis with the given name"
       parameters:
         - name: analysisName
           description: "Unique name of the analysis"
@@ -426,14 +637,18 @@ paths:
             type: string
       responses:
         '200':
-          description: ""
+          description: "Analysis Information for the analysis with the given name."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisInformation"
         '404':
           description: "If the analysis is not found, 404 is returned."
   
-  /analyses/{analysisName}/processed:
+  /analyses/{analysisName}/runs:
     get:
       tags: ["Analysis Related Information"]
-      description: ""
+      description: "Returns a paginated list of all analysis runs associated with this analysis"
       parameters:
         - name: analysisName
           description: "Unique name of the analysis"
@@ -441,16 +656,36 @@ paths:
           required: true
           schema:
             type: string
+        - name: skip
+          description: "Pagination: Number of analysis runs to skip"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          description: "Pagination: Number of analysis runs to retrieve"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 50
       responses:
         '200':
-          description: ""
+          description: "List of information on analysis runs"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnalysisRunInformation"
         '404':
           description: "If the analysis is not found, 404 is returned."
   
-  /analysis/{analysisName}/results:
+  /analyses/{analysisName}/runs/{runId}:
     get:
       tags: ["Analysis Related Information"]
-      description: ""
+      description: "Returns information on an analysis run with the given name"
       parameters:
         - name: analysisName
           description: "Unique name of the analysis"
@@ -458,11 +693,102 @@ paths:
           required: true
           schema:
             type: string
+        - name: runId
+          description: "Unique id of the analysis run"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Analysis Run Information"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisRunInformation"
+        '404':
+          description: "If the analysis or the analysis run are not found, 404 is returned."
+          
+  /analyses/{analysisName}/runs/{runId}/inputs:
+    get:
+      tags: ["Analysis Related Information"]
+      description: "Returns a paginated list of program entities that were input into the given analysis run"
+      parameters:
+        - name: analysisName
+          description: "Unique name of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: runId
+          description: "Unique id of the analysis run"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: skip
+          description: "Pagination: Number of results to skip"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          description: "Pagination: Number of results to retrieve"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: "List of program entities used as inputs"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ProgramEntity"
+        '404':
+          description: "If the analysis or the analysis run are not found, 404 is returned."
+          
+  /analyses/{analysisName}/runs/{runId}/results:
+    get:
+      tags: ["Analysis Related Information"]
+      description: "Returns a paginated list of analysis results associated with the given analysis run"
+      parameters:
+        - name: analysisName
+          description: "Unique name of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: runId
+          description: "Unique id of the analysis run"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: skip
+          description: "Pagination: Number of results to skip"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          description: "Pagination: Number of results to retrieve"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 50
       responses:
         '200':
           description: ""
         '404':
-          description: "If the analysis is not found, 404 is returned."
+          description: "If the analysis or the analysis run are not found, 404 is returned."
+  
           
   /processing/enqueuePackage:
     post:
@@ -486,6 +812,58 @@ components:
       type: array
       items:
         type: string
+        
+    AnalysisInformation:
+      type: object
+      required: ['Name', 'Description', 'Version', 'IsAvailable', 'IsValid', 'InputEntityKind', 'InputLanguages', 'ResultSchema']
+      properties:
+        'Name':
+          type: string
+        'Description':
+          type: string
+        'Version':
+          type: string
+        'TechnologyInformation':
+          type: string
+        'IsAvailable':
+          type: boolean
+        'IsValid':
+          type: boolean
+        'InputEntityKind':
+          type: string
+        'InputLanguages':
+          $ref: '#/components/schemas/StringList'
+        'ResultSchema':
+          type: object
+    
+    AnalysisRunInformation:
+      type: object
+      required: ['Id', 'AnalysisName']
+      properties:
+        'Id':
+          type: string
+        'Configuration':
+          type: object
+        'Logs':
+          $ref: '#/components/schemas/StringList'
+        'AnalysisName':
+          type: string
+    
+    ProgramEntity:
+      type: object
+      required: ['Name', 'Identifier', 'language', 'EntityKind']
+      properties:
+        'Name':
+          type: string
+        'Identifier':
+          type: string
+        'EntityKind':
+          type: string
+        'Language':
+          type: string
+        'Parent':
+          type: string
+    
     
     ConditionallyActiveElementEntry:
       type: object
