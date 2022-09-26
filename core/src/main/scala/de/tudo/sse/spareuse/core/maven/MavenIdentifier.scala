@@ -20,6 +20,8 @@ case class MavenIdentifier(repository: String, groupId: String, artifactId: Stri
     constructArtifactBaseUri().resolve(encode(artifactId) + "-" + encode(version) + ".pom")
   }
 
+  def toGA: String = groupId + ":" + artifactId
+
   private def constructArtifactBaseUri(): URI =
     new URI(repository)
       .resolve(encode(groupId).replace('.', '/') + "/")

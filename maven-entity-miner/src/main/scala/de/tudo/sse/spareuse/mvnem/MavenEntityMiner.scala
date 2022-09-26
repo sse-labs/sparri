@@ -3,7 +3,7 @@ package de.tudo.sse.spareuse.mvnem
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.{Sink, Source}
 import de.tudo.sse.spareuse.core.maven.{MavenIdentifier, MavenJarDownloader, MavenOnlineJar}
-import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaProgram
+import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaLibrary, JavaProgram}
 import de.tudo.sse.spareuse.core.model.entities.conversion.OPALJavaConverter
 import de.tudo.sse.spareuse.core.opal.OPALProjectHelper
 import de.tudo.sse.spareuse.core.utils.http.HttpDownloadException
@@ -115,6 +115,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
         programTry match {
           case Success(programRep) =>
+            programRep.setParent(new JavaLibrary(jarFile.identifier.toGA, "central"))
             log.info(s"Processing ${classes.size} classes in ${programRep.getChildren.size} packages @  ${jarFile.url.toString}")
             result = Some(programRep)
           case Failure(ex) =>

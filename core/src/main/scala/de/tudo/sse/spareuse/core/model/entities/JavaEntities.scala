@@ -16,6 +16,11 @@ object JavaEntities {
     override def uid: String = getParent.map(p => p.uid + "!" + entityIdent).getOrElse(entityIdent)
   }
 
+  class JavaLibrary(libraryName: String,
+                    repositoryIdent: String) extends PathIdentifiableJavaEntity(libraryName, libraryName, repositoryIdent){
+    override val kind: SoftwareEntityKind = SoftwareEntityKind.Library
+  }
+
   class JavaProgram(programName: String,
                     programIdent: String,
                     repositoryIdent: String) extends PathIdentifiableJavaEntity(programName, programIdent, repositoryIdent) {
