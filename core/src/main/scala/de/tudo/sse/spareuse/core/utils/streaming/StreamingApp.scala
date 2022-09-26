@@ -28,14 +28,17 @@ trait StreamingApp[T] {
                 onComplete()
               })(worker.getExecutionContext)
 
-            log.info("Stream processing started. Press RETURN to stop...")
+            if(exitOnReturn) {
+              log.info("Stream processing started. Press RETURN to stop...")
 
-            // Support stop on key press
-            Future({
-              StdIn.readLine()
-              log.info("Stop requested via StdIn.")
-              worker.stopWork()
-            })(worker.getExecutionContext)
+              // Support stop on key press
+              Future({
+                StdIn.readLine()
+                log.info("Stop requested via StdIn.")
+                worker.stopWork()
+              })(worker.getExecutionContext)
+            }
+
 
           case Failure(ex) =>
             log.error("Failed to initialize application", ex)
@@ -55,6 +58,8 @@ trait StreamingApp[T] {
   protected def onComplete(): Unit = {
     log.info("Finished.")
   }
+
+  protected def exitOnReturn: Boolean = true
 
 
   private def loadConfig(): Option[T] = {

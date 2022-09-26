@@ -14,4 +14,5 @@ Application extends StreamingApp[EntityMinerConfig] {
 
   override def onComplete(): Unit = log.info("Finished processing Maven entities from queue.")
 
+  override protected def exitOnReturn: Boolean = false
 }
