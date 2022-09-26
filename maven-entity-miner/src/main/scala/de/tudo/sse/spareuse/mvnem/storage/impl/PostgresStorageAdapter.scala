@@ -2,6 +2,7 @@ package de.tudo.sse.spareuse.mvnem.storage.impl
 
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod, JavaPackage, JavaProgram}
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
+import de.tudo.sse.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaClasses, JavaFieldAccessRepr, JavaFieldAccessStatements, JavaInvocationRepr, JavaInvocationStatements, JavaMethodRepr, JavaMethods}
 import de.tudo.sse.spareuse.core.storage.postgresql.{SoftwareEntities, SoftwareEntityRepr}
 import de.tudo.sse.spareuse.mvnem.storage.EntityMinerStorageAdapter
 
@@ -15,6 +16,10 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
   lazy val db = Database.forConfig("spa-reuse.postgres")
   val entitiesTable = TableQuery[SoftwareEntities]
+  val javaClassesTable = TableQuery[JavaClasses]
+  val javaMethodsTable = TableQuery[JavaMethods]
+  val javaInvocationsTable = TableQuery[JavaInvocationStatements]
+  val javaFieldAccessesTable = TableQuery[JavaFieldAccessStatements]
 
   lazy val idReturningEntitiesTable = entitiesTable returning entitiesTable.map(_.id)
   lazy val qualifierAndIdReturningEntitiesTable = entitiesTable returning entitiesTable.map(row => (row.qualifier, row.id))
@@ -75,10 +80,14 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   }
 
   private def storePackage(jp: JavaPackage, packageDbId: Long): Future[Unit] = {
-    //TODO: Specialization tables
+
     var start = System.currentTimeMillis()
     val allClasses = jp.getChildren.map { case jc: JavaClass => toEntityRepr(jc, Some(packageDbId))}.toSeq
     val classLookup = Await.result(batchedEntityInsertWithMapReturn(allClasses, 500), 20.seconds)
+
+    Await.ready(batchedClassInsert(jp.getChildren.map { case jc: JavaClass =>
+      toClassRepr(jc, classLookup(jc.uid))}.toSeq, 500), 20.seconds)
+
     var duration = System.currentTimeMillis() - start
 
     log.debug(s"Stored all classes for package ${jp.uid} in $duration ms.")
@@ -86,6 +95,10 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
     start = System.currentTimeMillis()
     val allMethods = jp.getChildren.flatMap( jc => jc.getChildren.map{ case jm: JavaMethod => toEntityRepr(jm, Some(classLookup(jc.uid)))}).toSeq
     val methodLookup = Await.result(batchedEntityInsertWithMapReturn(allMethods, 500), 30.seconds)
+
+    Await.ready(batchedMethodInsert(jp.getChildren.flatMap(_.getChildren).map { case jm: JavaMethod =>
+      toMethodRepr(jm, methodLookup(jm.uid))}.toSeq, 500), 30.seconds)
+
     duration = System.currentTimeMillis() - start
 
     log.debug(s"Stored all methods for package ${jp.uid} in $duration ms.")
@@ -98,16 +111,34 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
         toEntityRepr(jfas, Some(methodLookup(jm.uid)))
     }).toSeq
 
-    val result = batchedEntityInsert(allInstructions, 500)
+    val statementLookup = Await.result(batchedEntityInsertWithMapReturn(allInstructions, 500), 40.seconds)
+
+    val allInstructionsRaw = jp.getChildren.flatMap(_.getChildren).flatMap(_.getChildren)
+
+    val allInvocations = allInstructionsRaw.filter(_.isInstanceOf[JavaInvokeStatement]).map { case jis: JavaInvokeStatement => toInvocationRepr(jis, statementLookup(jis.uid))}.toSeq
+    val allFieldAccesses = allInstructionsRaw.filter(_.isInstanceOf[JavaFieldAccessStatement]).map { case jfas: JavaFieldAccessStatement => toFieldAccessRepr(jfas, statementLookup(jfas.uid))}.toSeq
+
+    val result = Future.sequence(Seq(batchedInvocationInsert(allInvocations, 500), batchedFieldAccessInsert(allFieldAccesses, 500)))
+
     duration = System.currentTimeMillis() - start
 
     log.debug(s"Stored all instructions for package ${jp.uid} in $duration ms.")
 
-    result
+    result.map( _ => () )
   }
 
   private def toEntityRepr(data: SoftwareEntityData, parentIdOpt: Option[Long]): SoftwareEntityRepr = (0, data.name,
     data.uid, data.language, data.kind.id, data.repository, parentIdOpt)
+
+  private def toClassRepr(jc: JavaClass, parentId: Long): JavaClassRepr = (parentId, jc.thisType, jc.superType)
+
+  private def toMethodRepr(jm: JavaMethod, parentId: Long): JavaMethodRepr = (parentId, jm.returnType, jm.paramCount, jm.paramTypes.mkString(","))
+
+  private def toInvocationRepr(jis: JavaInvokeStatement, parentId: Long): JavaInvocationRepr =
+    (parentId, jis.targetTypeName, jis.targetMethodParameterCount, jis.returnTypeName, jis.invokeStatementType.id, jis.instructionPc)
+
+  private def toFieldAccessRepr(jfas: JavaFieldAccessStatement, parentId: Long): JavaFieldAccessRepr =
+    (parentId, jfas.targetFieldTypeName, jfas.targetTypeName, jfas.fieldAccessType.id, jfas.instructionPc)
 
   private def batchedEntityInsertWithMapReturn(entityReprs: Seq[SoftwareEntityRepr], batchSize: Int): Future[Map[String, Long]] = {
 
@@ -120,11 +151,28 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
     Future.sequence(entityReprs.grouped(batchSize).map { batch => db.run(entitiesTable ++= batch)}.toSeq).map( _ => ())
   }
 
+  private def batchedClassInsert(data: Seq[JavaClassRepr], batchSize: Int): Future[Unit] = {
+    Future.sequence(data.grouped(batchSize).map { batch => db.run(javaClassesTable ++= batch)}.toSeq).map( _ => ())
+  }
+
+  private def batchedMethodInsert(data: Seq[JavaMethodRepr], batchSize: Int): Future[Unit] = {
+    Future.sequence(data.grouped(batchSize).map { batch => db.run(javaMethodsTable ++= batch)}.toSeq).map( _ => ())
+  }
+
+  private def batchedInvocationInsert(data: Seq[JavaInvocationRepr], batchSize: Int): Future[Unit] = {
+    Future.sequence(data.grouped(batchSize).map { batch => db.run(javaInvocationsTable ++= batch)}.toSeq).map( _ => ())
+  }
+
+  private def batchedFieldAccessInsert(data: Seq[JavaFieldAccessRepr], batchSize: Int): Future[Unit] = {
+    Future.sequence(data.grouped(batchSize).map { batch => db.run(javaFieldAccessesTable ++= batch)}.toSeq).map( _ => ())
+  }
+
 
 
 
   override def initialize(): Unit = {
-    val setupAction = entitiesTable.schema.createIfNotExists
+    val setupAction = DBIO.seq(entitiesTable.schema.createIfNotExists, javaClassesTable.schema.createIfNotExists,
+      javaMethodsTable.schema.createIfNotExists, javaInvocationsTable.schema.createIfNotExists, javaFieldAccessesTable.schema.createIfNotExists)
 
     val setupFuture = db.run(setupAction)
 

@@ -11,7 +11,8 @@ class EntityMinerConfig private(val mqHost: String,
                                 val mqPassword: String,
                                 val mqQueueName: String,
                                 val mqConnectionName: String,
-                                val storageParallel: Int) extends MqConnectionConfiguration
+                                val storageParallel: Int,
+                                val exitOnEnter: Boolean) extends MqConnectionConfiguration
 
 object EntityMinerConfig {
 
@@ -26,6 +27,8 @@ object EntityMinerConfig {
 
   private final val storageParallelKey = prefix + "storage-parallel"
 
+  private final val exitOnEnterKey = prefix + "exit-on-enter"
+
 
   def fromConfig(c: Config): Try[EntityMinerConfig] = Try {
 
@@ -36,8 +39,10 @@ object EntityMinerConfig {
     val mqConnectionName= if(c.hasPath(mqConnectionNameSuffixKey)) "MavenEntityMiner-" + c.getString(mqConnectionNameSuffixKey) else "MavenEntityMiner"
     val storageParallel = if(c.hasPath(storageParallelKey)) c.getInt(storageParallelKey) else 1
 
+    val exitOnEnter = if(c.hasPath(exitOnEnterKey)) c.getBoolean(exitOnEnterKey) else true
+
     new EntityMinerConfig(c.getString(mqHostKey), c.getInt(mqPortKey), c.getString(mqUserKey), c.getString(mqPassKey), mqQueueName,
-      mqConnectionName, storageParallel)
+      mqConnectionName, storageParallel, exitOnEnter)
 
   }
 

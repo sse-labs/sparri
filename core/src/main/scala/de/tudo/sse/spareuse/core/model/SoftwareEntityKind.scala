@@ -9,7 +9,8 @@ object SoftwareEntityKind extends Enumeration {
   val Package: Value = Value(2)
   val Class: Value = Value(3)
   val Method: Value = Value(4)
-  val Statement: Value = Value(5)
+  val InvocationStatement: Value = Value(5)
+  val FieldAccessStatement: Value = Value(6)
 
 
 }

@@ -35,6 +35,7 @@ object JavaEntities {
                   repositoryIdent: String) extends PathIdentifiableJavaEntity(className, thisTypeFqn, repositoryIdent){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Class
 
+    val thisType: String = thisTypeFqn
     val superType: Option[String] = superTypeFqn
   }
 
@@ -54,8 +55,6 @@ object JavaEntities {
   }
 
   abstract class JavaStatement(name: String, pc: Int, repositoryIdent: String) extends PathIdentifiableJavaEntity(name, String.valueOf(pc), repositoryIdent){
-    override val kind: SoftwareEntityKind = SoftwareEntityKind.Statement
-
     val instructionPc: Int = pc
   }
 
@@ -66,6 +65,8 @@ object JavaEntities {
                             invocationType: JavaInvocationType,
                             pc: Int,
                             repositoryIdent: String) extends JavaStatement(methodName, pc, repositoryIdent) {
+    override val kind: SoftwareEntityKind = SoftwareEntityKind.InvocationStatement
+
     val targetMethodName: String = methodName
     val targetMethodParameterCount: Int = paramCount
     val returnTypeName: String = returnTypeFqn
@@ -80,6 +81,8 @@ object JavaEntities {
                                  accessType: JavaFieldAccessType,
                                  pc:Int,
                                  repositoryIdent: String) extends JavaStatement(fieldName, pc, repositoryIdent) {
+    override val kind: SoftwareEntityKind = SoftwareEntityKind.FieldAccessStatement
+
     val targetFieldName: String = fieldName
     val targetFieldTypeName: String = fieldTypeFqn
     val targetTypeName: String = declaredTypeFqn
