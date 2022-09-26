@@ -23,7 +23,7 @@ lazy val mergeStrategySettings = assemblyMergeStrategy := {
 }
 
 lazy val root = (project in file("."))
-	.aggregate(/*Common to be fully replaced by Core once webapi is adapted*/common, core, `maven-entity-name-publisher`, `maven-entity-miner`, ebapi)
+	.aggregate(/*Common to be fully replaced by Core once webapi is adapted*/common, core, `maven-entity-name-publisher`, `maven-entity-miner`, webapi)
 
 lazy val core = (project in file("core"))
 	.settings(
