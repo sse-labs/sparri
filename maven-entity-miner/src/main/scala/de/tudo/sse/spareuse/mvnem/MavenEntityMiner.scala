@@ -19,12 +19,12 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     extends MqStreamIntegration
     with AsyncStreamWorker[String] {
 
+  override val workerName: String = "maven-entity-miner"
+
   private final val downloader = new MavenJarDownloader()
   private final val opalProjectHelper = new OPALProjectHelper()
-  private final val storageAdapter: EntityMinerStorageAdapter = new PostgresStorageAdapter()
+  private final val storageAdapter: EntityMinerStorageAdapter = new PostgresStorageAdapter()(streamMaterializer.executionContext)
 
-
-  override val workerName: String = "maven-entity-miner"
 
   override def initialize(): Unit = {
     storageAdapter.initialize()

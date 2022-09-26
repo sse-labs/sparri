@@ -8,10 +8,10 @@ import de.tudo.sse.spareuse.mvnem.storage.EntityMinerStorageAdapter
 import scala.util.{Failure, Success, Try}
 import slick.jdbc.PostgresProfile.api._
 
-import scala.concurrent.{Await, Future}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.DurationInt
 
-class PostgresStorageAdapter extends EntityMinerStorageAdapter {
+class PostgresStorageAdapter(implicit executor: ExecutionContext) extends EntityMinerStorageAdapter {
 
   lazy val db = Database.forConfig("spa-reuse.postgres")
   val entitiesTable = TableQuery[SoftwareEntities]
@@ -36,21 +36,16 @@ class PostgresStorageAdapter extends EntityMinerStorageAdapter {
         log.error(s"Failed to prepare storage of program: ${data.name}", ex)
         Future.failed(ex)
     }
-
-
-
-
   }
 
   private def storeInternal(data: JavaProgram, parentIdOpt: Option[Long]): Future[_] = {
     val currentId = storeDataAndGetId(data, parentIdOpt)
-
+    log.debug(s"Storing java program ${data.name}")
     storeProgram(data, currentId)
   }
 
   private def storeDataAndGetId(data: SoftwareEntityData, parentIdOpt: Option[Long]): Long = {
     //TODO: Maybe batching?
-    log.debug(s"Storing entity ${data.name} ...")
     val res = idReturningEntitiesTable +=
       ((0, data.name, data.uid, data.language, data.kind.id, data.repository, parentIdOpt))
 
@@ -68,67 +63,62 @@ class PostgresStorageAdapter extends EntityMinerStorageAdapter {
     val batch = jp.getChildren.map {
       case jm: JavaPackage =>
         toEntityRepr(jm, Some(programDbId))
-    }
+    }.toSeq
 
-    val insertAction = qualifierAndIdReturningEntitiesTable ++= batch
+    val insertAction = batchedEntityInsertWithMapReturn(batch, 100)
 
-    val insertResult = Await.result(db.run(insertAction), 10.seconds)
+    val insertResult = Await.result(insertAction, 10.seconds)
 
     val classLookup = jp.getChildren.map(m => (m.uid, m.asInstanceOf[JavaPackage])).toMap
 
-    Future.sequence(insertResult.map(t => storePackage(classLookup(t._1), t._2)))(executor = db.ioExecutionContext, cbf = implicitly)
+    Future.sequence(insertResult.map( tuple => storePackage(classLookup(tuple._1), tuple._2)).toSeq)
   }
 
-  private def storePackage(jp: JavaPackage, packageDbId: Long): Future[_] = {
+  private def storePackage(jp: JavaPackage, packageDbId: Long): Future[Unit] = {
     //TODO: Specialization tables
-    val batch = jp.getChildren.map {
-      case jm: JavaClass =>
-        toEntityRepr(jm, Some(packageDbId))
-    }
+    var start = System.currentTimeMillis()
+    val allClasses = jp.getChildren.map { case jc: JavaClass => toEntityRepr(jc, Some(packageDbId))}.toSeq
+    val classLookup = Await.result(batchedEntityInsertWithMapReturn(allClasses, 500), 20.seconds)
+    var duration = System.currentTimeMillis() - start
 
-    val insertAction = qualifierAndIdReturningEntitiesTable ++= batch
+    log.debug(s"Stored all classes for package ${jp.uid} in $duration ms.")
 
-    val insertResult = Await.result(db.run(insertAction), 10.seconds)
+    start = System.currentTimeMillis()
+    val allMethods = jp.getChildren.flatMap( jc => jc.getChildren.map{ case jm: JavaMethod => toEntityRepr(jm, Some(classLookup(jc.uid)))}).toSeq
+    val methodLookup = Await.result(batchedEntityInsertWithMapReturn(allMethods, 500), 30.seconds)
+    duration = System.currentTimeMillis() - start
 
-    val classLookup = jp.getChildren.map(m => (m.uid, m.asInstanceOf[JavaClass])).toMap
+    log.debug(s"Stored all methods for package ${jp.uid} in $duration ms.")
 
-    Future.sequence(insertResult.map(t => storeClass(classLookup(t._1), t._2)))(executor = db.ioExecutionContext, cbf = implicitly)
-  }
-
-  private def storeClass(jc: JavaClass, classDbId: Long): Future[_] = {
-
-    //TODO: Specialization tables
-    val batch = jc.getChildren.map {
-      case jm: JavaMethod =>
-        toEntityRepr(jm, Some(classDbId))
-    }
-
-    val insertAction = qualifierAndIdReturningEntitiesTable ++= batch
-
-    val insertResult = Await.result(db.run(insertAction), 10.seconds)
-
-    val methodLookup = jc.getChildren.map(m => (m.uid, m.asInstanceOf[JavaMethod])).toMap
-
-    Future.sequence(insertResult.map(t => storeMethod(methodLookup(t._1), t._2)))(executor = db.ioExecutionContext, cbf = implicitly)
-  }
-
-  private def storeMethod(jm: JavaMethod, methodDbId: Long): Future[_] = {
-
-    //TODO: Specialization tables
-    val batch = jm.getChildren.map {
+    start = System.currentTimeMillis()
+    val allInstructions = jp.getChildren.flatMap(jc => jc.getChildren).flatMap(jm => jm.getChildren.map {
       case jis: JavaInvokeStatement =>
-        toEntityRepr(jis, Some(methodDbId))
+        toEntityRepr(jis, Some(methodLookup(jm.uid)))
       case jfas: JavaFieldAccessStatement =>
-        toEntityRepr(jfas, Some(methodDbId))
-    }
+        toEntityRepr(jfas, Some(methodLookup(jm.uid)))
+    }).toSeq
 
-    val action = entitiesTable ++= batch
+    val result = batchedEntityInsert(allInstructions, 500)
+    duration = System.currentTimeMillis() - start
 
-    db.run(action)
+    log.debug(s"Stored all instructions for package ${jp.uid} in $duration ms.")
+
+    result
   }
 
   private def toEntityRepr(data: SoftwareEntityData, parentIdOpt: Option[Long]): SoftwareEntityRepr = (0, data.name,
     data.uid, data.language, data.kind.id, data.repository, parentIdOpt)
+
+  private def batchedEntityInsertWithMapReturn(entityReprs: Seq[SoftwareEntityRepr], batchSize: Int): Future[Map[String, Long]] = {
+
+    Future.sequence(
+      entityReprs.grouped(batchSize).map { batch => db.run(qualifierAndIdReturningEntitiesTable ++= batch).map( resultObj => resultObj.toMap)}.toSeq)
+      .map(seqOfMaps => seqOfMaps.flatten.toMap)
+  }
+
+  private def batchedEntityInsert(entityReprs: Seq[SoftwareEntityRepr], batchSize: Int): Future[Unit] = {
+    Future.sequence(entityReprs.grouped(batchSize).map { batch => db.run(entitiesTable ++= batch)}.toSeq).map( _ => ())
+  }
 
 
 
