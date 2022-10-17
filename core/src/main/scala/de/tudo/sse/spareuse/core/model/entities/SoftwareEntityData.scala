@@ -11,6 +11,8 @@ trait SoftwareEntityData {
   val kind: SoftwareEntityKind
   val repository: String
 
+  val binaryHash: Option[Array[Byte]]
+
   def uid: String
 
   protected var parent: Option[SoftwareEntityData] = None

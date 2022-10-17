@@ -64,6 +64,22 @@ lazy val `maven-entity-miner` = (project in file("maven-entity-miner"))
 		docker / imageNames := Seq(ImageName(s"maven-entity-miner:latest"))
 	)
 
+lazy val `analysis-runner` = (project in file("analysis-runner"))
+	.dependsOn(core)
+	.enablePlugins(DockerPlugin)
+	.settings(
+		libraryDependencies ++= dependencies.opal,
+		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.logback, dependencies.typesafeConfig),
+
+		assembly / mainClass := Some("de.tudo.sse.spareuse.execution.Application"),
+		assembly / assemblyJarName := "analysis-runner.jar",
+
+		mergeStrategySettings,
+		dockerSettings,
+
+		docker / imageNames := Seq(ImageName(s"analysis-runner:latest"))
+	)
+
 lazy val common = (project in file("common"))
 	.settings(
 		libraryDependencies ++= dependencies.opal,
@@ -72,7 +88,7 @@ lazy val common = (project in file("common"))
 	)
 
 lazy val webapi = (project in file("webapi"))
-	.dependsOn(common)
+	.dependsOn(common, core)
 	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= Seq(dependencies.akkaStreams, dependencies.akkaHttp, dependencies.akkaActors, dependencies.akkaSprayJson,

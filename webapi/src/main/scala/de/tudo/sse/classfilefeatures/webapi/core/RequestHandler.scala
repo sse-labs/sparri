@@ -4,7 +4,9 @@ import akka.NotUsed
 import akka.stream.scaladsl.Source
 import de.tudo.sse.classfilefeatures.common.model.ClassFileRepresentation
 import de.tudo.sse.classfilefeatures.common.model.conversion.ClassfileCreators
-import de.tudo.sse.classfilefeatures.common.rabbitmq.MqMessageWriter
+
+import de.tudo.sse.spareuse.core.utils.rabbitmq.MqMessageWriter
+
 import de.tudo.sse.classfilefeatures.webapi.Configuration
 import de.tudo.sse.classfilefeatures.webapi.model.{ConcreteClassInformation, ConcreteClassInformationBuilder, ConditionallyActiveElementEntry, LibraryClassActivationInformation, LibraryClassInformation, LibraryInformation, ReleaseInformation}
 import de.tudo.sse.classfilefeatures.webapi.storage.ClassfileDataAccessor

@@ -1,10 +1,10 @@
 package de.tudo.sse.classfilefeatures.webapi
 
-import de.tudo.sse.classfilefeatures.common.rabbitmq.MqConnectionConfiguration
+import de.tudo.sse.spareuse.core.utils.rabbitmq.MqDirectQueuePublishConfiguration
 import de.tudo.sse.classfilefeatures.common.storage.impl.postgresql.PostgreSqlConnectionConfiguration
 
 class Configuration extends PostgreSqlConnectionConfiguration
-  with MqConnectionConfiguration{
+  with MqDirectQueuePublishConfiguration{
 
   val serverHost: String = "localhost"
   val serverPort: Int = 33449
@@ -20,4 +20,9 @@ class Configuration extends PostgreSqlConnectionConfiguration
   override val mqHost: String = "<CHANGEME>"
   override val mqPort: Int = 8080
   override val mqQueueName: String = "library-identifiers"
+  override val mqConnectionName: String = "webapi-conn"
+
+  override val mqExchangeName: String = "todo"
+  override val mqRoutingKey: String = "todo"
+  override val mqMaxPriority: Option[Int] = Some(3)
 }

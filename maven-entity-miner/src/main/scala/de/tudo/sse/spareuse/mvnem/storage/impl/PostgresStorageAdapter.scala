@@ -11,6 +11,7 @@ import slick.jdbc.PostgresProfile.api._
 
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.DurationInt
+import scala.language.implicitConversions
 
 class PostgresStorageAdapter(implicit executor: ExecutionContext) extends EntityMinerStorageAdapter {
 
@@ -23,6 +24,9 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
   lazy val idReturningEntitiesTable = entitiesTable returning entitiesTable.map(_.id)
   lazy val qualifierAndIdReturningEntitiesTable = entitiesTable returning entitiesTable.map(row => (row.qualifier, row.id))
+
+  // Converts representations of binary hashes in the core model (byte-array) to database-representations (hex-strings)
+  private implicit def toHexOpt(byteOpt: Option[Array[Byte]]): Option[String] = byteOpt.map(bytes => bytes.map("%02X" format _).mkString)
 
   override def storeJavaProgram(data: JavaProgram): Future[_] =  {
 
@@ -52,7 +56,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   private def storeDataAndGetId(data: SoftwareEntityData, parentIdOpt: Option[Long]): Long = {
     //TODO: Maybe batching?
     val res = idReturningEntitiesTable +=
-      ((0, data.name, data.uid, data.language, data.kind.id, data.repository, parentIdOpt))
+      ((0, data.name, data.uid, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash))
 
     Await.result(db.run(res), 10.seconds)
   }
@@ -63,8 +67,6 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   }
 
   private def storeProgram(jp: JavaProgram, programDbId: Long): Future[_] = {
-
-    //TODO: Specialization tables
     val batch = jp.getChildren.map {
       case jm: JavaPackage =>
         toEntityRepr(jm, Some(programDbId))
@@ -128,7 +130,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   }
 
   private def toEntityRepr(data: SoftwareEntityData, parentIdOpt: Option[Long]): SoftwareEntityRepr = (0, data.name,
-    data.uid, data.language, data.kind.id, data.repository, parentIdOpt)
+    data.uid, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash)
 
   private def toClassRepr(jc: JavaClass, parentId: Long): JavaClassRepr = (parentId, jc.thisType, jc.superType)
 

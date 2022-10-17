@@ -2,15 +2,30 @@ package de.tudo.sse.spareuse.core.model.entities.conversion
 
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaPackage, JavaProgram, JavaStatement}
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
+import org.opalj.ba
+import org.opalj.bc.Assembler
 import org.opalj.br.instructions.{FieldAccess, GETFIELD, GETSTATIC, INVOKEDYNAMIC, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL, Instruction, PUTFIELD, PUTSTATIC}
 import org.opalj.br.{ClassFile, Method}
 
+import java.security.MessageDigest
 import scala.collection.mutable
 
 object OPALJavaConverter {
 
-  def convertProgram(programIdent: String, repositoryIdent: String, opalClasses: List[ClassFile]): JavaProgram = {
-    val program = new JavaProgram(programIdent, programIdent, repositoryIdent)
+  private def hashBytes(bytes: Array[Byte]): Array[Byte] = MessageDigest.getInstance("md5").digest(bytes)
+
+  private def hashClass(cf: ClassFile): Array[Byte] = hashBytes(Assembler(ba.toDA(cf)))
+
+  def convertProgram(programIdent: String,
+                     repositoryIdent: String,
+                     opalClasses: List[ClassFile]): JavaProgram = {
+
+    val classHashes = opalClasses.map(cf => (cf, hashClass(cf))).toMap
+
+    // Program hash is (for now) defined as the hash of all class hashes (this excludes resources / manifest changes)
+    val programHash = hashBytes(classHashes.values.toArray.flatten)
+
+    val program = new JavaProgram(programIdent, programIdent, repositoryIdent, programHash)
 
     val packages = opalClasses
       .map(_.thisType.packageName)
@@ -23,7 +38,7 @@ object OPALJavaConverter {
     packages.foreach { p =>
       val classes = opalClasses
         .filter(_.thisType.packageName.equals(p.name))
-        .map(convertClass(_, p))
+        .map(cf => convertClass(cf, p, classHashes(cf)))
         .toSet[SoftwareEntityData]
 
       p.setChildren(classes)
@@ -32,8 +47,8 @@ object OPALJavaConverter {
     program
   }
 
-  def convertClass(cf: ClassFile, p: SoftwareEntityData): JavaClass = {
-    val classRep = new JavaClass(cf.thisType.simpleName, cf.thisType.simpleName, cf.superclassType.map(_.fqn), p.repository)
+  def convertClass(cf: ClassFile, p: SoftwareEntityData, classHash: Array[Byte]): JavaClass = {
+    val classRep = new JavaClass(cf.thisType.simpleName, cf.thisType.simpleName, cf.superclassType.map(_.fqn), p.repository, classHash)
 
     classRep.setChildren(cf.methods.map(convertMethod(_, classRep)).toSet)
 

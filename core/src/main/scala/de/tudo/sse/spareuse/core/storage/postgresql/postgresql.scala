@@ -6,7 +6,7 @@ import slick.jdbc.PostgresProfile.api._
 
 package object postgresql {
 
-  class SoftwareEntities(tag: Tag) extends Table[(Long, String, String, String, Int, String, Option[Long])](tag, "entities") {
+  class SoftwareEntities(tag: Tag) extends Table[(Long, String, String, String, Int, String, Option[Long], Option[String])](tag, "entities") {
 
     def id: Rep[Long] = column[Long]("ID", O.PrimaryKey, O.AutoInc)
 
@@ -22,13 +22,15 @@ package object postgresql {
 
     def parentID: Rep[Option[Long]] = column[Option[Long]]("PARENT_ID")
 
-    override def * : ProvenShape[(Long, String, String, String, Int, String, Option[Long])] =
-      (id, name, qualifier, language, kind, repository, parentID)
+    def hash: Rep[Option[String]] = column[Option[String]]("HASH")
 
-    def parent: ForeignKeyQuery[SoftwareEntities, (Long, String, String, String, Int, String, Option[Long])] =
+    override def * : ProvenShape[(Long, String, String, String, Int, String, Option[Long], Option[String])] =
+      (id, name, qualifier, language, kind, repository, parentID, hash)
+
+    def parent: ForeignKeyQuery[SoftwareEntities, (Long, String, String, String, Int, String, Option[Long], Option[String])] =
       foreignKey("PARENT_FK", parentID, TableQuery[SoftwareEntities])(_.id.?)
   }
 
-  type SoftwareEntityRepr = (Long, String, String, String, Int, String, Option[Long])
+  type SoftwareEntityRepr = (Long, String, String, String, Int, String, Option[Long], Option[String])
 
 }

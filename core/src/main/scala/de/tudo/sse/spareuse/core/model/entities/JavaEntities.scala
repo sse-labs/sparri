@@ -9,35 +9,41 @@ object JavaEntities {
 
   abstract class PathIdentifiableJavaEntity private[entities] (entityName: String,
                                                      entityIdent: String,
-                                                     repositoryIdent: String) extends SoftwareEntityData {
+                                                     repositoryIdent: String,
+                                                     hashedBytes: Option[Array[Byte]]) extends SoftwareEntityData {
     override val name: String = entityName
     override val language: String = "java"
     override val repository: String = repositoryIdent
+
+    override val binaryHash: Option[Array[Byte]] = hashedBytes
+
     override def uid: String = getParent.map(p => p.uid + "!" + entityIdent).getOrElse(entityIdent)
   }
 
   class JavaLibrary(libraryName: String,
-                    repositoryIdent: String) extends PathIdentifiableJavaEntity(libraryName, libraryName, repositoryIdent){
+                    repositoryIdent: String) extends PathIdentifiableJavaEntity(libraryName, libraryName, repositoryIdent, None){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Library
   }
 
   class JavaProgram(programName: String,
                     programIdent: String,
-                    repositoryIdent: String) extends PathIdentifiableJavaEntity(programName, programIdent, repositoryIdent) {
+                    repositoryIdent: String,
+                    hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(programName, programIdent, repositoryIdent, Some(hashedBytes)) {
 
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Program
 
   }
 
   class JavaPackage(packageName: String,
-                    repositoryIdent: String) extends PathIdentifiableJavaEntity(packageName, packageName, repositoryIdent) {
+                    repositoryIdent: String) extends PathIdentifiableJavaEntity(packageName, packageName, repositoryIdent, None) {
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Package
   }
 
   class JavaClass(className: String,
                   thisTypeFqn: String,
                   superTypeFqn: Option[String],
-                  repositoryIdent: String) extends PathIdentifiableJavaEntity(className, thisTypeFqn, repositoryIdent){
+                  repositoryIdent: String,
+                  hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(className, thisTypeFqn, repositoryIdent, Some(hashedBytes)){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Class
 
     val thisType: String = thisTypeFqn
@@ -50,7 +56,7 @@ object JavaEntities {
   class JavaMethod(methodName: String,
                    returnTypeFqn: String,
                    paramTypeNames: Seq[String],
-                   repositoryIdent: String) extends PathIdentifiableJavaEntity(methodName, buildMethodIdent(methodName, returnTypeFqn, paramTypeNames), repositoryIdent){
+                   repositoryIdent: String) extends PathIdentifiableJavaEntity(methodName, buildMethodIdent(methodName, returnTypeFqn, paramTypeNames), repositoryIdent, None){
 
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Method
 
@@ -59,7 +65,8 @@ object JavaEntities {
     val paramTypes: Seq[String] = paramTypeNames
   }
 
-  abstract class JavaStatement(name: String, pc: Int, repositoryIdent: String) extends PathIdentifiableJavaEntity(name, String.valueOf(pc), repositoryIdent){
+  abstract class JavaStatement(name: String, pc: Int, repositoryIdent: String)
+    extends PathIdentifiableJavaEntity(name, String.valueOf(pc), repositoryIdent, None){
     val instructionPc: Int = pc
   }
 
