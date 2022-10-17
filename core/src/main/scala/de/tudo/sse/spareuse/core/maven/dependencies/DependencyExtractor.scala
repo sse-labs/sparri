@@ -1,7 +1,6 @@
-package de.tudo.sse.classfilefeatures.common.maven.dependencies
+package de.tudo.sse.spareuse.core.maven.dependencies
 
-import de.tudo.sse.classfilefeatures.common.maven.model.MavenDependencyIdentifier
-import de.tudo.sse.classfilefeatures.common.maven.model.{MavenDependencyIdentifier, MavenIdentifier}
+import de.tudo.sse.spareuse.core.maven.{MavenDependencyIdentifier, MavenIdentifier}
 
 import scala.util.{Failure, Success, Try}
 

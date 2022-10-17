@@ -1,14 +1,14 @@
-package de.tudo.sse.classfilefeatures.common.maven.dependencies
+package de.tudo.sse.spareuse.core.maven.dependencies
 
-import de.tudo.sse.classfilefeatures.common.maven.model.MavenDependencyIdentifier
-import de.tudo.sse.classfilefeatures.common.maven.model.{MavenDependencyIdentifier, MavenIdentifier}
+import de.tudo.sse.spareuse.core.maven.MavenIdentifier.DefaultRepository
+import de.tudo.sse.spareuse.core.maven.{MavenDependencyIdentifier, MavenIdentifier}
 import dev.jeka.core.api.depmanagement.{JkDependencySet, JkQualifiedDependencySet, JkRepo}
 import dev.jeka.core.api.depmanagement.resolution.JkDependencyResolver
 
-import scala.collection.JavaConverters.collectionAsScalaIterableConverter
+import scala.jdk.CollectionConverters.{asScalaBufferConverter, asScalaSetConverter}
 import scala.util.Try
 
-trait JekaDependencyExtractor extends DependencyExtractor {
+class JekaDependencyExtractor extends DependencyExtractor {
 
   private def withResolver[T](implicit function: JkDependencyResolver[Void] => T): Try[T] = Try {
     val resolver = JkDependencyResolver.of().addRepos(JkRepo.ofMavenCentral())
@@ -21,7 +21,7 @@ trait JekaDependencyExtractor extends DependencyExtractor {
     resolver
       .resolve(JkDependencySet.of(identifier.toString)).getDependencyTree.getChildren().asScala.flatMap(p => p.getChildren.asScala).map( node => {
         val scope = node.getNodeInfo.getDeclaredConfigurations.asScala.head
-        new MavenDependencyIdentifier(MavenIdentifier(node.getModuleInfo.getModuleId.getGroup,
+        MavenDependencyIdentifier(MavenIdentifier(DefaultRepository, node.getModuleInfo.getModuleId.getGroup,
           node.getModuleInfo.getModuleId.getName,node.getModuleInfo.getResolvedVersion.toString), scope)
       })
       .toList
@@ -36,7 +36,7 @@ trait JekaDependencyExtractor extends DependencyExtractor {
       .getDependencyTree.getChildren.asScala.flatMap(p => p.getChildren.asScala)
       .map( node => {
         val scope = node.getNodeInfo.getDeclaredConfigurations.asScala.head
-        new MavenDependencyIdentifier(MavenIdentifier(node.getModuleInfo.getModuleId.getGroup,
+        MavenDependencyIdentifier(MavenIdentifier(DefaultRepository, node.getModuleInfo.getModuleId.getGroup,
           node.getModuleInfo.getModuleId.getName,node.getModuleInfo.getDeclaredVersion.toString), scope)
       })
       .toList
@@ -50,7 +50,7 @@ trait JekaDependencyExtractor extends DependencyExtractor {
         .resolve(JkDependencySet.of(identifier.toString)).getDependencyTree.toFlattenList.asScala.map(node => {
 
         val scope = node.getNodeInfo.getDeclaredConfigurations.asScala.head
-        new MavenDependencyIdentifier(MavenIdentifier(node.getModuleInfo.getModuleId.getGroup,
+        MavenDependencyIdentifier(MavenIdentifier(DefaultRepository, node.getModuleInfo.getModuleId.getGroup,
           node.getModuleInfo.getModuleId.getName, node.getModuleInfo.getResolvedVersion.toString), scope)
       })
         .toList

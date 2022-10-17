@@ -1,10 +1,10 @@
-package de.tudo.sse.classfilefeatures.common.maven.dependencies
+package de.tudo.sse.spareuse.core.maven.dependencies
 
 import com.squareup.tools.maven.resolution.ArtifactResolver
-import de.tudo.sse.classfilefeatures.common.maven.model.MavenDependencyIdentifier
-import de.tudo.sse.classfilefeatures.common.maven.model.{MavenDependencyIdentifier, MavenIdentifier}
+import de.tudo.sse.spareuse.core.maven.MavenIdentifier.DefaultRepository
+import de.tudo.sse.spareuse.core.maven.{MavenDependencyIdentifier, MavenIdentifier}
 
-import scala.collection.JavaConverters.asScalaBufferConverter
+import scala.jdk.CollectionConverters.asScalaBufferConverter
 import scala.util.Try
 
 class PomFileDependencyExtractor extends DependencyExtractor {
@@ -17,7 +17,7 @@ class PomFileDependencyExtractor extends DependencyExtractor {
     val resolvedArtifact = theResolver.resolve(theArtifact)
 
     resolvedArtifact.component2().getModel.getDependencies.asScala.map { dependency =>
-      val ident = new MavenIdentifier(dependency.getGroupId, dependency.getArtifactId, dependency.getVersion)
+      val ident = new MavenIdentifier(DefaultRepository, dependency.getGroupId, dependency.getArtifactId, dependency.getVersion)
 
       MavenDependencyIdentifier(ident, dependency.getScope)
     }

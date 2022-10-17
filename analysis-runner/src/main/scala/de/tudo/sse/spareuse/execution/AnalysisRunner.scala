@@ -5,7 +5,7 @@ import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
 import de.tudo.sse.spareuse.core.utils.rabbitmq.MqStreamIntegration
 import de.tudo.sse.spareuse.core.utils.streaming.AsyncStreamWorker
-import de.tudo.sse.spareuse.execution.commands.RunnerCommand
+import de.tudo.sse.spareuse.execution.commands.{RunnerCommand, StartRunCommand, StopRunCommand}
 
 import scala.concurrent.Future
 import scala.util.{Failure, Success}
@@ -16,7 +16,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
   override val workerName: String = "analysis-runner"
 
-  override def initialize(): Unit = ???
+  override def initialize(): Unit = { /*TODO: DB init*/ }
 
   override protected def buildSource(): Source[String, NotUsed] = createMqMessageSource(configuration)
 
@@ -39,7 +39,18 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
     }
   }
 
-  private def validatePrerequisites(command: RunnerCommand): Option[RunnerCommand] = ???
+  private def validatePrerequisites(command: RunnerCommand): Option[RunnerCommand] = {
+    command match {
+      case startCmd: StartRunCommand =>
+        log.info(s"Validating command: User ${startCmd.userName} requests to start analysis ${startCmd.analysisName}.")
+
+        //TODO: Validate that analysis and input entities exist.
+        ???
+      case stopCmd: StopRunCommand =>
+        log.info(s"Validating command: User ${stopCmd.userName} requests to stop analysis run ${stopCmd.runId} for analysis ${stopCmd.analysisName}")
+        ???
+    }
+  }
 
   private def executeAnalysis(command: RunnerCommand): Future[Unit] = ???
 

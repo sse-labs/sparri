@@ -1,4 +1,4 @@
-package de.tudo.sse.classfilefeatures.common.maven.model
+package de.tudo.sse.spareuse.core.maven
 
 case class MavenDependencyIdentifier(identifier: MavenIdentifier, scope: String = "default") {
 

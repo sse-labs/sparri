@@ -30,7 +30,7 @@ lazy val core = (project in file("core"))
 		libraryDependencies ++= dependencies.opal,
 		libraryDependencies ++= dependencies.slick,
 		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.akkaStreams,
-			dependencies.apacheHttp, dependencies.postgresql)
+			dependencies.apacheHttp, dependencies.postgresql, dependencies.jeka, dependencies.mvnarcheologist)
 	)
 
 lazy val `maven-entity-name-publisher` = (project in file("maven-entity-name-publisher"))
@@ -69,7 +69,7 @@ lazy val `analysis-runner` = (project in file("analysis-runner"))
 	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= dependencies.opal,
-		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.logback, dependencies.typesafeConfig),
+		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.logback, dependencies.typesafeConfig, dependencies.sprayJson),
 
 		assembly / mainClass := Some("de.tudo.sse.spareuse.execution.Application"),
 		assembly / assemblyJarName := "analysis-runner.jar",
@@ -151,6 +151,7 @@ lazy val dependencies = new {
 
 	val typesafeConfig = "com.typesafe" % "config" % "1.4.2"
 
+	val sprayJson = "io.spray" %% "spray-json" % "1.3.6"
 
 	val akkaVersion = "2.6.18"
 	val akkaHttpVersion = "10.2.9"
