@@ -7,6 +7,40 @@ import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaInvocationType.
 
 object JavaEntities {
 
+  def buildLibrary(ga: String, repoIdent: String = "mvn"): JavaLibrary = new JavaLibrary(ga, repoIdent)
+
+  def buildProgram(gav: String, repoIdent: String = "mvn", hash: Array[Byte] = Array.empty): JavaProgram = {
+    buildProgramFor(buildLibrary(gav.substring(0, gav.lastIndexOf(":")), repoIdent), gav, hash)
+  }
+
+  def buildProgramFor(jl: JavaLibrary, gav: String, hash: Array[Byte] = Array.empty): JavaProgram = {
+    val jp = new JavaProgram(gav, gav.substring(gav.lastIndexOf(":") + 1), jl.repository, hash)
+    jp.setParent(jl)
+    jp
+  }
+
+  def buildPackage(gav: String, packageName: String, repoIdent: String = "mvn"): JavaPackage = {
+    buildPackageFor(buildProgram(gav, repoIdent), packageName)
+  }
+
+  def buildPackageFor(jp: JavaProgram, packageName: String): JavaPackage = {
+    val jpa = new JavaPackage(packageName, jp.repository)
+    jpa.setParent(jp)
+    jpa
+  }
+
+  def buildClass(gav: String, packageName: String, className: String, fqn: String, superTypeFqn: Option[String] = None, repoIdent: String = "mvn", hash: Array[Byte] = Array.empty): JavaClass = {
+    buildClassFor(buildPackage(gav, packageName, repoIdent), className, fqn, superTypeFqn, hash)
+  }
+
+  def buildClassFor(jp: JavaPackage, className: String, fqn: String, superTypeFqn: Option[String] = None, hash: Array[Byte] = Array.empty): JavaClass = {
+    val classObj = new JavaClass(className, fqn, superTypeFqn, jp.repository, hash)
+    classObj.setParent(jp)
+    classObj
+  }
+
+  //TODO: Helper Functions for Method and Instruction
+
   abstract class PathIdentifiableJavaEntity private[entities] (entityName: String,
                                                      entityIdent: String,
                                                      repositoryIdent: String,
@@ -18,6 +52,8 @@ object JavaEntities {
     override val binaryHash: Option[Array[Byte]] = hashedBytes
 
     override def uid: String = getParent.map(p => p.uid + "!" + entityIdent).getOrElse(entityIdent)
+
+    val identifier: String = entityIdent
   }
 
   class JavaLibrary(libraryName: String,

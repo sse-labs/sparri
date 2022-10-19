@@ -4,6 +4,7 @@ import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFie
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import de.tudo.sse.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaClasses, JavaFieldAccessRepr, JavaFieldAccessStatements, JavaInvocationRepr, JavaInvocationStatements, JavaMethodRepr, JavaMethods}
 import de.tudo.sse.spareuse.core.storage.postgresql.{SoftwareEntities, SoftwareEntityRepr}
+import de.tudo.sse.spareuse.core.utils.toHex
 import de.tudo.sse.spareuse.mvnem.storage.EntityMinerStorageAdapter
 
 import scala.util.{Failure, Success, Try}
@@ -26,7 +27,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   lazy val qualifierAndIdReturningEntitiesTable = entitiesTable returning entitiesTable.map(row => (row.qualifier, row.id))
 
   // Converts representations of binary hashes in the core model (byte-array) to database-representations (hex-strings)
-  private implicit def toHexOpt(byteOpt: Option[Array[Byte]]): Option[String] = byteOpt.map(bytes => bytes.map("%02X" format _).mkString)
+  private implicit def toHexOpt(byteOpt: Option[Array[Byte]]): Option[String] = byteOpt.map(toHex)
 
   override def storeJavaProgram(data: JavaProgram): Future[_] =  {
 

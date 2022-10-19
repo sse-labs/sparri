@@ -6,10 +6,15 @@ object AnalysisRegistry {
 
   private val analysisLookup:  mutable.Map[String, AnalysisImplementation] = new mutable.HashMap()
 
-  def registerAnalysisImplementation(analysisImpl: AnalysisImplementation): Unit = analysisLookup.put(analysisImpl.name, analysisImpl)
+  private def combine(str1: String, str2: String) = s"$str1:$str2"
 
-  def analysisImplementationAvailable(analysisName: String): Boolean = analysisLookup.contains(analysisName)
+  def registerAnalysisImplementation(analysisImpl: AnalysisImplementation): Unit =
+    analysisLookup.put(combine(analysisImpl.name, analysisImpl.version), analysisImpl)
 
-  def getAnalysisImplementation(analysisName: String): AnalysisImplementation = analysisLookup(analysisName)
+  def analysisImplementationAvailable(analysisName: String, analysisVersion: String): Boolean =
+    analysisLookup.contains(combine(analysisName, analysisVersion))
+
+  def getAnalysisImplementation(analysisName: String, analysisVersion: String): AnalysisImplementation =
+    analysisLookup(combine(analysisName, analysisVersion))
 
 }

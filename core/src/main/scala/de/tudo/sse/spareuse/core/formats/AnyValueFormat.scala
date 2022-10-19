@@ -7,13 +7,21 @@ trait AnyValueFormat {
   def isBaseValue: Boolean = false
 }
 
+case object EntityReferenceFormat extends AnyValueFormat
+
+
+case class NamedPropertyFormat(propertyName: String, propertyFormat: AnyValueFormat) extends AnyValueFormat
+
+
 trait BaseValueFormat extends AnyValueFormat {
 
   override def isBaseValue: Boolean = true
 
 }
 
-object StringFormat extends BaseValueFormat {
-}
+case object StringFormat extends BaseValueFormat
 
-object NumberFormat extends BaseValueFormat
+
+case object NumberFormat extends BaseValueFormat
+
+case object EmptyFormat extends BaseValueFormat

@@ -48,7 +48,9 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
         ???
       case stopCmd: StopRunCommand =>
         log.info(s"Validating command: User ${stopCmd.userName} requests to stop analysis run ${stopCmd.runId} for analysis ${stopCmd.analysisName}")
-        ???
+
+        log.error("Stopping analysis runs is currently not supported!")
+        None
     }
   }
 

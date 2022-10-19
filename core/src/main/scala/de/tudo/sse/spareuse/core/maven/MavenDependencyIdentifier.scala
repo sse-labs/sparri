@@ -7,6 +7,8 @@ case class MavenDependencyIdentifier(identifier: MavenIdentifier, scope: String 
     case _ => false
   }
 
+  override def toString: String = identifier.toString + ":" + scope
+
   override def hashCode(): Int = {
     41 * identifier.hashCode() + 13 * scope.hashCode
   }
