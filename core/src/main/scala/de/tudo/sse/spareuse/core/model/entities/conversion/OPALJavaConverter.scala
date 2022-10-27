@@ -48,7 +48,7 @@ object OPALJavaConverter {
   }
 
   def convertClass(cf: ClassFile, p: SoftwareEntityData, classHash: Array[Byte]): JavaClass = {
-    val classRep = new JavaClass(cf.thisType.simpleName, cf.thisType.simpleName, cf.superclassType.map(_.fqn), p.repository, classHash)
+    val classRep = new JavaClass(cf.thisType.simpleName, cf.thisType.fqn, cf.superclassType.map(_.fqn), p.repository, classHash)
 
     classRep.setChildren(cf.methods.map(convertMethod(_, classRep)).toSet)
 

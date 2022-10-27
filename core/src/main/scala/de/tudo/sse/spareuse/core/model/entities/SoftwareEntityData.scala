@@ -24,7 +24,10 @@ trait SoftwareEntityData {
   }
 
   def addChild(c: SoftwareEntityData): Unit = {
-    if (!children.contains(c)) children.add(c)
+    if (!children.contains(c)){
+      c.parent = Some(this)
+      children.add(c)
+    }
   }
 
   def getChildren: Set[SoftwareEntityData] = children.toSet

@@ -17,6 +17,8 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
   override val version: String = "1.0.0"
   override val inputEntityKind: SoftwareEntityKind = SoftwareEntityKind.Library
 
+  override val inputBatchProcessing: Boolean = true
+
   override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Class
 
   override def executionPossible(inputs: Seq[SoftwareEntityData], rawConfig: String): Boolean = {

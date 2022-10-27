@@ -18,6 +18,8 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
   override val version: String = "1.0.0"
   override val inputEntityKind: SoftwareEntityKind = SoftwareEntityKind.Program
 
+  override val inputBatchProcessing: Boolean = true
+
   // This analysis does not need any DB information
   override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Program
 

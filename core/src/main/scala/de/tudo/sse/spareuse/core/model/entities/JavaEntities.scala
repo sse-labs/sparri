@@ -145,6 +145,16 @@ object JavaEntities {
     val Interface: Value = Value(3)
     val Static: Value = Value(4)
     val Dynamic: Value = Value(5)
+
+
+    def fromId(id: Int): JavaInvocationType = id match {
+      case 1 => Virtual
+      case 2 => Special
+      case 3 => Interface
+      case 4 => Static
+      case 5 => Dynamic
+      case _ => throw new IllegalArgumentException(s"Invalid id for InvocationType $id")
+    }
   }
 
   object JavaFieldAccessType extends Enumeration {
@@ -154,6 +164,14 @@ object JavaEntities {
     val StaticGet: Value = Value(2)
     val InstancePut: Value = Value(3)
     val InstanceGet: Value = Value(4)
+
+    def fromId(id: Int): JavaFieldAccessType = id match {
+      case 1 => StaticPut
+      case 2 => StaticGet
+      case 3 => InstancePut
+      case 4 => InstanceGet
+      case _ => throw new IllegalArgumentException(s"Invalid id for FieldAccessType $id")
+    }
   }
 
 

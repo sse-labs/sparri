@@ -21,6 +21,12 @@ trait AnalysisImplementation extends MavenReleaseListDiscovery {
   val inputEntityKind: SoftwareEntityKind
 
   /**
+   * Specifies whether this analysis processes the set of inputs one after another (batch processing) or the set of
+   * inputs as-a-whole. If set to true, the runner can optimize and remove redundant inputs before execution.
+   */
+  val inputBatchProcessing: Boolean
+
+  /**
    * Specifies how deep the input entity structure needs to be, i.e. how much information the analysis needs
    * from the database. By default, entities will be resolved until the Method level (thus excluding instructions).
    */
