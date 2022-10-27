@@ -12,6 +12,10 @@ object SoftwareEntityKind extends Enumeration {
   val InvocationStatement: Value = Value(5)
   val FieldAccessStatement: Value = Value(6)
 
+  def fromId(id: Int): SoftwareEntityKind = {
+    SoftwareEntityKind(id)
+  }
+
   def isLessSpecificOrEqual(toTest: SoftwareEntityKind, pivot: SoftwareEntityKind): Boolean = {
     if(pivot.id < 5) toTest.id <= pivot.id
     else true

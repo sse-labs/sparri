@@ -6,7 +6,7 @@ import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaLibrary, JavaMethod, JavaPackage, JavaProgram}
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import de.tudo.sse.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaClasses, JavaFieldAccessRepr, JavaFieldAccessStatements, JavaInvocationRepr, JavaInvocationStatements, JavaMethodRepr, JavaMethods}
-import de.tudo.sse.spareuse.core.storage.postgresql.{SoftwareEntities, SoftwareEntityRepr}
+import de.tudo.sse.spareuse.core.storage.postgresql.{AnalysisRunInputs, SoftwareAnalyses, SoftwareAnalysisRepr, SoftwareAnalysisRuns, SoftwareEntities, SoftwareEntityRepr}
 import de.tudo.sse.spareuse.execution.storage.DataAccessor
 import org.slf4j.{Logger, LoggerFactory}
 import slick.lifted.TableQuery
@@ -32,17 +32,27 @@ class PostgresAdapter extends DataAccessor {
   private val javaInvocationsTable = TableQuery[JavaInvocationStatements]
   private val javaFieldAccessesTable = TableQuery[JavaFieldAccessStatements]
 
+  private val analysesTable = TableQuery[SoftwareAnalyses]
+  private val analysisRunsTable = TableQuery[SoftwareAnalysisRuns]
+  private val analysisRunInputsTable = TableQuery[AnalysisRunInputs]
+
   override def initializeEntityTables(): Unit = {
     val setupAction = DBIO.seq(entitiesTable.schema.createIfNotExists, javaClassesTable.schema.createIfNotExists,
       javaMethodsTable.schema.createIfNotExists, javaInvocationsTable.schema.createIfNotExists, javaFieldAccessesTable.schema.createIfNotExists)
 
-    val setupFuture = db.run(setupAction)
+    val setupF = db.run(setupAction)
 
-    Await.ready(setupFuture, longActionTimeout)
+    Await.ready(setupF, longActionTimeout)
   }
 
   override def initializeAnalysisTables(): Unit = {
-    //TODO: Initialize Tables once they are defined
+    val setupAction = DBIO.seq(analysesTable.schema.createIfNotExists, analysisRunsTable.schema.createIfNotExists,
+      analysisRunInputsTable.schema.createIfNotExists)
+    //TODO: Initialize all Tables once they are defined
+
+    val setupF = db.run(setupAction)
+
+    Await.ready(setupF, longActionTimeout)
   }
 
   override def hasEntity(ident: String, kind: SoftwareEntityKind): Boolean = {
@@ -188,13 +198,60 @@ class PostgresAdapter extends DataAccessor {
     lookup(rootId)._1
   }
 
-  override def getAnalysisData(analysisName: String, analysisVersion: String, includeRuns: Boolean = false): Try[AnalysisData] = {
-    //TODO: Retrieve data once tables are defined
-    ???
+  private def getAnalysisRepr(analysisName: String, analysisVersion: String): SoftwareAnalysisRepr = {
+    val queryF = db.run(analysesTable.filter(a => a.name === analysisName && a.version === analysisVersion).take(1).result)
+
+    Await.result(queryF, simpleQueryTimeout).headOption match {
+      case Some(result) => result
+      case None => throw new IllegalStateException(s"Analysis $analysisName:$analysisVersion no present in db")
+    }
   }
 
-  override def getAnalysisRuns(analysisName: String, analysisVersion: String, includeResults: Boolean): Try[Set[AnalysisRunData]] = {
-    //TODO: Retireve data once tables are defined
-    ???
+  override def getAnalysisData(analysisName: String, analysisVersion: String, includeRuns: Boolean = false): Try[AnalysisData] = Try {
+
+    val repr = getAnalysisRepr(analysisName, analysisVersion)
+
+    val analysisRuns = if(includeRuns) getAnalysisRuns(repr._1, analysisName, analysisVersion, includeResults = false)
+      else Set.empty[AnalysisRunData]
+
+    val inputLanguages = repr._7.split(",").toSet
+    val inputEntityKind = SoftwareEntityKind.fromId(repr._9)
+
+    // TODO: Input Formats
+    AnalysisData(repr._2, repr._3, repr._4, repr._5, repr._6, inputLanguages, repr._8, null, inputEntityKind, analysisRuns)
+  }
+
+  private def getInputsForRun(analysisRunId: Long): Set[SoftwareEntityData] = {
+    val queryF = db.run {
+        val runIdToInput = for { (ri, i) <- analysisRunInputsTable join entitiesTable on (_.inputEntityID === _.id) } yield (ri.analysisRunID, i )
+
+        runIdToInput.filter(t => t._1 === analysisRunId).map(t => t._2).result
+      }
+      .map{ entities =>
+        // TODO: Convert to *flat* entity representation
+        ???
+      }(db.ioExecutionContext)
+
+    Await.result(queryF, longActionTimeout)
+  }
+
+  private def getAnalysisRuns(analysisId: Long, analysisName: String, analysisVersion: String, includeResults: Boolean): Set[AnalysisRunData] = {
+
+    val queryF = db
+      .run(analysisRunsTable.filter(r => r.parentID === analysisId).result)
+      .map{ allRuns =>
+        allRuns.map { run =>
+          //TODO: Timestamp, logs, results if requested
+          AnalysisRunData(null, Array.empty, run.config, run.isRevoked, getInputsForRun(run.id), Set.empty, analysisName, analysisVersion)
+        }
+      }(db.ioExecutionContext)
+
+    Await.result(queryF, longActionTimeout).toSet
+  }
+
+  override def getAnalysisRuns(analysisName: String, analysisVersion: String, includeResults: Boolean): Try[Set[AnalysisRunData]] = Try {
+    val analysisId = getAnalysisRepr(analysisName, analysisVersion)._1
+
+    getAnalysisRuns(analysisId, analysisName, analysisVersion, includeResults)
   }
 }

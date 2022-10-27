@@ -11,4 +11,4 @@ case class AnalysisData(name: String, version: String, description: String, buil
                         executions: Set[AnalysisRunData])
 
 case class AnalysisRunData(timestamp: LocalDateTime, logs: Array[String], configuration: String, isRevoked: Boolean,
-                           inputs: Set[SoftwareEntityData], results: Set[AnalysisResultData], parentAnalysis: String)
+                           inputs: Set[SoftwareEntityData], results: Set[AnalysisResultData], parentAnalysisName: String, parentAnalysisVersion: String)
