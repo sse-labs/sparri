@@ -11,6 +11,7 @@ trait StreamingApp[T] {
 
   protected final val log: Logger = LoggerFactory.getLogger(getClass)
 
+  private var keyPressFuture: Option[Future[Unit]] = None
 
   def main(args: Array[String]): Unit = {
 
@@ -32,11 +33,11 @@ trait StreamingApp[T] {
               log.info("Stream processing started. Press RETURN to stop...")
 
               // Support stop on key press
-              Future({
+              keyPressFuture = Some(Future({
                 StdIn.readLine()
                 log.info("Stop requested via StdIn.")
                 worker.stopWork()
-              })(worker.getExecutionContext)
+              })(worker.getExecutionContext))
             }
 
 

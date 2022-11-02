@@ -1,5 +1,6 @@
 package de.tudo.sse.spareuse.execution.commands
 
+import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, StartRunCommand}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must
 

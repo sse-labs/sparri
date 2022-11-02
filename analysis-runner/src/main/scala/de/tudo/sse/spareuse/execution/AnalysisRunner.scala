@@ -3,10 +3,11 @@ package de.tudo.sse.spareuse.execution
 import akka.stream.scaladsl.Sink
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
+import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, StartRunCommand, StopRunCommand}
 import de.tudo.sse.spareuse.core.utils.rabbitmq.MqStreamIntegration
 import de.tudo.sse.spareuse.core.utils.streaming.AsyncStreamWorker
+import de.tudo.sse.spareuse.execution.analyses.impl.MvnConstantClassAnalysisImpl
 import de.tudo.sse.spareuse.execution.analyses.{AnalysisImplementation, AnalysisRegistry}
-import de.tudo.sse.spareuse.execution.commands.{RunnerCommand, StartRunCommand, StopRunCommand}
 import de.tudo.sse.spareuse.execution.storage.impl.PostgresAdapter
 import de.tudo.sse.spareuse.execution.storage.DataAccessor
 import de.tudo.sse.spareuse.execution.utils.{AnalysisRunNotPossibleException, ValidRunnerCommand, ValidStartRunCommand}
@@ -25,6 +26,14 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
   override def initialize(): Unit = {
     dataAccessor.initialize()
+
+    //TODO: Move Somewhere else
+    AnalysisRegistry.registerAnalysisImplementation(new MvnConstantClassAnalysisImpl)
+  }
+
+  override def shutdown(): Unit = {
+    dataAccessor.shutdown()
+    super.shutdown()
   }
 
   override protected def buildSource(): Source[String, NotUsed] = createMqMessageSource(configuration)

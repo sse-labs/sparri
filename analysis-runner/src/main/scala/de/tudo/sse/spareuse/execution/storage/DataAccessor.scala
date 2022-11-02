@@ -7,4 +7,6 @@ trait DataAccessor extends EntityAccessor  with AnalysisAccessor {
     this.initializeAnalysisTables()
   }
 
+  def shutdown(): Unit
+
 }

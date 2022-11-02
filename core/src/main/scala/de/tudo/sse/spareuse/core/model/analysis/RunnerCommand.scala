@@ -1,6 +1,6 @@
-package de.tudo.sse.spareuse.execution.commands
+package de.tudo.sse.spareuse.core.model.analysis
 
-import de.tudo.sse.spareuse.execution.commands.RunnerCommandType.RunnerCommandType
+import de.tudo.sse.spareuse.core.model.analysis.RunnerCommandType.RunnerCommandType
 import spray.json._
 
 import scala.util.Try

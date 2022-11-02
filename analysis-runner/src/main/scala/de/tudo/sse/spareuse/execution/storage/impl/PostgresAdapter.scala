@@ -45,10 +45,14 @@ class PostgresAdapter extends DataAccessor {
     Await.ready(setupF, longActionTimeout)
   }
 
+  override def shutdown(): Unit = {
+    db.close()
+  }
+
   override def initializeAnalysisTables(): Unit = {
+    //TODO: Initialize all Tables once they are defined. Missing: Results, Formats
     val setupAction = DBIO.seq(analysesTable.schema.createIfNotExists, analysisRunsTable.schema.createIfNotExists,
       analysisRunInputsTable.schema.createIfNotExists)
-    //TODO: Initialize all Tables once they are defined
 
     val setupF = db.run(setupAction)
 
@@ -137,65 +141,73 @@ class PostgresAdapter extends DataAccessor {
     Await.result(queryF, simpleQueryTimeout)
   }
 
-  private def buildEntityObjectTree(reprs: Seq[SoftwareEntityRepr], rootId: Long): Try[SoftwareEntityData] = Try {
+  def toLib(repr: SoftwareEntityRepr): JavaLibrary = new JavaLibrary(repr._2, repr._6)
+  def toProgram(repr: SoftwareEntityRepr): JavaProgram = {
+    val hashedBytes: Array[Byte] = repr._8.map(HexFormat.of().parseHex).getOrElse(Array.empty)
+    new JavaProgram(repr._2, repr._2, repr._6, hashedBytes)
+  }
 
+  def toPackage(repr: SoftwareEntityRepr): JavaPackage = new JavaPackage(repr._2, repr._6)
+  def toClass(repr: SoftwareEntityRepr, classData: JavaClassRepr): JavaClass = {
+    val hashedBytes: Array[Byte] = repr._8.map(HexFormat.of().parseHex).getOrElse(Array.empty)
+    new JavaClass(repr._2, classData._2, classData._3, repr._6, hashedBytes)
+  }
+  def toMethod(repr: SoftwareEntityRepr, methodData: JavaMethodRepr): JavaMethod = {
+    val paramTypeNames = methodData._4.split(",")
+
+    if (paramTypeNames.length != methodData._3)
+      throw new IllegalStateException("Corrupt database, parameter count does not match actual parameters")
+
+    new JavaMethod(repr._2, methodData._2, paramTypeNames, repr._6)
+  }
+  def toInvocation(repr: SoftwareEntityRepr, invokeData: JavaInvocationRepr): JavaInvokeStatement = {
+    val invocationType = JavaInvocationType.fromId(invokeData._5)
+
+    new JavaInvokeStatement(repr._2, invokeData._2, invokeData._3, invokeData._4, invocationType, invokeData._6, repr._6)
+  }
+  def toFieldAccess(repr: SoftwareEntityRepr, fieldAccessData: JavaFieldAccessRepr): JavaFieldAccessStatement = {
+    val accessType = JavaFieldAccessType.fromId(fieldAccessData._4)
+
+    new JavaFieldAccessStatement(repr._2, fieldAccessData._2, fieldAccessData._3, accessType, fieldAccessData._5, repr._6)
+  }
+
+  private def buildEntities(reprs: Seq[SoftwareEntityRepr]): Seq[SoftwareEntityData] = buildEntitiesIdMap(reprs).values.toSeq
+  private def buildEntitiesIdMap(reprs: Seq[SoftwareEntityRepr]): Map[Long, SoftwareEntityData] = {
     //Retrieve all data from extension tables
     val allClassesData: Map[Long, JavaClassRepr] = getClassTableData(reprs.filter(repr => repr._5 == SoftwareEntityKind.Class.id).map(_._1)).map(r => (r._1, r)).toMap
     val allMethodsData: Map[Long, JavaMethodRepr] = getMethodTableData(reprs.filter(repr => repr._5 == SoftwareEntityKind.Method.id).map(_._1)).map(r => (r._1, r)).toMap
     val allInvokeStmtData: Map[Long, JavaInvocationRepr] = getInvocationTableData(reprs.filter(repr => repr._5 == SoftwareEntityKind.InvocationStatement.id).map(_._1)).map(r => (r._1, r)).toMap
     val allFieldAccessStmtData: Map[Long, JavaFieldAccessRepr] = getFieldAccessTableData(reprs.filter(repr => repr._5 == SoftwareEntityKind.FieldAccessStatement.id).map(_._1)).map(r => (r._1, r)).toMap
 
-    val lookup = reprs.map { repr =>
-      val obj = repr._5 match {
-        case 0 => // LIBRARY
-          new JavaLibrary(repr._2, repr._6)
-
-        case 1 => // PROGRAM
-          val hashedBytes: Array[Byte] = repr._8.map(HexFormat.of().parseHex).getOrElse(Array.empty)
-          new JavaProgram(repr._2, repr._2, repr._6, hashedBytes)
-
-        case 2 => // PACKAGE
-          new JavaPackage(repr._2, repr._6)
-
-        case 3 => // CLASS
-          val hashedBytes: Array[Byte] = repr._8.map(HexFormat.of().parseHex).getOrElse(Array.empty)
-          val classData = allClassesData(repr._1)
-          new JavaClass(repr._2, classData._2, classData._3, repr._6, hashedBytes)
-
-        case 4 => // METHOD
-          val methodData = allMethodsData(repr._1)
-
-          val paramTypeNames = methodData._4.split(",")
-
-          if(paramTypeNames.length != methodData._3)
-            throw new IllegalStateException("Corrupt database, parameter count does not match actual parameters")
-
-          new JavaMethod(repr._2, methodData._2, paramTypeNames, repr._6)
-
-        case 5 => // INVOCATION
-          val invokeData = allInvokeStmtData(repr._1)
-          val invocationType = JavaInvocationType.fromId(invokeData._5)
-
-          new JavaInvokeStatement(repr._2, invokeData._2, invokeData._3, invokeData._4, invocationType, invokeData._6, repr._6)
-
-        case 6 => // FIELD ACCESS
-          val fieldAccessData = allFieldAccessStmtData(repr._1)
-          val accessType = JavaFieldAccessType.fromId(fieldAccessData._4)
-
-          new JavaFieldAccessStatement(repr._2, fieldAccessData._2, fieldAccessData._3, accessType, fieldAccessData._5, repr._6)
+    reprs.map { repr =>
+      val entityObj = repr._5 match {
+        case 0 => toLib(repr)
+        case 1 => toProgram(repr)
+        case 2 => toPackage(repr)
+        case 3 => toClass(repr, allClassesData(repr._1))
+        case 4 => toMethod(repr, allMethodsData(repr._1))
+        case 5 => toInvocation(repr, allInvokeStmtData(repr._1))
+        case 6 => toFieldAccess(repr, allFieldAccessStmtData(repr._1))
       }
 
-      (repr._1, (obj, repr._7))
+      (repr._1, entityObj)
     }.toMap
+  }
 
-    lookup.keys.foreach{ eid =>
-      val entity: SoftwareEntityData = lookup(eid)._1
-      val parentIdOpt: Option[Long] = lookup(eid)._2
+  private def buildEntityObjectTree(reprs: Seq[SoftwareEntityRepr], rootId: Long): Try[SoftwareEntityData] = Try {
 
-      if(parentIdOpt.isDefined) entity.setParent(lookup(parentIdOpt.get)._1)
+    val idToObjMap = buildEntitiesIdMap(reprs)
+
+    val parentLookup: Map[Long, Option[Long]] = reprs.map(repr => (repr._1, repr._7)).toMap
+
+    reprs.map(_._1).foreach { entityId =>
+      val entity = idToObjMap(entityId)
+      val parentOpt = parentLookup(entityId).map(idToObjMap(_))
+
+      if(parentOpt.isDefined) entity.setParent(parentOpt.get)
     }
 
-    lookup(rootId)._1
+    idToObjMap(rootId)
   }
 
   private def getAnalysisRepr(analysisName: String, analysisVersion: String): SoftwareAnalysisRepr = {
@@ -227,12 +239,9 @@ class PostgresAdapter extends DataAccessor {
 
         runIdToInput.filter(t => t._1 === analysisRunId).map(t => t._2).result
       }
-      .map{ entities =>
-        // TODO: Convert to *flat* entity representation
-        ???
-      }(db.ioExecutionContext)
+      .map{ entityReprs => buildEntities(entityReprs) }(db.ioExecutionContext)
 
-    Await.result(queryF, longActionTimeout)
+    Await.result(queryF, longActionTimeout).toSet
   }
 
   private def getAnalysisRuns(analysisId: Long, analysisName: String, analysisVersion: String, includeResults: Boolean): Set[AnalysisRunData] = {

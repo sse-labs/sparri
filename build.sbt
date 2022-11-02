@@ -30,7 +30,8 @@ lazy val core = (project in file("core"))
 		libraryDependencies ++= dependencies.opal,
 		libraryDependencies ++= dependencies.slick,
 		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.akkaStreams,
-			dependencies.apacheHttp, dependencies.postgresql, dependencies.jeka, dependencies.mvnarcheologist)
+			dependencies.apacheHttp, dependencies.postgresql, dependencies.jeka, dependencies.mvnarcheologist,
+			dependencies.sprayJson)
 	)
 
 lazy val `maven-entity-name-publisher` = (project in file("maven-entity-name-publisher"))
@@ -69,7 +70,7 @@ lazy val `analysis-runner` = (project in file("analysis-runner"))
 	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= dependencies.opal,
-		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.logback, dependencies.typesafeConfig, dependencies.sprayJson),
+		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.logback, dependencies.typesafeConfig),
 
 		assembly / mainClass := Some("de.tudo.sse.spareuse.execution.Application"),
 		assembly / assemblyJarName := "analysis-runner.jar",
@@ -79,6 +80,10 @@ lazy val `analysis-runner` = (project in file("analysis-runner"))
 
 		docker / imageNames := Seq(ImageName(s"analysis-runner:latest"))
 	)
+
+lazy val playground = (project in file("playground"))
+	.dependsOn(core)
+	.settings(libraryDependencies ++= Seq(dependencies.logback))
 
 lazy val common = (project in file("common"))
 	.settings(

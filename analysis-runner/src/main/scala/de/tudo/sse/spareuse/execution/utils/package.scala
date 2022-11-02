@@ -1,8 +1,8 @@
 package de.tudo.sse.spareuse.execution
 
+import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, StartRunCommand}
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import de.tudo.sse.spareuse.execution.analyses.AnalysisImplementation
-import de.tudo.sse.spareuse.execution.commands.{RunnerCommand, StartRunCommand}
 
 package object utils {
 
