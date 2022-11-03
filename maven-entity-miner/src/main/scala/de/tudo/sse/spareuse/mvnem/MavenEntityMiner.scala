@@ -2,7 +2,7 @@ package de.tudo.sse.spareuse.mvnem
 
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.{Sink, Source}
-import de.tudo.sse.spareuse.core.maven.{MavenIdentifier, MavenJarDownloader, MavenOnlineJar}
+import de.tudo.sse.spareuse.core.maven.{MavenIdentifier, MavenJarDownloader, MavenOnlineJar, MavenReleaseListDiscovery}
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaLibrary, JavaProgram}
 import de.tudo.sse.spareuse.core.model.entities.conversion.OPALJavaConverter
 import de.tudo.sse.spareuse.core.opal.OPALProjectHelper
@@ -17,7 +17,8 @@ import scala.util.{Failure, Success, Try}
 
 class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     extends MqStreamIntegration
-    with AsyncStreamWorker[String] {
+    with AsyncStreamWorker[String]
+    with MavenReleaseListDiscovery {
 
   override val workerName: String = "maven-entity-miner"
 
@@ -40,7 +41,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
   override protected def buildStreamPipeline(source: Source[String, NotUsed]): Future[Done] = {
     source
-      .map(msg => processMessage(msg))
+      .flatMapConcat(msg => processMessage(msg))
       .filter(jarFileOpt => jarFileOpt.isDefined)
       .map(jarFileOpt => transform(jarFileOpt.get))
       .filter(storableOpt => storableOpt.isDefined)
@@ -55,7 +56,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
    * @param message String message received from the queue
    * @return Either a JAR file representation, or None if the message was a remote control message
    */
-  private def processMessage(message: String): Option[MavenOnlineJar] = {
+  private def processMessage(message: String): Source[Option[MavenOnlineJar], NotUsed] = {
 
     // Very minimal remote control capabilities. Commands can be inserted via the MessageQueue (high prio msgs), need
     // to be prefixed with "[[MinerCommand]]". All other message will be interpreted as library names.
@@ -71,26 +72,79 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
           log.warn(s"Unknown application command: $cmd")
       }
 
-      None
+      Source.empty
     } else {
 
-      MavenIdentifier.fromGAV(message) match {
-        case Some(ident) =>
-          downloader.downloadJar(ident) match {
-            case Success(jarFile) => Some(jarFile)
-            case Failure(HttpDownloadException(404, _, _)) =>
-              // Do nothing when JAR does not exist
-              None
-            case Failure(ex) =>
-              log.error(s"Failed to download JAR file for ${ident.toUniqueString}", ex)
-              None
-          }
+      messageToIdentifiers(message) match {
+        case Some(identifiers) =>
+
+          log.info(s"${identifiers.size} identifiers found for message $message")
+
+          Source.fromIterator(() => identifiers.map{ ident =>
+            downloader.downloadJar(ident) match {
+              case Success(jarFile) => Some(jarFile)
+              case Failure(HttpDownloadException(404, _, _)) =>
+                // Do nothing when JAR does not exist
+                None
+              case Failure(ex) =>
+                log.error(s"Failed to download JAR file for ${ident.toUniqueString}", ex)
+                None
+            }
+          }.iterator)
+
+
         case None =>
-          log.warn(s"No valid GAV triple: $message")
-          None
+          log.warn(s"No valid GA, GAV or UID message: $message")
+          Source.empty
       }
     }
 
+  }
+
+  /**
+   * Method that extracts the program identifiers to process for a given message. The miner processes plain string messages,
+   * and supports the following formats:
+   *
+   * - <G>:<A> => Entire library defined by groupd- and artifact id is processed
+   * - <G>:<A>:<V> => Program defined by GAV triple is processed
+   * - <GA>!<GAV>!<...> => Program containing the specified entity (GAV) is processed
+   *
+   * @param msg Message to process
+   * @return A collection of identifiers to process, if the message has been valid. If not, None.
+   */
+  private def messageToIdentifiers(msg: String): Option[Iterable[MavenIdentifier]] = {
+
+    implicit def toSingletonSeq(o: Option[MavenIdentifier]): Option[Iterable[MavenIdentifier]] = o.map(Seq(_))
+
+    if(!msg.contains("!")){
+      // Message is either a library (G:A) or a program (G:A:V)
+
+      msg.count(_ == ':') match {
+        case 1 =>
+          getVersionsForLibrary(msg) match {
+            case Success(identifiers) =>
+              Some(identifiers.map(MavenIdentifier.fromGAV).filter(_.isDefined).map(_.get))
+            case Failure(ex) =>
+              log.error("Failed to download version list", ex)
+              None
+          }
+        case 2 =>
+          MavenIdentifier.fromGAV(msg)
+        case _ =>
+          None
+      }
+    } else {
+      // Message is a UID of format <GA>!<GAV>!<package>!...
+      // We just need to extract the second entry <GAV>
+
+      val parts = msg.split("!")
+
+      if(parts.length < 2){
+        None
+      } else {
+        MavenIdentifier.fromGAV(parts(1))
+      }
+    }
   }
 
   /**

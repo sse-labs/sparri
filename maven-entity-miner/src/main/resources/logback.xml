@@ -6,7 +6,7 @@
         </encoder>
     </appender>
 
-    <logger name="de.tudo.sse.spareuse.mvnem.storage.impl" level="debug"/>
+    <!--logger name="de.tudo.sse.spareuse.mvnem.storage.impl" level="debug"/-->
 
     <root level="info">
         <appender-ref ref="CONSOLE"/>
