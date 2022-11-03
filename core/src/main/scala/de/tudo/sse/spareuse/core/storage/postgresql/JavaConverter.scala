@@ -3,21 +3,23 @@ package de.tudo.sse.spareuse.core.storage.postgresql
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaLibrary, JavaMethod, JavaPackage, JavaProgram}
 import de.tudo.sse.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaFieldAccessRepr, JavaInvocationRepr, JavaMethodRepr}
 
-import java.util.HexFormat
-
 object JavaConverter {
+
+  def fromHex(hexString: String): Array[Byte] = {
+    BigInt(hexString, 16).toByteArray
+  }
 
   def toLib(repr: SoftwareEntityRepr): JavaLibrary = new JavaLibrary(repr.name, repr.repository)
 
   def toProgram(repr: SoftwareEntityRepr): JavaProgram = {
-    val hashedBytes: Array[Byte] = repr.hexHash.map(HexFormat.of().parseHex).getOrElse(Array.empty)
+    val hashedBytes: Array[Byte] = repr.hexHash.map(fromHex).getOrElse(Array.empty)
     new JavaProgram(repr.name, repr.name, repr.repository, hashedBytes)
   }
 
   def toPackage(repr: SoftwareEntityRepr): JavaPackage = new JavaPackage(repr.name, repr.repository)
 
   def toClass(repr: SoftwareEntityRepr, classData: JavaClassRepr): JavaClass = {
-    val hashedBytes: Array[Byte] = repr.hexHash.map(HexFormat.of().parseHex).getOrElse(Array.empty)
+    val hashedBytes: Array[Byte] = repr.hexHash.map(fromHex).getOrElse(Array.empty)
     new JavaClass(repr.name, classData._2, classData._3, repr.repository, hashedBytes)
   }
 
