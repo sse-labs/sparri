@@ -41,6 +41,8 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
     inputs.map {
       case jp: JavaProgram =>
 
+        log.debug(s"Starting to process program ${jp.name} ...")
+
         val gav = MavenIdentifier.fromGAV(jp.name)
           .getOrElse(throw new IllegalArgumentException("Java Program name is not a GAV triple"))
 
@@ -51,12 +53,11 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
 
         dependenciesTry match {
           case Success(dependencies) =>
-            log.debug(s"Extracted ${dependencies.size} dependencies for program $gav")
-
             // TODO: Needs object format
             val resultList = dependencies.map( dep => Map("gav" -> buildProgram(dep.identifier.toString), "scope" -> dep.scope)).toList
 
-            dependencies.foreach{ d => println(s"Dependency: ${d.identifier}:${d.scope}")}
+            log.debug(s"Results for program [$gav]:")
+            dependencies.foreach{ d => log.debug(s"-- ${d.identifier}:${d.scope}")}
 
             AnalysisResultData(isRevoked = false, AnalysisResult.fromObject(resultList), Set(jp))
           case Failure(ex) =>

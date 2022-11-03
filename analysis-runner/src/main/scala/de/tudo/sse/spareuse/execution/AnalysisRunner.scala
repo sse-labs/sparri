@@ -37,9 +37,12 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
     super.shutdown()
   }
 
-  override protected def buildSource(): Source[String, NotUsed] = createMqMessageSource(configuration)
+  override protected def buildSource(): Source[String, NotUsed] = createMqMessageSource(configuration, abortOnEmptyQueue = false)
 
   override protected def buildStreamPipeline(source: Source[String, NotUsed]): Future[Done] = {
+
+    log.info(s"Listening for analysis commands on message queue '${configuration.mqQueueName}'.")
+
     source
       .map(parseCommand)
       .filter(_.isDefined)
@@ -79,7 +82,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
         case startCmd: StartRunCommand if isSyntaxValid(startCmd) =>
           implicit val theCommand: StartRunCommand = startCmd
 
-          log.info(s"Validating command: User ${startCmd.userName} requests to start analysis ${startCmd.analysisName}.")
+          log.debug(s"Validating command: User ${startCmd.userName} requests to start analysis ${startCmd.analysisName}.")
 
           val parts = startCmd.analysisName.split(":")
           val analysisName = parts(0)
@@ -108,7 +111,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
               case Success(entities) =>
                 // Finally check that the analysis can in fact be executed with those parameters
                 if (theAnalysisImpl.executionPossible(entities.toSeq, startCmd.configurationRaw)) {
-                  log.info(s"Command successfully validated, analysis $analysisName:$analysisVersion will be started shortly.")
+                  log.debug(s"Command successfully validated, analysis $analysisName:$analysisVersion will be started shortly.")
                   ValidStartRunCommand(startCmd, entities, theAnalysisImpl)
                 } else throw AnalysisRunNotPossibleException("Given configuration not executable")
               case Failure(ex) =>
@@ -133,6 +136,9 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
   private def processRunnerCommand(command: ValidRunnerCommand): Future[Unit] = command match {
     case ValidStartRunCommand(cmd, inputEntities, analysisImpl) =>
+
+      log.info(s"Starting analysis ${cmd.analysisName} with ${inputEntities.size} inputs. Requested by user ${cmd.userName}.")
+
       Future {
         analysisImpl.executeAnalysis(inputEntities.toSeq, cmd.configurationRaw) match {
           case Success(results) =>

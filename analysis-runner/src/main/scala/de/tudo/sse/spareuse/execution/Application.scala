@@ -10,6 +10,7 @@ object Application extends StreamingApp[AnalysisRunnerConfig] {
   private var exitOnEnter: Boolean = true
 
   override protected def buildWorker(config: AnalysisRunnerConfig): AsyncStreamWorker[_] = {
+    log.info("Initializing AnalysisRunner ...")
     exitOnEnter = config.exitOnEnter
     new AnalysisRunner(config)
   }

@@ -36,6 +36,8 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
 
     inputs.map { case library: JavaLibrary =>
 
+      log.debug(s"Starting to process library ${library.identifier} ...")
+
       val releasesCnt = library.getChildren.size
 
       val allClasses = library.getChildren.toList.flatMap(program => program.getChildren).
@@ -55,8 +57,9 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
         .mapValues(b => (b.size, b.distinct.size))
         .mapValues(t => Map("count" -> t._1, "unique" -> t._2))
 
-      println(s"#Releases: $releasesCnt")
-      classToHashesMap.mapValues(b => (b.size, b.distinct.size)).foreach{t => println(t._1 + s" -> ${t._2._2}/${t._2._1}")}
+      log.debug(s"Results for library [${library.identifier}]:")
+      log.debug(s"-- #Releases: $releasesCnt")
+      classToHashesMap.mapValues(b => (b.size, b.distinct.size)).foreach{t => log.debug(s"-- ${t._1} -> ${t._2._2}/${t._2._1}")}
 
       AnalysisResultData(isRevoked = false, AnalysisResult.fromObject(resultMap), Set(library))
     }.toSet

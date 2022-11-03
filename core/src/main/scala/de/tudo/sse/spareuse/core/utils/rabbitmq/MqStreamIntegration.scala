@@ -1,6 +1,8 @@
 package de.tudo.sse.spareuse.core.utils.rabbitmq
 
 import akka.NotUsed
+import akka.event.Logging
+import akka.event.Logging.LogLevel
 import akka.stream.RestartSettings
 import akka.stream.scaladsl.{RestartSource, Source}
 import org.slf4j.{Logger, LoggerFactory}
@@ -14,15 +16,18 @@ trait MqStreamIntegration {
 
   private final val log: Logger = LoggerFactory.getLogger(getClass)
 
-  def createMqMessageSource(config: MqConnectionConfiguration): Source[String, NotUsed] = {
+  def createMqMessageSource(config: MqConnectionConfiguration, abortOnEmptyQueue: Boolean): Source[String, NotUsed] = {
 
-    val sourceSettings = RestartSettings.create(minBackoff = Duration.ofSeconds(30),
-      maxBackoff = Duration.ofSeconds(120), randomFactor = 0.2)
-      .withMaxRestarts(10, 10.minutes)
+    var sourceSettings = RestartSettings.create(minBackoff = Duration.ofSeconds(30),
+      maxBackoff = Duration.ofSeconds(60), randomFactor = 0.2)
+      .withMaxRestarts(10, 5.minutes) // 10 restarts à > 30 seconds in 5 minutes means that this source will always restart and never cancel
+
+    if(!abortOnEmptyQueue) // Suppress error output when we do not abort on empty queue -> Don't print EmptyQueueExceptions
+      sourceSettings = sourceSettings.withLogSettings(sourceSettings.logSettings.withLogLevel(Logging.DebugLevel))
 
     RestartSource.onFailuresWithBackoff(sourceSettings){ () =>
 
-      Try(new MqMessageReader(config)) match {
+      Try(new MqMessageReader(config, abortOnEmptyQueue)) match {
 
           case Success(reader) =>
             Source.unfoldResource[String, MqMessageReader](

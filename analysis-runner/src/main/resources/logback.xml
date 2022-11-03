@@ -6,7 +6,10 @@
         </encoder>
     </appender>
 
-    <root level="info">
+    <logger name="de.tudo.sse.spareuse.execution.analyses.impl" level="debug"/>
+    <logger name="de.tudo.sse.spareuse" level="info"/>
+
+    <root level="warn">
         <appender-ref ref="CONSOLE"/>
     </root>
 </configuration>

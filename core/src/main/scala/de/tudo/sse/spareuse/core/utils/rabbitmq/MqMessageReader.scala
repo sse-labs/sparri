@@ -5,7 +5,7 @@ import org.slf4j.{Logger, LoggerFactory}
 
 import scala.util.{Failure, Success, Try}
 
-class MqMessageReader(configuration: MqConnectionConfiguration) extends MqConnectionBuilder {
+class MqMessageReader(configuration: MqConnectionConfiguration, abortOnEmptyQueue: Boolean) extends MqConnectionBuilder {
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
@@ -23,7 +23,7 @@ class MqMessageReader(configuration: MqConnectionConfiguration) extends MqConnec
         val messageBody = new String(queueResponse.getBody)
         val messageTag = queueResponse.getEnvelope.getDeliveryTag
 
-        if (messageBody.nonEmpty && messageBody.contains(":")) {
+        if (messageBody.nonEmpty) {
           channel.basicAck(messageTag, false)
         } else {
           channel.basicNack(messageTag, false, true)
@@ -33,12 +33,15 @@ class MqMessageReader(configuration: MqConnectionConfiguration) extends MqConnec
         messageBody
       }
     } match {
-      case Success(libraryIdent) => Some(libraryIdent)
+      case Success(message) => Some(message)
       case Failure(ex: java.lang.RuntimeException) if ex.getMessage.toLowerCase.contains("no response from queue") =>
-        log.info("No more messages from queue")
-        // Returning None will tell the surrounding RestartSource that this stream has completed
+        if(abortOnEmptyQueue) log.info("No more messages from queue")
+
         shutdown()
-        None
+
+        if(abortOnEmptyQueue) None // None will tell surrounding restart source to stop restarting
+        else throw EmptyQueueException(configuration.mqQueueName) // Exception will force a restart in surrounding source
+
       case Failure(ex) =>
         log.error("Failed to pull library identifier from queue", ex)
         shutdown()
@@ -51,6 +54,10 @@ class MqMessageReader(configuration: MqConnectionConfiguration) extends MqConnec
   def shutdown(): Unit = Try {
     channel.close()
     connection.close()
+  }
+
+  case class EmptyQueueException(queueName: String) extends Throwable {
+    override def getMessage: String = s"Queue $queueName was empty"
   }
 
 }
