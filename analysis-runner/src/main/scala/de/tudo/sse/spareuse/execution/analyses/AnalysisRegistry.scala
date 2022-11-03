@@ -17,4 +17,6 @@ object AnalysisRegistry {
   def getAnalysisImplementation(analysisName: String, analysisVersion: String): AnalysisImplementation =
     analysisLookup(combine(analysisName, analysisVersion))
 
+  def allAnalysisImplementations(): Iterable[AnalysisImplementation] = analysisLookup.values
+
 }

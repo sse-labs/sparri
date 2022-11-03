@@ -3,7 +3,7 @@ package de.tudo.sse.spareuse.execution.analyses.impl
 import de.tudo.sse.spareuse.core.formats.AnalysisResult
 import de.tudo.sse.spareuse.core.maven.MavenIdentifier
 import de.tudo.sse.spareuse.core.maven.dependencies.{DependencyExtractor, JekaDependencyExtractor, PomFileDependencyExtractor}
-import de.tudo.sse.spareuse.core.model.{AnalysisResultData, SoftwareEntityKind}
+import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaProgram, buildProgram}
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
@@ -13,10 +13,8 @@ import scala.util.{Failure, Success, Try}
 
 class MvnDependencyAnalysisImpl extends AnalysisImplementation{
 
-
-  override val name: String = "mvn-dependencies"
-  override val version: String = "1.0.0"
-  override val inputEntityKind: SoftwareEntityKind = SoftwareEntityKind.Program
+  override val analysisData: AnalysisData = AnalysisData("mvn-dependencies", "1.0.0", "TBD", "built-in", "system",
+    Set("java"), false, null, SoftwareEntityKind.Program, Set.empty)
 
   override val inputBatchProcessing: Boolean = true
 
@@ -57,6 +55,8 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
 
             // TODO: Needs object format
             val resultList = dependencies.map( dep => Map("gav" -> buildProgram(dep.identifier.toString), "scope" -> dep.scope)).toList
+
+            dependencies.foreach{ d => println(s"Dependency: ${d.identifier}:${d.scope}")}
 
             AnalysisResultData(isRevoked = false, AnalysisResult.fromObject(resultList), Set(jp))
           case Failure(ex) =>

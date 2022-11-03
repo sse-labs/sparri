@@ -57,7 +57,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   private def storeDataAndGetId(data: SoftwareEntityData, parentIdOpt: Option[Long]): Long = {
     //TODO: Maybe batching?
     val res = idReturningEntitiesTable +=
-      ((0, data.name, data.uid, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash))
+      SoftwareEntityRepr(0, data.name, data.uid, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash)
 
     Await.result(db.run(res), 10.seconds)
   }
@@ -130,7 +130,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
     result.map( _ => () )
   }
 
-  private def toEntityRepr(data: SoftwareEntityData, parentIdOpt: Option[Long]): SoftwareEntityRepr = (0, data.name,
+  private def toEntityRepr(data: SoftwareEntityData, parentIdOpt: Option[Long]): SoftwareEntityRepr = SoftwareEntityRepr(0, data.name,
     data.uid, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash)
 
   private def toClassRepr(jc: JavaClass, parentId: Long): JavaClassRepr = (parentId, jc.thisType, jc.superType)

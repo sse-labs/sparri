@@ -3,16 +3,15 @@ package de.tudo.sse.spareuse.execution.storage.impl
 
 import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisRunData, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaLibrary, JavaMethod, JavaPackage, JavaProgram}
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import de.tudo.sse.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaClasses, JavaFieldAccessRepr, JavaFieldAccessStatements, JavaInvocationRepr, JavaInvocationStatements, JavaMethodRepr, JavaMethods}
-import de.tudo.sse.spareuse.core.storage.postgresql.{AnalysisRunInputs, SoftwareAnalyses, SoftwareAnalysisRepr, SoftwareAnalysisRuns, SoftwareEntities, SoftwareEntityRepr}
+import de.tudo.sse.spareuse.core.storage.postgresql.{AnalysisRunInputs, JavaConverter, SoftwareAnalyses, SoftwareAnalysisRepr, SoftwareAnalysisRuns, SoftwareEntities, SoftwareEntityRepr, toAnalysisRepr}
+import de.tudo.sse.spareuse.execution.analyses.AnalysisRegistry
 import de.tudo.sse.spareuse.execution.storage.DataAccessor
 import org.slf4j.{Logger, LoggerFactory}
 import slick.lifted.TableQuery
 import slick.jdbc.PostgresProfile.api._
 
-import java.util.HexFormat
 import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
 import scala.util.{Failure, Success, Try}
@@ -57,6 +56,8 @@ class PostgresAdapter extends DataAccessor {
     val setupF = db.run(setupAction)
 
     Await.ready(setupF, longActionTimeout)
+
+    AnalysisRegistry.allAnalysisImplementations().foreach(impl => assertAnalysisPresent(impl.analysisData))
   }
 
   override def hasEntity(ident: String, kind: SoftwareEntityKind): Boolean = {
@@ -73,11 +74,11 @@ class PostgresAdapter extends DataAccessor {
 
       // Resolve child entities only if needed
       val allChildEntities = if(SoftwareEntityKind.isLessSpecific(kind, resolutionScope))
-        getAllChildEntitiesOf(rootEntityRepr._1, resolutionScope) else Success(Seq.empty)
+        getAllChildEntitiesOf(rootEntityRepr.id, resolutionScope) else Success(Seq.empty)
 
       allChildEntities match {
         case Success(childEntities) =>
-          buildEntityObjectTree(Seq(rootEntityRepr) ++ childEntities, rootEntityRepr._1)
+          buildEntityObjectTree(Seq(rootEntityRepr) ++ childEntities, rootEntityRepr.id)
         case Failure(ex) =>
           Failure(ex)
       }
@@ -85,13 +86,20 @@ class PostgresAdapter extends DataAccessor {
   }
 
 
+  private def assertAnalysisPresent(data: AnalysisData): Unit = {
+    if(!hasAnalysis(data.name, data.version)){
+      val insertF = db.run(analysesTable += toAnalysisRepr(data))
+
+      Await.result(insertF, simpleQueryTimeout)
+    }
+  }
 
   private def getEntityRepr(ident: String,
                             kind: SoftwareEntityKind): Try[SoftwareEntityRepr] = Try {
     val queryF = db.run(entitiesTable.filter(swe => swe.qualifier === ident).take(1).result)
 
     Await.result(queryF, simpleQueryTimeout).headOption match {
-      case Some(entity) if entity._5 == kind.id =>
+      case Some(entity) if entity.kindId == kind.id =>
        entity
       case _ =>
         throw new IllegalArgumentException(s"Entity of kind $kind with FQ $ident not found")
@@ -101,10 +109,10 @@ class PostgresAdapter extends DataAccessor {
   private def getAllChildEntitiesOf(entityDbId: Long, resolutionScope: SoftwareEntityKind): Try[Seq[SoftwareEntityRepr]] = Try {
     val directChildren = getChildEntitiesOf(entityDbId).get
 
-    if(directChildren.isEmpty || directChildren.head._5 == resolutionScope.id)
+    if(directChildren.isEmpty || directChildren.head.kindId == resolutionScope.id)
       directChildren
     else
-      directChildren ++ directChildren.flatMap( c => getAllChildEntitiesOf(c._1, resolutionScope).get)
+      directChildren ++ directChildren.flatMap( c => getAllChildEntitiesOf(c.id, resolutionScope).get)
   }
 
   private def getChildEntitiesOf(entityDbId: Long): Try[Seq[SoftwareEntityRepr]] = Try {
@@ -141,56 +149,27 @@ class PostgresAdapter extends DataAccessor {
     Await.result(queryF, simpleQueryTimeout)
   }
 
-  def toLib(repr: SoftwareEntityRepr): JavaLibrary = new JavaLibrary(repr._2, repr._6)
-  def toProgram(repr: SoftwareEntityRepr): JavaProgram = {
-    val hashedBytes: Array[Byte] = repr._8.map(HexFormat.of().parseHex).getOrElse(Array.empty)
-    new JavaProgram(repr._2, repr._2, repr._6, hashedBytes)
-  }
-
-  def toPackage(repr: SoftwareEntityRepr): JavaPackage = new JavaPackage(repr._2, repr._6)
-  def toClass(repr: SoftwareEntityRepr, classData: JavaClassRepr): JavaClass = {
-    val hashedBytes: Array[Byte] = repr._8.map(HexFormat.of().parseHex).getOrElse(Array.empty)
-    new JavaClass(repr._2, classData._2, classData._3, repr._6, hashedBytes)
-  }
-  def toMethod(repr: SoftwareEntityRepr, methodData: JavaMethodRepr): JavaMethod = {
-    val paramTypeNames = methodData._4.split(",")
-
-    if (paramTypeNames.length != methodData._3)
-      throw new IllegalStateException("Corrupt database, parameter count does not match actual parameters")
-
-    new JavaMethod(repr._2, methodData._2, paramTypeNames, repr._6)
-  }
-  def toInvocation(repr: SoftwareEntityRepr, invokeData: JavaInvocationRepr): JavaInvokeStatement = {
-    val invocationType = JavaInvocationType.fromId(invokeData._5)
-
-    new JavaInvokeStatement(repr._2, invokeData._2, invokeData._3, invokeData._4, invocationType, invokeData._6, repr._6)
-  }
-  def toFieldAccess(repr: SoftwareEntityRepr, fieldAccessData: JavaFieldAccessRepr): JavaFieldAccessStatement = {
-    val accessType = JavaFieldAccessType.fromId(fieldAccessData._4)
-
-    new JavaFieldAccessStatement(repr._2, fieldAccessData._2, fieldAccessData._3, accessType, fieldAccessData._5, repr._6)
-  }
 
   private def buildEntities(reprs: Seq[SoftwareEntityRepr]): Seq[SoftwareEntityData] = buildEntitiesIdMap(reprs).values.toSeq
   private def buildEntitiesIdMap(reprs: Seq[SoftwareEntityRepr]): Map[Long, SoftwareEntityData] = {
     //Retrieve all data from extension tables
-    val allClassesData: Map[Long, JavaClassRepr] = getClassTableData(reprs.filter(repr => repr._5 == SoftwareEntityKind.Class.id).map(_._1)).map(r => (r._1, r)).toMap
-    val allMethodsData: Map[Long, JavaMethodRepr] = getMethodTableData(reprs.filter(repr => repr._5 == SoftwareEntityKind.Method.id).map(_._1)).map(r => (r._1, r)).toMap
-    val allInvokeStmtData: Map[Long, JavaInvocationRepr] = getInvocationTableData(reprs.filter(repr => repr._5 == SoftwareEntityKind.InvocationStatement.id).map(_._1)).map(r => (r._1, r)).toMap
-    val allFieldAccessStmtData: Map[Long, JavaFieldAccessRepr] = getFieldAccessTableData(reprs.filter(repr => repr._5 == SoftwareEntityKind.FieldAccessStatement.id).map(_._1)).map(r => (r._1, r)).toMap
+    val allClassesData: Map[Long, JavaClassRepr] = getClassTableData(reprs.filter(repr => repr.kindId == SoftwareEntityKind.Class.id).map(_.id)).map(r => (r._1, r)).toMap
+    val allMethodsData: Map[Long, JavaMethodRepr] = getMethodTableData(reprs.filter(repr => repr.kindId == SoftwareEntityKind.Method.id).map(_.id)).map(r => (r._1, r)).toMap
+    val allInvokeStmtData: Map[Long, JavaInvocationRepr] = getInvocationTableData(reprs.filter(repr => repr.kindId == SoftwareEntityKind.InvocationStatement.id).map(_.id)).map(r => (r._1, r)).toMap
+    val allFieldAccessStmtData: Map[Long, JavaFieldAccessRepr] = getFieldAccessTableData(reprs.filter(repr => repr.kindId == SoftwareEntityKind.FieldAccessStatement.id).map(_.id)).map(r => (r._1, r)).toMap
 
     reprs.map { repr =>
-      val entityObj = repr._5 match {
-        case 0 => toLib(repr)
-        case 1 => toProgram(repr)
-        case 2 => toPackage(repr)
-        case 3 => toClass(repr, allClassesData(repr._1))
-        case 4 => toMethod(repr, allMethodsData(repr._1))
-        case 5 => toInvocation(repr, allInvokeStmtData(repr._1))
-        case 6 => toFieldAccess(repr, allFieldAccessStmtData(repr._1))
+      val entityObj = SoftwareEntityKind.fromId(repr.kindId) match {
+        case SoftwareEntityKind.Library => JavaConverter.toLib(repr)
+        case SoftwareEntityKind.Program => JavaConverter.toProgram(repr)
+        case SoftwareEntityKind.Package => JavaConverter.toPackage(repr)
+        case SoftwareEntityKind.Class => JavaConverter.toClass(repr, allClassesData(repr.id))
+        case SoftwareEntityKind.Method => JavaConverter.toMethod(repr, allMethodsData(repr.id))
+        case SoftwareEntityKind.InvocationStatement => JavaConverter.toInvocation(repr, allInvokeStmtData(repr.id))
+        case SoftwareEntityKind.FieldAccessStatement => JavaConverter.toFieldAccess(repr, allFieldAccessStmtData(repr.id))
       }
 
-      (repr._1, entityObj)
+      (repr.id, entityObj)
     }.toMap
   }
 
@@ -198,11 +177,11 @@ class PostgresAdapter extends DataAccessor {
 
     val idToObjMap = buildEntitiesIdMap(reprs)
 
-    val parentLookup: Map[Long, Option[Long]] = reprs.map(repr => (repr._1, repr._7)).toMap
+    val parentLookup: Map[Long, Option[Long]] = reprs.map(repr => (repr.id, repr.parentId)).toMap
 
-    reprs.map(_._1).foreach { entityId =>
+    reprs.map(_.id).foreach { entityId =>
       val entity = idToObjMap(entityId)
-      val parentOpt = parentLookup(entityId).map(idToObjMap(_))
+      val parentOpt = parentLookup(entityId).flatMap(parentId => idToObjMap.get(parentId))
 
       if(parentOpt.isDefined) entity.setParent(parentOpt.get)
     }
@@ -223,14 +202,11 @@ class PostgresAdapter extends DataAccessor {
 
     val repr = getAnalysisRepr(analysisName, analysisVersion)
 
-    val analysisRuns = if(includeRuns) getAnalysisRuns(repr._1, analysisName, analysisVersion, includeResults = false)
+    val analysisRuns = if(includeRuns) getAnalysisRuns(repr.id, analysisName, analysisVersion, includeResults = false)
       else Set.empty[AnalysisRunData]
 
-    val inputLanguages = repr._7.split(",").toSet
-    val inputEntityKind = SoftwareEntityKind.fromId(repr._9)
-
     // TODO: Input Formats
-    AnalysisData(repr._2, repr._3, repr._4, repr._5, repr._6, inputLanguages, repr._8, null, inputEntityKind, analysisRuns)
+    repr.toAnalysisData(analysisRuns)
   }
 
   private def getInputsForRun(analysisRunId: Long): Set[SoftwareEntityData] = {
@@ -250,8 +226,7 @@ class PostgresAdapter extends DataAccessor {
       .run(analysisRunsTable.filter(r => r.parentID === analysisId).result)
       .map{ allRuns =>
         allRuns.map { run =>
-          //TODO: Timestamp, logs, results if requested
-          AnalysisRunData(null, Array.empty, run.config, run.isRevoked, getInputsForRun(run.id), Set.empty, analysisName, analysisVersion)
+          run.toAnalysisRunData(analysisName, analysisVersion, getInputsForRun(run.id))
         }
       }(db.ioExecutionContext)
 
@@ -259,7 +234,7 @@ class PostgresAdapter extends DataAccessor {
   }
 
   override def getAnalysisRuns(analysisName: String, analysisVersion: String, includeResults: Boolean): Try[Set[AnalysisRunData]] = Try {
-    val analysisId = getAnalysisRepr(analysisName, analysisVersion)._1
+    val analysisId = getAnalysisRepr(analysisName, analysisVersion).id
 
     getAnalysisRuns(analysisId, analysisName, analysisVersion, includeResults)
   }

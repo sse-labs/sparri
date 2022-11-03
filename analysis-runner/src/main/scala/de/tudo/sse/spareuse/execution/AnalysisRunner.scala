@@ -3,10 +3,10 @@ package de.tudo.sse.spareuse.execution
 import akka.stream.scaladsl.Sink
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
-import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, StartRunCommand, StopRunCommand}
+import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, StartRunCommand}
 import de.tudo.sse.spareuse.core.utils.rabbitmq.MqStreamIntegration
 import de.tudo.sse.spareuse.core.utils.streaming.AsyncStreamWorker
-import de.tudo.sse.spareuse.execution.analyses.impl.MvnConstantClassAnalysisImpl
+import de.tudo.sse.spareuse.execution.analyses.impl.{MvnConstantClassAnalysisImpl, MvnDependencyAnalysisImpl}
 import de.tudo.sse.spareuse.execution.analyses.{AnalysisImplementation, AnalysisRegistry}
 import de.tudo.sse.spareuse.execution.storage.impl.PostgresAdapter
 import de.tudo.sse.spareuse.execution.storage.DataAccessor
@@ -25,10 +25,11 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
 
   override def initialize(): Unit = {
-    dataAccessor.initialize()
-
     //TODO: Move Somewhere else
     AnalysisRegistry.registerAnalysisImplementation(new MvnConstantClassAnalysisImpl)
+    AnalysisRegistry.registerAnalysisImplementation(new MvnDependencyAnalysisImpl)
+
+    dataAccessor.initialize()
   }
 
   override def shutdown(): Unit = {
@@ -153,7 +154,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
       processRunnerCommand(cmd).andThen {
         case Success(_) =>
-          log.info(s"Execution for command finished successfully: $cmd")
+          log.info(s"Execution for command finished successfully: ${cmd.runnerCommand}")
         case Failure(ex) =>
           log.error(s"Failed to execute command: $cmd", ex)
       }(streamMaterializer.executionContext)

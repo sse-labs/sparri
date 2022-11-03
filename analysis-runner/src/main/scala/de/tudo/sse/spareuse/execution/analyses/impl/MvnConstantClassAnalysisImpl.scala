@@ -1,7 +1,7 @@
 package de.tudo.sse.spareuse.execution.analyses.impl
 
 import de.tudo.sse.spareuse.core.formats.AnalysisResult
-import de.tudo.sse.spareuse.core.model.{AnalysisResultData, SoftwareEntityKind}
+import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaLibrary, JavaMethod}
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
@@ -13,9 +13,8 @@ import scala.util.Try
 
 class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
 
-  override val name: String = "mvn-constant-classes"
-  override val version: String = "1.0.0"
-  override val inputEntityKind: SoftwareEntityKind = SoftwareEntityKind.Library
+  override val analysisData: AnalysisData = AnalysisData("mvn-constant-classes", "1.0.0", "TBD", "built-in", "system",
+    Set("java", "scala"), false, null, SoftwareEntityKind.Library, Set.empty)
 
   override val inputBatchProcessing: Boolean = true
 
@@ -37,6 +36,8 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
 
     inputs.map { case library: JavaLibrary =>
 
+      val releasesCnt = library.getChildren.size
+
       val allClasses = library.getChildren.toList.flatMap(program => program.getChildren).
         flatMap(packageObj => packageObj.getChildren).map{
         case jc: JavaClass => jc
@@ -53,6 +54,9 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
       val resultMap = classToHashesMap
         .mapValues(b => (b.size, b.distinct.size))
         .mapValues(t => Map("count" -> t._1, "unique" -> t._2))
+
+      println(s"#Releases: $releasesCnt")
+      classToHashesMap.mapValues(b => (b.size, b.distinct.size)).foreach{t => println(t._1 + s" -> ${t._2._2}/${t._2._1}")}
 
       AnalysisResultData(isRevoked = false, AnalysisResult.fromObject(resultMap), Set(library))
     }.toSet

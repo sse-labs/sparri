@@ -1,7 +1,7 @@
 package de.tudo.sse.spareuse.execution.analyses
 
 import de.tudo.sse.spareuse.core.maven.{MavenIdentifier, MavenJarDownloader, MavenReleaseListDiscovery}
-import de.tudo.sse.spareuse.core.model.{AnalysisResultData, SoftwareEntityKind}
+import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities._
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
@@ -15,10 +15,13 @@ trait AnalysisImplementation extends MavenReleaseListDiscovery {
 
   protected val log: Logger = LoggerFactory.getLogger(getClass)
 
-  val name: String
-  val version: String
+  val analysisData: AnalysisData
 
-  val inputEntityKind: SoftwareEntityKind
+  lazy val name: String = analysisData.name
+  lazy val version: String = analysisData.version
+
+  lazy val inputEntityKind: SoftwareEntityKind = analysisData.inputKind
+
 
   /**
    * Specifies whether this analysis processes the set of inputs one after another (batch processing) or the set of
