@@ -96,10 +96,13 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
    * @param loadJre Switch indicating whether or not the JRE classes should be considered as dependencies. Defaults to true
    * @return Initialized OPAL project for the given classes
    */
-  def buildOPALProject(projectClasses: ClassList, thirdPartyClasses: ClassList, loadJre: Boolean = true): Project[URL] = {
+  def buildOPALProject(projectClasses: ClassList, thirdPartyClasses: ClassList, loadJre: Boolean = true, setLibraryMode: Boolean): Project[URL] = {
 
-    val config = BaseConfig.withValue("org.opalj.br.analyses.cg.InitialEntryPointsKey.analysis",
-      ConfigValueFactory.fromAnyRef("org.opalj.br.analyses.cg.LibraryEntryPointsFinder"))
+    var config = BaseConfig
+
+    if(setLibraryMode)
+      config = config.withValue("org.opalj.br.analyses.cg.InitialEntryPointsKey.analysis",
+        ConfigValueFactory.fromAnyRef("org.opalj.br.analyses.cg.LibraryEntryPointsFinder"))
 
     val dependencies = if(loadJre) { thirdPartyClasses ++ jreClasses } else thirdPartyClasses
 

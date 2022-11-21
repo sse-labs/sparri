@@ -13,8 +13,8 @@ import scala.util.Try
 
 class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
 
-  override val analysisData: AnalysisData = AnalysisData("mvn-constant-classes", "1.0.0", "TBD", "built-in", "system",
-    Set("java", "scala"), false, null, SoftwareEntityKind.Library, Set.empty)
+  override val analysisData: AnalysisData = AnalysisData.systemAnalysis("mvn-constant-classes", "1.0.0", "TBD", "built-in",
+    Set("java", "scala"),  null, SoftwareEntityKind.Library)
 
   override val inputBatchProcessing: Boolean = true
 

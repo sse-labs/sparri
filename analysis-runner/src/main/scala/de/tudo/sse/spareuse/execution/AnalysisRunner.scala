@@ -4,9 +4,9 @@ import akka.stream.scaladsl.Sink
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
 import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, StartRunCommand}
-import de.tudo.sse.spareuse.core.utils.rabbitmq.MqStreamIntegration
+import de.tudo.sse.spareuse.core.utils.rabbitmq.{MqMessageWriter, MqStreamIntegration}
 import de.tudo.sse.spareuse.core.utils.streaming.AsyncStreamWorker
-import de.tudo.sse.spareuse.execution.analyses.impl.{MvnConstantClassAnalysisImpl, MvnDependencyAnalysisImpl}
+import de.tudo.sse.spareuse.execution.analyses.impl.{MvnConstantClassAnalysisImpl, MvnDependencyAnalysisImpl, MvnPartialCallgraphAnalysisImpl}
 import de.tudo.sse.spareuse.execution.analyses.{AnalysisImplementation, AnalysisRegistry}
 import de.tudo.sse.spareuse.execution.storage.impl.PostgresAdapter
 import de.tudo.sse.spareuse.execution.storage.DataAccessor
@@ -19,6 +19,8 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
   extends MqStreamIntegration
   with AsyncStreamWorker[String] {
 
+  private val entityQueueWriter = new MqMessageWriter(configuration.toWriterConfig)
+
   override val workerName: String = "analysis-runner"
 
   private def dataAccessor: DataAccessor = new PostgresAdapter()
@@ -28,12 +30,16 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
     //TODO: Move Somewhere else
     AnalysisRegistry.registerAnalysisImplementation(new MvnConstantClassAnalysisImpl)
     AnalysisRegistry.registerAnalysisImplementation(new MvnDependencyAnalysisImpl)
+    AnalysisRegistry.registerAnalysisImplementation(new MvnPartialCallgraphAnalysisImpl)
+
+    entityQueueWriter.initialize()
 
     dataAccessor.initialize()
   }
 
   override def shutdown(): Unit = {
     dataAccessor.shutdown()
+    entityQueueWriter.shutdown()
     super.shutdown()
   }
 
@@ -188,9 +194,14 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
                                   analysisImpl: AnalysisImplementation)(implicit cmd: StartRunCommand): Set[String] = {
 
     val invalidEntityNames = inputEntityNames.filterNot(name => dataAccessor.hasEntity(name, analysisImpl.inputEntityKind))
-    invalidEntityNames.foreach(n => log.warn(s"Input name $n of expected kind ${analysisImpl.inputEntityKind} not found."))
 
-    // TODO: Trigger miner (with priority messages) for invalid entity names
+    // Queue the requested entities that are not yet in DB for priority processing
+    invalidEntityNames.foreach { entityName =>
+      log.warn(s"Input name $entityName of expected kind ${analysisImpl.inputEntityKind} not found.")
+
+      entityQueueWriter.appendToQueue(entityName, priority = Some(2))
+    }
+
 
     if (invalidEntityNames.nonEmpty && analysisImpl.inputBatchProcessing) {
       // This means individual entity names can be removed from the input list

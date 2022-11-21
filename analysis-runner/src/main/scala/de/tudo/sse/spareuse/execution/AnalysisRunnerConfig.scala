@@ -2,19 +2,42 @@ package de.tudo.sse.spareuse.execution
 
 import com.typesafe.config.Config
 import de.tudo.sse.spareuse.core.maven.MavenIdentifier
-import de.tudo.sse.spareuse.core.utils.rabbitmq.MqConnectionConfiguration
+import de.tudo.sse.spareuse.core.utils.rabbitmq.{MqConnectionConfiguration, MqDirectQueuePublishConfiguration}
 
 import scala.util.Try
 
-class AnalysisRunnerConfig private(val mqHost: String,
-                                   val mqPort: Int,
-                                   val mqUsername: String,
-                                   val mqPassword: String,
-                                   val mqQueueName: String,
+class AnalysisRunnerConfig private(val mqHostAdr: String,
+                                   val mqPortNum: Int,
+                                   val mqUser: String,
+                                   val mqPass: String,
+                                   val analysisQueueName: String,
                                    val mqConnectionName: String,
+                                   val entityQueueName: String,
+                                   val entityExchangeName: String,
+                                   val entityRoutingKey: String,
+                                   val entityMaxPriority: Option[Int],
                                    val mavenRepoBase: String,
                                    val executionPoolSize: Int,
-                                   val exitOnEnter: Boolean) extends MqConnectionConfiguration
+                                   val exitOnEnter: Boolean) extends MqConnectionConfiguration {
+
+  override val mqQueueName: String = analysisQueueName
+  override val mqUsername: String = mqUser
+  override val mqPassword: String = mqPass
+  override val mqPort: Int = mqPortNum
+  override val mqHost: String = mqHostAdr
+
+  def toWriterConfig: MqDirectQueuePublishConfiguration = new MqDirectQueuePublishConfiguration {
+    override val mqExchangeName: String = entityExchangeName
+    override val mqRoutingKey: String = entityRoutingKey
+    override val mqMaxPriority: Option[Int] = entityMaxPriority
+    override val mqUsername: String = mqUser
+    override val mqPassword: String = mqPass
+    override val mqHost: String = mqHostAdr
+    override val mqPort: Int = mqPortNum
+    override val mqQueueName: String = entityQueueName
+    override val mqConnectionName: String = "AnalysisRunner-OnDemand"
+  }
+}
 
 
 object AnalysisRunnerConfig {
@@ -28,6 +51,12 @@ object AnalysisRunnerConfig {
   private final val mqQueueNameKey = prefix + "mq-queue-ident"
   private final val mqConnectionNameSuffixKey = prefix + "mq-conn-name-suffix"
 
+  private final val entityQueueNameKey = prefix + "entity-queue-name"
+  private final val entityExchangeNameKey = prefix + "entity-exchange-name"
+  private final val entityRoutingKey = prefix + "entity-routing-key"
+  private final val entityMaxPriorityKey = prefix + "entity-max-priority"
+
+
   private final val mavenRepoBaseKey = prefix + "maven-repo"
 
   private final val executionPoolSizeKey = prefix + "exec-pool-size"
@@ -40,7 +69,13 @@ object AnalysisRunnerConfig {
       throw new IllegalArgumentException("Message queue configuration incomplete. Required are: User, Pass, Host, Port")
 
     val mqQueueName = if (c.hasPath(mqQueueNameKey)) c.getString(mqQueueNameKey) else "mvn-library-ident"
-    val mqConnectionName = if (c.hasPath(mqConnectionNameSuffixKey)) "AnalysisRunner-" + c.getString(mqConnectionNameSuffixKey) else "MavenEntityMiner"
+    val mqConnectionName = if (c.hasPath(mqConnectionNameSuffixKey)) "AnalysisRunner-" + c.getString(mqConnectionNameSuffixKey) else "AnalysisRunner"
+
+    if(!c.hasPath(entityQueueNameKey) || !c.hasPath(entityExchangeNameKey) || !c.hasPath(entityRoutingKey))
+      throw new IllegalArgumentException("Message queue configuration incomplete. Required are entity-queue-name, exchange name and routing key")
+
+
+    val entityMaxPrio = if (c.hasPath(entityMaxPriorityKey)) Some(c.getInt(entityMaxPriorityKey)) else None
 
     val exitOnEnter = if (c.hasPath(exitOnEnterKey)) c.getBoolean(exitOnEnterKey) else true
 
@@ -49,7 +84,8 @@ object AnalysisRunnerConfig {
     val executionPoolSize = if (c.hasPath(executionPoolSizeKey)) c.getInt(executionPoolSizeKey) else 1
 
     new AnalysisRunnerConfig(c.getString(mqHostKey), c.getInt(mqPortKey), c.getString(mqUserKey), c.getString(mqPassKey), mqQueueName,
-      mqConnectionName, mavenRepoBase, executionPoolSize, exitOnEnter)
+      mqConnectionName, c.getString(entityQueueNameKey), c.getString(entityExchangeNameKey), c.getString(entityRoutingKey),
+      entityMaxPrio, mavenRepoBase, executionPoolSize, exitOnEnter)
 
   }
 
