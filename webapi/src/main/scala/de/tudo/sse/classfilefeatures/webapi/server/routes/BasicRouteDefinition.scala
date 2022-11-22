@@ -56,10 +56,29 @@ trait BasicRouteDefinition extends JsonSupport {
     else complete(NotFound, s"Class $className not found for package $packageName")
   }
 
+
+
+
+  protected def ensureEntityPresent(entityName: String)(implicit route: Route): Route = {
+    if(???) route
+    else complete(NotFound, s"Entity $entityName was not found in database")
+  }
+
   protected def ensureAnalysisPresent(analysisName: String)(implicit route: Route): Route = {
-    if(true) route //TODO: Actual implementation
+    if (???) route
     else complete(NotFound, s"Analysis $analysisName was not found in database")
   }
+
+  protected def ensureAnalysisPresent(analysisName: String, version: String)(implicit route: Route): Route = {
+    if(???) route
+    else complete(NotFound, s"Version $version not found for analysis $analysisName")
+  }
+
+  protected def ensureAnalysisRunPresent(analysisName: String, analysisVersion: String, runId: String)(implicit route: Route): Route = {
+    if(???) route
+    else complete(NotFound, s"Run with id $runId not found for analysis $analysisName:$analysisVersion")
+  }
+
 
 
   //  ------------------------------
