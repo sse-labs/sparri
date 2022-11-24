@@ -17,5 +17,5 @@ object AnalysisData {
   }
 }
 
-case class AnalysisRunData(timestamp: LocalDateTime, logs: Array[String], configuration: String, isRevoked: Boolean,
+case class AnalysisRunData(uid: String, timestamp: LocalDateTime, logs: Array[String], configuration: String, isRevoked: Boolean,
                            inputs: Set[SoftwareEntityData], results: Set[AnalysisResultData], parentAnalysisName: String, parentAnalysisVersion: String)

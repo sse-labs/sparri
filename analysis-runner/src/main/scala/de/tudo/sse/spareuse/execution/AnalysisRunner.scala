@@ -4,12 +4,12 @@ import akka.stream.scaladsl.Sink
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
 import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, StartRunCommand}
+import de.tudo.sse.spareuse.core.storage.DataAccessor
+import de.tudo.sse.spareuse.core.storage.postgresql.PostgresDataAccessor
 import de.tudo.sse.spareuse.core.utils.rabbitmq.{MqMessageWriter, MqStreamIntegration}
 import de.tudo.sse.spareuse.core.utils.streaming.AsyncStreamWorker
 import de.tudo.sse.spareuse.execution.analyses.impl.{MvnConstantClassAnalysisImpl, MvnDependencyAnalysisImpl, MvnPartialCallgraphAnalysisImpl}
 import de.tudo.sse.spareuse.execution.analyses.{AnalysisImplementation, AnalysisRegistry}
-import de.tudo.sse.spareuse.execution.storage.impl.PostgresAdapter
-import de.tudo.sse.spareuse.execution.storage.DataAccessor
 import de.tudo.sse.spareuse.execution.utils.{AnalysisRunNotPossibleException, ValidRunnerCommand, ValidStartRunCommand}
 
 import scala.concurrent.Future
@@ -23,7 +23,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
   override val workerName: String = "analysis-runner"
 
-  private def dataAccessor: DataAccessor = new PostgresAdapter()
+  private def dataAccessor: DataAccessor = new PostgresDataAccessor
 
 
   override def initialize(): Unit = {
@@ -35,6 +35,8 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
     entityQueueWriter.initialize()
 
     dataAccessor.initialize()
+
+    AnalysisRegistry.allAnalysisImplementations().foreach(d => dataAccessor.registerIfNotPresent(d.analysisData))
   }
 
   override def shutdown(): Unit = {

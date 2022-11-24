@@ -7,5 +7,5 @@ import spray.json.{DefaultJsonProtocol, JsonFormat}
 final case class AnalysisRunRepr()
 
 trait AnalysisRunReprJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit val analysisRunReprJsonFormat: JsonFormat[AnalysisRunRepr] = ???
+  implicit val analysisRunReprJsonFormat: JsonFormat[AnalysisRunRepr] = jsonFormat0(AnalysisRunRepr)
 }

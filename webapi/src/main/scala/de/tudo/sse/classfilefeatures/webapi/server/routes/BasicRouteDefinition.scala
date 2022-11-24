@@ -26,22 +26,22 @@ trait BasicRouteDefinition extends JsonSupport {
   //  |    404 UTILITIES           |
   //  ------------------------------
   protected def ensureEntityPresent(entityName: String)(implicit route: Route): Route = {
-    if(???) route
+    if(requestHandler.hasEntity(entityName)) route
     else complete(NotFound, s"Entity $entityName was not found in database")
   }
 
   protected def ensureAnalysisPresent(analysisName: String)(implicit route: Route): Route = {
-    if (???) route
+    if (requestHandler.hasAnalysis(analysisName)) route
     else complete(NotFound, s"Analysis $analysisName was not found in database")
   }
 
   protected def ensureAnalysisPresent(analysisName: String, version: String)(implicit route: Route): Route = {
-    if(???) route
+    if(requestHandler.hasAnalysis(analysisName, Some(version))) route
     else complete(NotFound, s"Version $version not found for analysis $analysisName")
   }
 
   protected def ensureAnalysisRunPresent(analysisName: String, analysisVersion: String, runId: String)(implicit route: Route): Route = {
-    if(???) route
+    if(requestHandler.hasAnalysisRun(analysisName, analysisVersion, runId)) route
     else complete(NotFound, s"Run with id $runId not found for analysis $analysisName:$analysisVersion")
   }
 

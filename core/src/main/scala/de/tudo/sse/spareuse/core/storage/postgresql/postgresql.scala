@@ -78,12 +78,12 @@ package object postgresql {
       (id, name, version, description, builtOn, registeredBy, inputLanguages, isRevoked, inputKind)<> ((SoftwareAnalysisRepr.apply _).tupled, SoftwareAnalysisRepr.unapply)
   }
 
-  case class SoftwareAnalysisRunRepr(id: Long, config: String, isRevoked: Boolean, parentId: Long){
+  case class SoftwareAnalysisRunRepr(id: Long, uid:String, config: String, isRevoked: Boolean, parentId: Long){
 
     def toAnalysisRunData(analysisName: String, analysisVersion: String, inputs: Set[SoftwareEntityData] = Set.empty,
                           results: Set[AnalysisResultData] = Set.empty): AnalysisRunData = {
       //TODO: Timestamp, logs, results if requested
-      AnalysisRunData(null, Array.empty, config, isRevoked, inputs, results, analysisName, analysisVersion)
+      AnalysisRunData(uid, null, Array.empty, config, isRevoked, inputs, results, analysisName, analysisVersion)
     }
 
   }
@@ -95,6 +95,8 @@ package object postgresql {
     //TODO: Timestamp
     //TODO: Logs
 
+    def uid: Rep[String] = column[String]("UID", O.Unique)
+
     def configuration: Rep[String] = column[String]("CONFIGURATION")
 
     def isRevoked: Rep[Boolean] = column[Boolean]("REVOKED")
@@ -103,7 +105,7 @@ package object postgresql {
 
 
     override def * : ProvenShape[SoftwareAnalysisRunRepr] =
-      (id, configuration, isRevoked, parentID) <> ((SoftwareAnalysisRunRepr.apply _).tupled, SoftwareAnalysisRunRepr.unapply)
+      (id, uid, configuration, isRevoked, parentID) <> ((SoftwareAnalysisRunRepr.apply _).tupled, SoftwareAnalysisRunRepr.unapply)
 
     def parent: ForeignKeyQuery[SoftwareAnalyses, SoftwareAnalysisRepr] =
       foreignKey("ANALYSIS_FK", parentID, TableQuery[SoftwareAnalyses])(_.id)

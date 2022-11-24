@@ -2,12 +2,11 @@ package de.tudo.sse.spareuse.core.storage.postgresql
 
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaLibrary, JavaMethod, JavaPackage, JavaProgram}
 import de.tudo.sse.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaFieldAccessRepr, JavaInvocationRepr, JavaMethodRepr}
+import de.tudo.sse.spareuse.core.utils.fromHex
 
 object JavaConverter {
 
-  def fromHex(hexString: String): Array[Byte] = {
-    BigInt(hexString, 16).toByteArray
-  }
+
 
   def toLib(repr: SoftwareEntityRepr): JavaLibrary = new JavaLibrary(repr.name, repr.repository)
 

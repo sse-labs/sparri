@@ -1,9 +1,9 @@
-package de.tudo.sse.spareuse.execution.storage
+package de.tudo.sse.spareuse.core.storage
 
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaLibrary, JavaMethod, JavaPackage, JavaProgram}
-import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
+import de.tudo.sse.spareuse.core.model.entities.JavaEntities._
+import de.tudo.sse.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
 
 import scala.util.{Failure, Success, Try}
 
@@ -33,9 +33,13 @@ trait EntityAccessor {
 
   def initializeEntityTables(): Unit
 
+  def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Try[Seq[GenericEntityData]]
+
   def getEntity(ident: String, kind: SoftwareEntityKind, resolutionScope: SoftwareEntityKind): Try[SoftwareEntityData]
 
   def hasEntity(ident: String, kind: SoftwareEntityKind): Boolean
+
+  def hasEntity(ident: String): Boolean
 
 
   private def getEntityAs[T <: SoftwareEntityData](ident: String,

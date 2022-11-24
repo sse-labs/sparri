@@ -1,11 +1,14 @@
 package de.tudo.sse.classfilefeatures.webapi.server.routes
 
 import akka.http.scaladsl.model.HttpRequest
-import akka.http.scaladsl.model.StatusCodes.BadRequest
+import akka.http.scaladsl.model.StatusCodes.{BadRequest, InternalServerError, NotFound}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
+import spray.json.enrichAny
+
+import scala.util.{Failure, Success}
 
 trait EntityRouteDefinitions extends BasicRouteDefinition {
 
@@ -65,6 +68,15 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
   private def allEntitiesRouteImpl(limit: Int, skip: Int, queriedKind: Option[SoftwareEntityKind], queriedParent: Option[String],
                                    queriedLanguage: Option[String])(implicit request: HttpRequest): Route = {
 
+    if(queriedParent.isDefined && !requestHandler.hasEntity(queriedParent.get)) return complete(NotFound, s"Parent that was queried for not found: ${queriedParent.get}")
+    if(limit <= 0) return complete(BadRequest, "Limit has to be greater than zero")
+
+    log.debug(s"All entities requested (skip=$skip, limit=$limit). Filters: Kind=${queriedKind.getOrElse("None")}, Parent=${queriedParent.getOrElse("None")}, Language=${queriedLanguage.getOrElse("None")}")
+
+    requestHandler.getAllEntities(limit, skip, queriedKind, queriedParent) match {
+      case Success(entities) => complete(entities.toArray.toJson)
+      case Failure(_) => complete(InternalServerError)
+    }
   }
 
   private def singleEntityRouteImpl(entityName: String)(implicit request: HttpRequest): Route = {

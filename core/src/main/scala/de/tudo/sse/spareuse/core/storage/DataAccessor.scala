@@ -1,4 +1,4 @@
-package de.tudo.sse.spareuse.execution.storage
+package de.tudo.sse.spareuse.core.storage
 
 trait DataAccessor extends EntityAccessor  with AnalysisAccessor {
 

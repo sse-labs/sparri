@@ -64,7 +64,7 @@ class MvnConstantClassAnalysisImplTest extends AnyFlatSpec with must.Matchers {
 
     assert(data.affectedEntities.contains(lib) && data.affectedEntities.size == 1)
 
-    assert(data.content.valueFormat.isInstanceOf[MapResultFormat] && data.content.isInstanceOf[MapResult[formats.StringValue, MapResult[formats.StringValue, formats.NumberValue]]])
+    assert(data.content.valueFormat.isInstanceOf[MapResultFormat] && data.content.isInstanceOf[MapResult[_, _]])
 
     val resultData = data.content.asInstanceOf[MapResult[formats.StringValue, MapResult[formats.StringValue, formats.NumberValue]]]
       .asScalaObject.map( t => (t._1.asScalaObject, t._2.asScalaObject)).mapValues( m => m.map( t2 => (t2._1.asScalaObject, t2._2.asScalaObject)))

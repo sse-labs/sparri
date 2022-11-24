@@ -3,7 +3,8 @@ package de.tudo.sse.classfilefeatures.webapi
 import akka.actor.ActorSystem
 import de.tudo.sse.classfilefeatures.webapi.core.RequestHandler
 import de.tudo.sse.classfilefeatures.webapi.server.ApiServer
-import de.tudo.sse.classfilefeatures.webapi.storage.WebapiDataAccessor
+import de.tudo.sse.spareuse.core.storage.DataAccessor
+import de.tudo.sse.spareuse.core.storage.postgresql.PostgresDataAccessor
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.concurrent.duration.DurationInt
@@ -17,7 +18,7 @@ class ClassfileWebApi(private val configuration: WebapiConfig) {
 
   private final val theSystem: ActorSystem = ActorSystem("cf-webapi-system")
 
-  private[webapi] lazy val dataAccessor: WebapiDataAccessor = ???
+  private[webapi] lazy val dataAccessor: DataAccessor = new PostgresDataAccessor
   private[webapi] lazy val requestHandler: RequestHandler = new RequestHandler(configuration, dataAccessor)
   private[webapi] lazy val server: ApiServer = new ApiServer(requestHandler)(theSystem)
 
@@ -25,7 +26,7 @@ class ClassfileWebApi(private val configuration: WebapiConfig) {
 
   def initialize(): Boolean = {
     // Cascaded lazy-vals will throw any db related error here.
-    Try(dataAccessor.verifyConnectivity()) match {
+    Try(dataAccessor.initialize()) match {
       case Success(_) =>
         dbInitialized = true
         true
