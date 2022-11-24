@@ -1,9 +1,9 @@
 package de.tudo.sse.classfilefeatures.webapi.server.routes
 
 import akka.http.scaladsl.model.{HttpRequest, Uri}
-import akka.http.scaladsl.model.StatusCodes.{Accepted, Conflict, InternalServerError}
+import akka.http.scaladsl.model.StatusCodes.{Accepted, Conflict, Found, InternalServerError}
 import akka.http.scaladsl.model.headers.Location
-import akka.http.scaladsl.server.Directives.{complete, pathPrefix, post, respondWithHeaders}
+import akka.http.scaladsl.server.Directives.{_enhanceRouteWithConcatenation, complete, pathPrefix, post, respondWithHeaders}
 import akka.http.scaladsl.server.Route
 import de.tudo.sse.classfilefeatures.webapi.model.requests.EnqueueRequest
 
@@ -15,7 +15,8 @@ trait ProcessingRouteDefinitions extends BasicRouteDefinition {
 
   protected def processingRoutes(implicit request: HttpRequest): Route = {
     pathPrefix("processing") {
-      pathPrefix("enqueuePackage") { enqueuePackageRoute }
+      pathPrefix("enqueueProgram") { triggerMinerForProgramRouteImpl } ~
+      pathPrefix("enqueueLibrary") { triggerMinerForLibraryRouteImpl }
     }
   }
 
@@ -23,17 +24,32 @@ trait ProcessingRouteDefinitions extends BasicRouteDefinition {
    |           ROUTE IMPLEMENTATIONS        |
    -----------------------------------------*/
 
-  private def enqueuePackageRoute(implicit request: HttpRequest): Route = post {
+  private def triggerMinerForProgramRouteImpl(implicit request: HttpRequest): Route = post {
     entityAs[EnqueueRequest]{ entity =>
 
-      if(requestHandler.hasLibrary(entity.packageName)) {
-        // Do not enqueue packages which are already fully processed => respond with 409 Conflict
-        val packageUri = Uri(s"packages/${entity.packageName}")
-        respondWithHeaders(Location(packageUri)) { complete(Conflict, s"Package ${entity.packageName} has already been processed.") }
+      if(requestHandler.hasLibrary(entity.Identifier)) {
+        val libUri = Uri(s"entities/${entity.Identifier}")
+        respondWithHeaders(Location(libUri)) { complete(Found, s"Library ${entity.Identifier} has already been processed.")}
       } else {
-        val enqueueSuccess = requestHandler.processEnqueueLibraryRequest(entity.packageName)
-        if(!enqueueSuccess) complete(InternalServerError)
-        else complete(Accepted)
+        val enqueueSuccess = ???
+        if(enqueueSuccess) complete(Accepted)
+        else complete(InternalServerError)
+      }
+
+    }
+  }
+
+  private def triggerMinerForLibraryRouteImpl(implicit request: HttpRequest): Route = post {
+    entityAs[EnqueueRequest]{ entity =>
+      if (???) {
+        val libUri = Uri(s"entities/${entity.Identifier}")
+        respondWithHeaders(Location(libUri)) {
+          complete(Found, s"Program ${entity.Identifier} has already been processed.")
+        }
+      } else {
+        val enqueueSuccess = ???
+        if (enqueueSuccess) complete(Accepted)
+        else complete(InternalServerError)
       }
     }
   }

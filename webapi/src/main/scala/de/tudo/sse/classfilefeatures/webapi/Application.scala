@@ -1,16 +1,31 @@
 package de.tudo.sse.classfilefeatures.webapi
 
+import com.typesafe.config.ConfigFactory
+import org.slf4j.{Logger, LoggerFactory}
+
+import scala.util.{Failure, Success}
+
 object Application {
+
+  private final val log: Logger = LoggerFactory.getLogger(getClass)
 
   def main(args: Array[String]): Unit = {
 
-    val theApp = new ClassfileWebApi()
+    WebapiConfig.fromConfig(ConfigFactory.load()) match {
+      case Success(theConfig) =>
+        val theApp = new ClassfileWebApi(theConfig)
 
-    if(theApp.initialize()){
-      theApp.runUntilButtonPressed()
-    } else {
-      theApp.shutdown()
+        if (theApp.initialize()) {
+          theApp.runUntilButtonPressed()
+        } else {
+          theApp.shutdown()
+        }
+      case Failure(ex) =>
+        log.error("Invalid configuration for webapi", ex)
+        System.exit(-1)
     }
+
+
 
   }
 

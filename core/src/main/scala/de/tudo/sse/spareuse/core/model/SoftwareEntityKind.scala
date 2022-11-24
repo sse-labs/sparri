@@ -25,4 +25,15 @@ object SoftwareEntityKind extends Enumeration {
     if(pivot.id <= 5) toTest.id < pivot.id
     else toTest.id < 5
   }
+
+  def fromString(value: String): Option[SoftwareEntityKind] = value.toLowerCase match {
+    case "library" => Some(Library)
+    case "program" => Some(Program)
+    case "package" => Some(Package)
+    case "class" => Some(Class)
+    case "method" => Some(Method)
+    case "invocationstatement" => Some(InvocationStatement)
+    case "fieldaccessstatement" => Some(FieldAccessStatement)
+    case _ => None
+  }
 }

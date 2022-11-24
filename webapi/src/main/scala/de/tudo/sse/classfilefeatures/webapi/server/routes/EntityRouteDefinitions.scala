@@ -9,8 +9,6 @@ import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 
 trait EntityRouteDefinitions extends BasicRouteDefinition {
 
-  implicit def todo[T]: Unit => T = ???
-
   /*-----------------------------------------
    |           ROUTE DECLARATIONS           |
    -----------------------------------------*/
@@ -65,23 +63,23 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
 
 
   private def allEntitiesRouteImpl(limit: Int, skip: Int, queriedKind: Option[SoftwareEntityKind], queriedParent: Option[String],
-                                   queriedLanguage: Option[String]): Route = {
+                                   queriedLanguage: Option[String])(implicit request: HttpRequest): Route = {
 
   }
 
-  private def singleEntityRouteImpl(entityName: String): Route = {
+  private def singleEntityRouteImpl(entityName: String)(implicit request: HttpRequest): Route = {
 
   }
 
-  private def allEntityChildrenRouteImpl(entityName: String, limit: Int, skip: Int): Route = {
+  private def allEntityChildrenRouteImpl(entityName: String, limit: Int, skip: Int)(implicit request: HttpRequest): Route = {
 
   }
 
-  private def allAnalysisRunsForEntityRouteImpl(entityName: String, limit: Int, skip: Int): Route = {
+  private def allAnalysisRunsForEntityRouteImpl(entityName: String, limit: Int, skip: Int)(implicit request: HttpRequest): Route = {
 
   }
 
-  private def allResultsForEntityRouteImpl(entityName: String, limit: Int, skip: Int, queriedAnalysis: Option[String]): Route = {
+  private def allResultsForEntityRouteImpl(entityName: String, limit: Int, skip: Int, queriedAnalysis: Option[String])(implicit request: HttpRequest): Route = {
 
   }
 

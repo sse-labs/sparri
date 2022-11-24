@@ -279,6 +279,37 @@ paths:
           description: "If the analysis is not found, 404 is returned."
   
   /analyses/{analysisName}/{analysisVersion}/runs:
+    post:
+      tags: ["Analysis Related Information", "Processing Related Endpoints"]
+      description: "Triggers a new analysis run for this analysis"
+      parameters:
+        - name: analysisName
+          description: "Unique name of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: analysisVersion
+          description: "Unique version of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+            
+      requestBody:
+        description: "Request with details regarding the analysis that is to be executed"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerAnalysisRequest"
+       
+      responses:
+        '201':
+          description: "New analysis run has been queued"
+          
+        '404':
+          description: "If the analysis is not found, 404 is returned."
     get:
       tags: ["Analysis Related Information"]
       description: "Returns a paginated list of all analysis runs associated with this analysis"
@@ -447,22 +478,40 @@ paths:
           description: "If the analysis or the analysis run are not found, 404 is returned."
   
           
-  /processing/enqueuePackage:
+  /processing/enqueueProgram:
     post:
-      tags: ["Processing Related Enpoints"]
-      description: ""
+      tags: ["Processing Related Endpoints"]
+      description: "Inserts a given package into the mining queue with high priority"
+      requestBody:
+        description: "Request specifying the identifier of the package to mine"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerMinerRequest"
       responses:
-        '200':
-          description: ""
+        '201':
+          description: "Mining request has been accepted"
+        '400':
+          description: "Bad request missing required parameters"
   
-  /processing/runAnalysis:
+  /processing/enqueueLibrary:
     post:
-      tags: ["Processing Related Enpoints"]
-      description: ""
+      tags: ["Processing Related Endpoints"]
+      description: "Inserts all packages of a given library into the mining queue with high priority"
+      requestBody:
+        description: "Request specifying the identifier of the library to mine"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TriggerMinerRequest"
       responses:
-        '200':
-          description: ""
-
+        '201':
+          description: "Mining request has been accepted"
+        '400':
+          description: "Bad request missing required parameters"
+  
 components:
   schemas:
     StringList:
@@ -472,7 +521,7 @@ components:
         
     AnalysisInformation:
       type: object
-      required: ['Name', 'Description', 'Version', 'IsAvailable', 'IsValid', 'InputEntityKind', 'InputLanguages', 'ResultSchema']
+      required: ['Name', 'Description', 'Version', 'IsRevoked', 'User', 'InputEntityKind', 'InputLanguages', 'ResultSchema', 'RunIds']
       properties:
         'Name':
           type: string
@@ -482,9 +531,7 @@ components:
           type: string
         'TechnologyInformation':
           type: string
-        'IsAvailable':
-          type: boolean
-        'IsValid':
+        'IsRevoked':
           type: boolean
         'InputEntityKind':
           type: string
@@ -492,6 +539,10 @@ components:
           $ref: '#/components/schemas/StringList'
         'ResultSchema':
           type: object
+        'User':
+          type: string
+        'RunIds':
+          $ref: '#/components/schemas/StringList'
     
     AnalysisRunInformation:
       type: object
@@ -508,71 +559,41 @@ components:
     
     ProgramEntity:
       type: object
-      required: ['Name', 'Identifier', 'language', 'EntityKind']
+      required: ['Name', 'Identifier', 'Language', 'Kind', 'Repository']
       properties:
         'Name':
           type: string
         'Identifier':
           type: string
-        'EntityKind':
+        'Kind':
           type: string
         'Language':
           type: string
-        'Parent':
+        'Repository':
+          type: string
+        'ParentId':
+          type: string
+        'Hash':
           type: string
     
-    
-    ConditionallyActiveElementEntry:
+    TriggerAnalysisRequest:
       type: object
+      required: ['Inputs', 'Configuration']
       properties:
-        'alwaysActive':
-          type: boolean
-        'activeIn':
-          type: array
-          items:
-            type: string
-        
-    PackageInformation:
-      type: object
-      properties:
-        'classes':
+        'Inputs':
           $ref: '#/components/schemas/StringList'
-        'versions':
-          $ref: '#/components/schemas/StringList'
-        'name':
+        'Configuration':
+          type: string
+        'User':
           type: string
     
-    PackageClassList:
-      type: array
-      items:
-        type: object
-        properties:
-          'thisType':
-            type: string
-          'alwaysActive':
-            type: boolean
-          'activeIn':
-            $ref: '#/components/schemas/StringList'
-    
-    PackageClassInformation:
+    TriggerMinerRequest:
       type: object
+      required: ['Identifier']
       properties:
-        'thisType':
+        'Identifier':
           type: string
-        'activeIn':
-          $ref: '#/components/schemas/StringList'
-        'superTypes':
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/ConditionallyActiveElementEntry'
-        'flags':
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/ConditionallyActiveElementEntry'
-        'methods':
-          type: object
-          additionalProperties:
-            $ref: '#/components/schemas/ConditionallyActiveElementEntry'
+    
           
         
   

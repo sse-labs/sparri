@@ -2,10 +2,7 @@ package de.tudo.sse.classfilefeatures.webapi.model
 
 import de.tudo.sse.classfilefeatures.webapi.model.requests.RequestsJsonSupport
 
-trait JsonSupport extends CoreModelJsonSupport
-  with LibraryInformationJsonSupport
-  with ReleaseInformationJsonSupport
-  with ConcreteClassInformationJsonSupport
+trait JsonSupport extends AnalysisInformationReprJsonSupport
+  with EntityReprJsonSupport
+  with AnalysisRunReprJsonSupport
   with RequestsJsonSupport
-  with LibraryClassActivationInformationJsonSupport
-  with LibraryClassInformationJsonSupport

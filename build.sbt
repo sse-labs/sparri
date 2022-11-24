@@ -23,7 +23,7 @@ lazy val mergeStrategySettings = assemblyMergeStrategy := {
 }
 
 lazy val root = (project in file("."))
-	.aggregate(/*Common to be fully replaced by Core once webapi is adapted*/common, core, `maven-entity-name-publisher`, `maven-entity-miner`, webapi)
+	.aggregate(core, `maven-entity-name-publisher`, `maven-entity-miner`, webapi, `analysis-runner`)
 
 lazy val core = (project in file("core"))
 	.settings(
@@ -85,15 +85,8 @@ lazy val playground = (project in file("playground"))
 	.dependsOn(core)
 	.settings(libraryDependencies ++= Seq(dependencies.logback))
 
-lazy val common = (project in file("common"))
-	.settings(
-		libraryDependencies ++= dependencies.opal,
-		libraryDependencies ++= Seq(dependencies.logback, dependencies.rabbitMQ, dependencies.jeka, dependencies.mvnarcheologist,
-			dependencies.scalaTest, dependencies.akkaStreams, dependencies.apacheHttp)
-	)
-
 lazy val webapi = (project in file("webapi"))
-	.dependsOn(common, core)
+	.dependsOn(core)
 	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= Seq(dependencies.akkaStreams, dependencies.akkaHttp, dependencies.akkaActors, dependencies.akkaSprayJson,
