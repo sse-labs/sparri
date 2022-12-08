@@ -33,7 +33,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
     AnalysisRegistry.registerAnalysisImplementation(new MvnConstantClassAnalysisImpl)
     AnalysisRegistry.registerAnalysisImplementation(new MvnDependencyAnalysisImpl)
-    //TODO: FORMAT AnalysisRegistry.registerAnalysisImplementation(new MvnPartialCallgraphAnalysisImpl)
+    AnalysisRegistry.registerAnalysisImplementation(new MvnPartialCallgraphAnalysisImpl)
 
     entityQueueWriter.initialize()
 

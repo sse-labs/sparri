@@ -199,9 +199,8 @@ package object postgresql {
     val MapValue: Value = Value(2)
     val ListElement: Value = Value(3)
     val NamedProperty: Value = Value(4)
-
-    //TODO: Graphs
-
+    val NodeProperty: Value = Value(5)
+    val EdgeProperty: Value = Value(6)
   }
 
   class NestedResultFormatReferences(tag: Tag) extends Table[NestedResultFormatReference](tag, "nestedresults"){

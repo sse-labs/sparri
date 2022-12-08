@@ -1,7 +1,7 @@
 package de.tudo.sse.spareuse.execution.analyses.impl
 
 import de.tudo.sse.spareuse.core.formats
-import de.tudo.sse.spareuse.core.formats.EmptyFormat
+import de.tudo.sse.spareuse.core.formats.{AnalysisResultFormat, EmptyFormat, GraphResultFormat, NamedPropertyFormat}
 import de.tudo.sse.spareuse.core.model.analysis.GraphResult
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaProgram
 import de.tudo.sse.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
@@ -16,8 +16,10 @@ import scala.util.{Failure, Success, Try}
 
 class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
+  private val resultFormat: AnalysisResultFormat = GraphResultFormat(Set(NamedPropertyFormat("methodName", formats.StringFormat), NamedPropertyFormat("isStartMethod", formats.NumberFormat)), Set(NamedPropertyFormat("isVirtualInvoke", formats.NumberFormat), NamedPropertyFormat("callSitePc", formats.NumberFormat)), "", "")
+
   override val analysisData: AnalysisData = AnalysisData.systemAnalysis("mvn-partial-callgraphs", "1.0.0", "TBD", "OPAL", Set("java", "scala"),
-    null, SoftwareEntityKind.Program)
+    resultFormat, SoftwareEntityKind.Program)
 
 
   override val inputBatchProcessing: Boolean = true

@@ -177,7 +177,23 @@ class PostgresDataAccessor extends DataAccessor {
 
           formatId
 
-        case GraphResultFormat(nodeFormat, edgeFormat, _, _) => ???
+        case GraphResultFormat(nodeFormats, edgeFormats, nodeDescription, edgeDescription) =>
+
+          val formatId = Await.result(db.run(idReturningFormatTable += ResultFormat(-1, "CUSTOM_GRAPH", ResultType.GraphResult.id)), simpleQueryTimeout)
+
+          nodeFormats.foreach { nodeProp =>
+            val propFormatId = storeResultFormat(nodeProp)
+
+            Await.ready(db.run(nestedResultFormatsTable += NestedResultFormatReference(formatId, propFormatId, ResultNestingKind.NodeProperty.id, nodeDescription)), simpleQueryTimeout)
+          }
+
+          edgeFormats.foreach { edgeProp =>
+            val propFormatId = storeResultFormat(edgeProp)
+
+            Await.ready(db.run(nestedResultFormatsTable += NestedResultFormatReference(formatId, propFormatId, ResultNestingKind.EdgeProperty.id, edgeDescription)), simpleQueryTimeout)
+          }
+
+          formatId
 
         case NamedPropertyFormat(propertyName, propertyFormat, explanation) =>
           val innerFormatId = storeResultFormat(propertyFormat)
