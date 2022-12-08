@@ -1,16 +1,21 @@
 package de.tudo.sse.spareuse.execution.analyses.impl
 
 import de.tudo.sse.spareuse.core.formats
-import de.tudo.sse.spareuse.core.formats.{ListResultFormat, MapResult, MapResultFormat}
-import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaProgram, buildClass, buildClassFor, buildLibrary, buildPackageFor, buildProgramFor}
+import de.tudo.sse.spareuse.core.formats.json.CustomObjectWriter
+import de.tudo.sse.spareuse.core.formats.{MapResultFormat, NamedPropertyFormat, NumberFormat, ObjectResultFormat}
+import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{buildClassFor, buildLibrary, buildPackageFor, buildProgramFor}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must
+
 
 class MvnConstantClassAnalysisImplTest extends AnyFlatSpec with must.Matchers {
 
   private val analysis = new MvnConstantClassAnalysisImpl
   private val sampleLibrary = buildLibrary("org.springframework:spring-jmx")
   private val sampleProgram = buildProgramFor(sampleLibrary, "org.springframework:spring-jmx:2.0.5")
+
+  private val expectedResultFormat = MapResultFormat(formats.StringFormat,
+    ObjectResultFormat(Set(NamedPropertyFormat("noOfOccurrences", NumberFormat), NamedPropertyFormat("noOfUniqueOccurrences", NumberFormat))))
 
 
   "The constant class analysis" must "reject invalid inputs" in {
@@ -64,17 +69,23 @@ class MvnConstantClassAnalysisImplTest extends AnyFlatSpec with must.Matchers {
 
     assert(data.affectedEntities.contains(lib) && data.affectedEntities.size == 1)
 
-    assert(data.content.valueFormat.isInstanceOf[MapResultFormat] && data.content.isInstanceOf[MapResult[_, _]])
+    val writer = new CustomObjectWriter(expectedResultFormat)
+    val json = writer.write(data.content)
 
-    val resultData = data.content.asInstanceOf[MapResult[formats.StringValue, MapResult[formats.StringValue, formats.NumberValue]]]
-      .asScalaObject.map( t => (t._1.asScalaObject, t._2.asScalaObject)).mapValues( m => m.map( t2 => (t2._1.asScalaObject, t2._2.asScalaObject)))
+    println(json.prettyPrint)
+
+    assert(expectedResultFormat.isValid(json))
+
+
+
+    val resultData = json.asJsObject.fields
 
     assert(resultData.contains("test1/test"))
 
-    val classResult = resultData("test1/test")
+    val classResult = resultData("test1/test").asJsObject.fields
 
-    assert(classResult.contains("count") && classResult("count") == 3L)
-    assert(classResult.contains("unique") && classResult("unique") == 2L)
+    assert(classResult.contains("noOfOccurrences"))
+    assert(classResult.contains("noOfUniqueOccurrences"))
 
 
   }

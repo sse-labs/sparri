@@ -35,6 +35,14 @@ trait EntityAccessor {
 
   def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Try[Seq[GenericEntityData]]
 
+  def getEntityKind(entityIdent: String): Try[SoftwareEntityKind]
+
+  def getEntity(ident: String): Try[SoftwareEntityData] = {
+    if(hasEntity(ident)){
+      getEntityKind(ident).flatMap(kind => getEntity(ident, kind, SoftwareEntityKind.InvocationStatement))
+    } else Failure(new IllegalStateException(s"Entity not present: $ident"))
+  }
+
   def getEntity(ident: String, kind: SoftwareEntityKind, resolutionScope: SoftwareEntityKind): Try[SoftwareEntityData]
 
   def hasEntity(ident: String, kind: SoftwareEntityKind): Boolean

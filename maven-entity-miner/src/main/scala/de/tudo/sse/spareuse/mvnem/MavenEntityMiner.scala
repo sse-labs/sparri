@@ -121,9 +121,9 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
       msg.count(_ == ':') match {
         case 1 =>
-          getVersionsForLibrary(msg) match {
+          getIdentifiersForLibrary(msg) match {
             case Success(identifiers) =>
-              Some(identifiers.map(MavenIdentifier.fromGAV).filter(_.isDefined).map(_.get))
+              Some(identifiers)
             case Failure(ex) =>
               log.error("Failed to download version list", ex)
               None

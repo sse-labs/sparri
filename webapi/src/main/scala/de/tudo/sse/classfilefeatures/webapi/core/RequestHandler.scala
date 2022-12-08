@@ -53,6 +53,10 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     }
   }
 
+  def getEntity(entityName: String): Try[EntityRepr] = {
+    dataAccessor.getEntity(entityName).map(toEntityRepr)
+  }
+
   def processEnqueueLibraryRequest(libraryName: String): Boolean = {
 
     Try {

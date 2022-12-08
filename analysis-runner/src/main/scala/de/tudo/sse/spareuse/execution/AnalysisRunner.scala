@@ -3,6 +3,8 @@ package de.tudo.sse.spareuse.execution
 import akka.stream.scaladsl.Sink
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
+import de.tudo.sse.spareuse.core.formats.json.CustomObjectWriter
+import de.tudo.sse.spareuse.core.model.{AnalysisResultData, AnalysisRunData}
 import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, StartRunCommand}
 import de.tudo.sse.spareuse.core.storage.DataAccessor
 import de.tudo.sse.spareuse.core.storage.postgresql.PostgresDataAccessor
@@ -12,6 +14,7 @@ import de.tudo.sse.spareuse.execution.analyses.impl.{MvnConstantClassAnalysisImp
 import de.tudo.sse.spareuse.execution.analyses.{AnalysisImplementation, AnalysisRegistry}
 import de.tudo.sse.spareuse.execution.utils.{AnalysisRunNotPossibleException, ValidRunnerCommand, ValidStartRunCommand}
 
+import java.time.LocalDateTime
 import scala.concurrent.Future
 import scala.util.{Failure, Success, Try}
 
@@ -23,14 +26,14 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
   override val workerName: String = "analysis-runner"
 
-  private def dataAccessor: DataAccessor = new PostgresDataAccessor
+  private val dataAccessor: DataAccessor = new PostgresDataAccessor
 
 
   override def initialize(): Unit = {
-    //TODO: Move Somewhere else
+
     AnalysisRegistry.registerAnalysisImplementation(new MvnConstantClassAnalysisImpl)
     AnalysisRegistry.registerAnalysisImplementation(new MvnDependencyAnalysisImpl)
-    AnalysisRegistry.registerAnalysisImplementation(new MvnPartialCallgraphAnalysisImpl)
+    //TODO: FORMAT AnalysisRegistry.registerAnalysisImplementation(new MvnPartialCallgraphAnalysisImpl)
 
     entityQueueWriter.initialize()
 
@@ -151,7 +154,24 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
         analysisImpl.executeAnalysis(inputEntities.toSeq, cmd.configurationRaw) match {
           case Success(results) =>
             log.info(s"Analysis execution finished with ${results.size} results.")
-          //TODO: Store results
+
+            val serializer = new CustomObjectWriter(analysisImpl.analysisData.resultFormat)
+
+            val resultUuidIt = dataAccessor.getFreshResultUuids(results.size).iterator
+
+            val runResults = results.map{ res => AnalysisResultData(resultUuidIt.next(), isRevoked = false, res.content, res.affectedEntities) }
+
+            val runLogs = analysisImpl.getLogs
+
+            val run = AnalysisRunData(dataAccessor.getFreshRunUuid(), LocalDateTime.now(), runLogs.toArray, cmd.configurationRaw, isRevoked = false, inputEntities, runResults, analysisImpl.name, analysisImpl.version)
+
+            dataAccessor.storeAnalysisRun(run)(serializer) match {
+              case Success(_) =>
+                log.info(s"Successfully stored ${results.size} results.")
+              case Failure(ex) =>
+                log.error("Failed to store analysis results", ex)
+            }
+
           case Failure(ex) =>
             log.error(s"Analysis execution failed.", ex)
           //TODO: Error Handling

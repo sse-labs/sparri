@@ -1,12 +1,14 @@
 package de.tudo.sse.spareuse.execution.analyses.impl
 
-import de.tudo.sse.spareuse.core.formats.AnalysisResult
+import de.tudo.sse.spareuse.core.formats
+import de.tudo.sse.spareuse.core.formats.EmptyFormat
+import de.tudo.sse.spareuse.core.model.analysis.GraphResult
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaProgram
-import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, SoftwareEntityKind}
+import de.tudo.sse.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import de.tudo.sse.spareuse.core.opal.OPALProjectHelper
 import de.tudo.sse.spareuse.core.utils.http.HttpDownloadException
-import de.tudo.sse.spareuse.execution.analyses.AnalysisImplementation
+import de.tudo.sse.spareuse.execution.analyses.{AnalysisImplementation, Result}
 import de.tudo.sse.spareuse.execution.analyses.impl.MvnPartialCallgraphAnalysisImpl.{parseConfig, validCallgraphAlgorithms}
 import org.opalj.tac.cg.{CHACallGraphKey, CTACallGraphKey, RTACallGraphKey, XTACallGraphKey}
 
@@ -32,7 +34,7 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
     inputs.forall( sed => sed.isInstanceOf[JavaProgram])
   }
 
-  override def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[AnalysisResultData]] = Try {
+  override def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[Result]] = Try {
 
     val opalHelper = new OPALProjectHelper(loadJreClassImplementation = false)
     val config = parseConfig(rawConfig)
@@ -58,9 +60,9 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
           val cg = project.get(opalCgKey)
 
           //TODO: Convert to result structure (graph)
-          val resultData = AnalysisResultData(isRevoked = false, AnalysisResult.fromObject(List.empty[String]), Set(program))
+          val explicitGraph: GraphResult = ???
 
-          Some(resultData)
+          Some(Result(explicitGraph, Set(program)))
         case Failure(HttpDownloadException(status, _, _)) if status == 404 =>
           log.warn(s"No JAR file available for ${program.identifier}")
           None

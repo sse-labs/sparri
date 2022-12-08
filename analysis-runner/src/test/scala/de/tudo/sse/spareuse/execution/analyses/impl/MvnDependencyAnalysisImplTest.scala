@@ -1,7 +1,8 @@
 package de.tudo.sse.spareuse.execution.analyses.impl
 
 import de.tudo.sse.spareuse.core.formats
-import de.tudo.sse.spareuse.core.formats.{ListResultFormat, MapResultFormat}
+import de.tudo.sse.spareuse.core.formats.json.CustomObjectWriter
+import de.tudo.sse.spareuse.core.formats.{ListResultFormat, MapResultFormat, NamedPropertyFormat, ObjectResultFormat}
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaProgram, buildPackage, buildPackageFor}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must
@@ -12,6 +13,8 @@ class MvnDependencyAnalysisImplTest extends AnyFlatSpec with must.Matchers {
   private val sampleProgram = new JavaProgram("org.springframework:spring-jmx:2.0.5",
     "org.springframework:spring-jmx!org.springframework:spring-jmx:2.0.5", "mvn", Array.empty)
   private val samplePackage = buildPackageFor(sampleProgram, "test")
+
+  private val expectedResultFormat = ListResultFormat(ObjectResultFormat(Set(NamedPropertyFormat("identifier", ObjectResultFormat(Set(NamedPropertyFormat("groupId", formats.StringFormat), NamedPropertyFormat("artifactId", formats.StringFormat), NamedPropertyFormat("version", formats.StringFormat)))), NamedPropertyFormat("scope", formats.StringFormat))))
 
 
 
@@ -26,10 +29,12 @@ class MvnDependencyAnalysisImplTest extends AnyFlatSpec with must.Matchers {
     assert(result.get.size == 1)
     assert(result.get.head.affectedEntities.size == 1 && result.get.head.affectedEntities.head.equals(sampleProgram))
 
-    result.get.head.content.valueFormat match {
-      case ListResultFormat(MapResultFormat(formats.StringFormat, formats.EntityReferenceFormat, _), _) =>
-      case a@_ => fail(s"Dependency analysis must produce results of Format List[Map[String, EntityRef]]. Got: $a")
-    }
+    val writer = new CustomObjectWriter(expectedResultFormat)
+    val json = writer.write(result.get.head.content)
+
+    println(json.prettyPrint)
+
+    assert(expectedResultFormat.isValid(json))
   }
 
   "The dependency analysis implementation" must "must reject execution for invalid inputs" in {

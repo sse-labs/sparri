@@ -1,20 +1,24 @@
 package de.tudo.sse.spareuse.execution.analyses.impl
 
-import de.tudo.sse.spareuse.core.formats.AnalysisResult
-import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, SoftwareEntityKind}
+import de.tudo.sse.spareuse.core.formats
+import de.tudo.sse.spareuse.core.formats.{MapResultFormat, NamedPropertyFormat, NumberFormat, ObjectResultFormat}
+import de.tudo.sse.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaLibrary, JavaMethod}
+import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaLibrary}
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import de.tudo.sse.spareuse.core.utils.toHex
-import de.tudo.sse.spareuse.execution.analyses.AnalysisImplementation
+import de.tudo.sse.spareuse.execution.analyses.{AnalysisImplementation, Result}
 
 import scala.collection.mutable
 import scala.util.Try
 
 class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
 
+  private val resultFormat = MapResultFormat(formats.StringFormat,
+    ObjectResultFormat(Set(NamedPropertyFormat("noOfOccurrences", NumberFormat), NamedPropertyFormat("noOfUniqueOccurrences", NumberFormat))))
+
   override val analysisData: AnalysisData = AnalysisData.systemAnalysis("mvn-constant-classes", "1.0.0", "TBD", "built-in",
-    Set("java", "scala"),  null, SoftwareEntityKind.Library)
+    Set("java", "scala"),  resultFormat, SoftwareEntityKind.Library)
 
   override val inputBatchProcessing: Boolean = true
 
@@ -29,7 +33,7 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
     }
   }
 
-  override def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[AnalysisResultData]] = Try {
+  override def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[Result]] = Try {
 
     if(!rawConfig.isBlank)
       log.warn("Non-Empty configuration will be ignored, this analysis does not support configuration options")
@@ -54,14 +58,16 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
       }))
 
       val resultMap = classToHashesMap
-        .mapValues(b => (b.size, b.distinct.size))
-        .mapValues(t => Map("count" -> t._1, "unique" -> t._2))
+        .mapValues(b => ClassCountResult(b.size, b.distinct.size))
 
       log.debug(s"Results for library [${library.identifier}]:")
       log.debug(s"-- #Releases: $releasesCnt")
       classToHashesMap.mapValues(b => (b.size, b.distinct.size)).foreach{t => log.debug(s"-- ${t._1} -> ${t._2._2}/${t._2._1}")}
 
-      AnalysisResultData(isRevoked = false, AnalysisResult.fromObject(resultMap), Set(library))
+
+      Result(resultMap, Set(library))
     }.toSet
   }
+
+  case class ClassCountResult(noOfOccurrences: Int, noOfUniqueOccurrences: Int)
 }

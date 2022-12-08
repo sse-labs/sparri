@@ -1,7 +1,7 @@
 package de.tudo.sse.spareuse.execution.analyses
 
 import de.tudo.sse.spareuse.core.maven.{MavenIdentifier, MavenJarDownloader, MavenReleaseListDiscovery}
-import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, SoftwareEntityKind}
+import de.tudo.sse.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities._
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
@@ -9,11 +9,13 @@ import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.InputStream
 import scala.annotation.tailrec
+import scala.collection.mutable
 import scala.util.{Failure, Try}
 
 trait AnalysisImplementation extends MavenReleaseListDiscovery {
 
-  protected val log: Logger = LoggerFactory.getLogger(getClass)
+  private val internalLog: Logger = LoggerFactory.getLogger(getClass)
+  protected val log: PersistingLogger = new PersistingLogger
 
   val analysisData: AnalysisData
 
@@ -37,7 +39,7 @@ trait AnalysisImplementation extends MavenReleaseListDiscovery {
 
   def executionPossible(inputs: Seq[SoftwareEntityData], rawConfig: String): Boolean
 
-  def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[AnalysisResultData]]
+  def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[Result]]
 
   protected def getFilesFor(jl: JavaLibrary): Try[Map[String, InputStream]] = Try {
     val ga = jl.name
@@ -52,6 +54,8 @@ trait AnalysisImplementation extends MavenReleaseListDiscovery {
 
     map
   }
+
+  def getLogs: Seq[String] = log.getLogs
 
   protected def getFileFor(input: SoftwareEntityData): Try[InputStream] =  {
 
@@ -79,6 +83,50 @@ trait AnalysisImplementation extends MavenReleaseListDiscovery {
 
       res.map(_.content)
     }
+
+  }
+
+  class PersistingLogger {
+
+    private val logs: mutable.ListBuffer[String] = mutable.ListBuffer.empty
+
+    private final val DEBUG_PREFIX = "[DEBUG] "
+    private final val INFO_PREFIX = "[INFO] "
+    private final val WARN_PREFIX = "[WARN] "
+    private final val ERROR_PREFIX = "[ERROR] "
+
+    def debug(msg: String): Unit = {
+      internalLog.debug(msg)
+      if(internalLog.isDebugEnabled) logs.append(DEBUG_PREFIX + msg)
+    }
+
+    def info(msg: String): Unit = {
+      internalLog.info(msg)
+      logs.append(INFO_PREFIX + msg)
+    }
+
+    def warn(msg: String, ex: Throwable = null): Unit = {
+      if(ex == null){
+        internalLog.warn(msg)
+        logs.append(WARN_PREFIX + msg)
+      } else {
+        internalLog.warn(msg, ex)
+        logs.append(WARN_PREFIX + msg + s" ( ${ex.getClass} : ${ex.getMessage})")
+      }
+
+    }
+
+    def error(msg: String, ex: Throwable = null): Unit ={
+      if(ex == null){
+        internalLog.error(msg)
+        logs.append(ERROR_PREFIX + msg)
+      } else {
+        internalLog.error(msg, ex)
+        logs.append(ERROR_PREFIX + msg + s" ( ${ex.getClass} : ${ex.getMessage})")
+      }
+    }
+
+    def getLogs: Seq[String] = logs
 
   }
 

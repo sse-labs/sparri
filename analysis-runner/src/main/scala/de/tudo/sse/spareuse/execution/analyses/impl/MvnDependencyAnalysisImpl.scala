@@ -1,20 +1,24 @@
 package de.tudo.sse.spareuse.execution.analyses.impl
 
-import de.tudo.sse.spareuse.core.formats.AnalysisResult
+import de.tudo.sse.spareuse.core.formats
+import de.tudo.sse.spareuse.core.formats.{ListResultFormat, NamedPropertyFormat, ObjectResultFormat}
 import de.tudo.sse.spareuse.core.maven.MavenIdentifier
 import de.tudo.sse.spareuse.core.maven.dependencies.{DependencyExtractor, JekaDependencyExtractor, PomFileDependencyExtractor}
-import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, SoftwareEntityKind}
+import de.tudo.sse.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaProgram, buildProgram}
+import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaProgram
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
-import de.tudo.sse.spareuse.execution.analyses.AnalysisImplementation
+import de.tudo.sse.spareuse.execution.analyses.{AnalysisImplementation, Result}
 
 import scala.util.{Failure, Success, Try}
 
 class MvnDependencyAnalysisImpl extends AnalysisImplementation{
 
+  private val resultFormat = ListResultFormat(ObjectResultFormat(Set(NamedPropertyFormat("identifier", ObjectResultFormat(Set(NamedPropertyFormat("groupId", formats.StringFormat), NamedPropertyFormat("artifactId", formats.StringFormat), NamedPropertyFormat("version", formats.StringFormat)))), NamedPropertyFormat("scope", formats.StringFormat))))
+
+
   override val analysisData: AnalysisData = AnalysisData("mvn-dependencies", "1.0.0", "TBD", "built-in", "system",
-    Set("java"), false, null, SoftwareEntityKind.Program, Set.empty)
+    Set("java"), isRevoked = false, resultFormat, SoftwareEntityKind.Program, Set.empty)
 
   override val inputBatchProcessing: Boolean = true
 
@@ -34,7 +38,7 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
     }
   }
 
-  override def executeAnalysis(inputs: Seq[SoftwareEntityData], configRaw: String): Try[Set[AnalysisResultData]] = Try {
+  override def executeAnalysis(inputs: Seq[SoftwareEntityData], configRaw: String): Try[Set[Result]] = Try {
     val theConfig = parseConfig(configRaw)
     val resolver: DependencyExtractor = if(theConfig.useJeka) new JekaDependencyExtractor() else new PomFileDependencyExtractor()
 
@@ -53,13 +57,10 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
 
         dependenciesTry match {
           case Success(dependencies) =>
-            // TODO: Needs object format
-            val resultList = dependencies.map( dep => Map("gav" -> buildProgram(dep.identifier.toString), "scope" -> dep.scope)).toList
-
             log.debug(s"Results for program [$gav]:")
             dependencies.foreach{ d => log.debug(s"-- ${d.identifier}:${d.scope}")}
 
-            AnalysisResultData(isRevoked = false, AnalysisResult.fromObject(resultList), Set(jp))
+            Result(dependencies, Set(jp))
           case Failure(ex) =>
             log.error("Dependency extraction failed", ex)
             throw ex

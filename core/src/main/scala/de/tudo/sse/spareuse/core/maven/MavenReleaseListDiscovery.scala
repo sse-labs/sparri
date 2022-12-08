@@ -26,6 +26,13 @@ trait MavenReleaseListDiscovery {
     getVersions(groupId, artifactId).map(_.toSeq)
   }
 
+  def getIdentifiersForLibrary(libraryIdentifier: String) : Try[Seq[MavenIdentifier]] = {
+    val groupId = libraryIdentifier.split(":")(0)
+    val artifactId = libraryIdentifier.split(":")(1)
+
+    getVersionsForLibrary(libraryIdentifier).map( versions  => versions.map( v => new MavenIdentifier(MavenRepoUri.toString, groupId, artifactId, v)))
+  }
+
   def createIdentifierIterator(groupId: String, artifactId: String): Try[Iterable[MavenIdentifier]] = {
     getVersions(groupId, artifactId)
       .map(versions => versions.map(version => new MavenIdentifier(MavenRepoUri.toString, groupId, artifactId, version)))

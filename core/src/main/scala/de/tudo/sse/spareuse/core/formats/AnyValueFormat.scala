@@ -1,16 +1,24 @@
 package de.tudo.sse.spareuse.core.formats
 
+import spray.json.{JsNumber, JsString, JsValue}
+
 trait AnyValueFormat {
 
-  def asNamedPropertyFormat(propertyName: String): NamedPropertyFormat = NamedPropertyFormat(propertyName, this)
+  def isValid(jsonValue: JsValue): Boolean
 
   def isBaseValue: Boolean = false
 }
 
-case object EntityReferenceFormat extends AnyValueFormat
 
+case class NamedPropertyFormat(propertyName: String,
+                               propertyFormat: AnyValueFormat,
+                               explanation: String = "") extends AnyValueFormat{
 
-case class NamedPropertyFormat(propertyName: String, propertyFormat: AnyValueFormat) extends AnyValueFormat
+  override def isValid(jsonValue: JsValue): Boolean = jsonValue match {
+    case _ => true
+  }
+
+}
 
 
 trait BaseValueFormat extends AnyValueFormat {
@@ -19,9 +27,36 @@ trait BaseValueFormat extends AnyValueFormat {
 
 }
 
-case object StringFormat extends BaseValueFormat
+case object EntityReferenceFormat extends BaseValueFormat {
 
 
-case object NumberFormat extends BaseValueFormat
+  override def isValid(jsonValue: JsValue): Boolean = jsonValue match {
+    case _ :JsString => true
+    case _ => false
+  }
 
-case object EmptyFormat extends BaseValueFormat
+}
+
+case object StringFormat extends BaseValueFormat {
+
+  override def isValid(jsonValue: JsValue): Boolean = jsonValue match {
+    case _ :JsString => true
+    case _ => false
+  }
+
+}
+
+case object NumberFormat extends BaseValueFormat {
+
+  override def isValid(jsonValue: JsValue): Boolean = jsonValue match {
+    case _ :JsNumber => true
+    case _ => false
+  }
+
+}
+
+case object EmptyFormat extends BaseValueFormat {
+
+  override def isValid(jsonValue: JsValue): Boolean = true
+
+}

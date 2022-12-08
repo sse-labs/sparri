@@ -31,7 +31,6 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
 
       // Support querying via query params (optional)
       parameters("kind".?, "parent".?, "language".?){ (kindOpt, parentOpt, languageOpt) =>
-        //TODO: May want to make sure parent artifact is present if filtered for !?
         if(kindOpt.isDefined && SoftwareEntityKind.fromString(kindOpt.get).isEmpty) complete(BadRequest, s"Not a valid entity kind: ${kindOpt.get}")
         else allEntitiesRouteImpl(limit, skip, kindOpt.flatMap(SoftwareEntityKind.fromString), parentOpt, languageOpt)
       }
@@ -73,6 +72,8 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
 
     log.debug(s"All entities requested (skip=$skip, limit=$limit). Filters: Kind=${queriedKind.getOrElse("None")}, Parent=${queriedParent.getOrElse("None")}, Language=${queriedLanguage.getOrElse("None")}")
 
+    //TODO: Use language query filter
+
     requestHandler.getAllEntities(limit, skip, queriedKind, queriedParent) match {
       case Success(entities) => complete(entities.toArray.toJson)
       case Failure(_) => complete(InternalServerError)
@@ -80,7 +81,13 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
   }
 
   private def singleEntityRouteImpl(entityName: String)(implicit request: HttpRequest): Route = {
-
+    log.debug(s"Single entity requested, name=$entityName.")
+    requestHandler.getEntity(entityName) match {
+      case Success(entity) => complete(entity.toJson)
+      case Failure(ex) =>
+        log.error("Failure while retrieving single entity information", ex)
+        complete(InternalServerError)
+    }
   }
 
   private def allEntityChildrenRouteImpl(entityName: String, limit: Int, skip: Int)(implicit request: HttpRequest): Route = {

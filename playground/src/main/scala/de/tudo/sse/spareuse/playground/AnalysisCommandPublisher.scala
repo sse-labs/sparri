@@ -16,12 +16,13 @@ object AnalysisCommandPublisher {
 
     writer.initialize()
 
-    val startCmd = RunnerCommand.toJson(StartRunCommand("mvn-constant-classes:1.0.0", "test", Set("org.springframework:spring-jms"), ""))
+    val startCmd = RunnerCommand.toJson(StartRunCommand("mvn-constant-classes:1.0.0", "test", Set("org.sonatype.tycho:maven-osgi-compiler-plugin", "org.sonatype.tycho:maven-osgi-test-plugin"), ""))
     val startCmd2 = RunnerCommand.toJson(StartRunCommand("mvn-dependencies:1.0.0", "test", Set("org.springframework:spring-jms!org.springframework:spring-jms:2.5.6.SEC03", "org.springframework:spring-jms!org.springframework:spring-jms:2.5.6"), "-no-transitive -use-jeka"))
+    val startCmd3 = RunnerCommand.toJson(StartRunCommand("mvn-constant-classes:1.0.0", "test", Set("com.google.code.gson:gson"), ""))
 
-    log.info(s"Publishing Cmd JSON: $startCmd")
+    log.info(s"Publishing Cmd JSON: $startCmd3")
 
-    writer.appendToQueue(startCmd)
+    writer.appendToQueue(startCmd3)
 
     log.info("Done Publishing cmd JSON.")
 
