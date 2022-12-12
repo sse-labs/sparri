@@ -47,6 +47,10 @@ case class GraphResultFormat(edgePropertyFormat: Set[NamedPropertyFormat],
 
   private val internalRep = toObjectFormat
 
+  def nodeObjectFormat: ObjectResultFormat = nodeObjRep
+
+  def edgeObjectFormat: ObjectResultFormat = edgeObjRep
+
   def toObjectFormat: ObjectResultFormat = ObjectResultFormat(Set(NamedPropertyFormat("nodes", ListResultFormat(nodeObjRep), nodeExplanation), NamedPropertyFormat("edges", ListResultFormat(edgeObjRep), edgeExplanation)))
   override def isValid(jsonValue: JsValue): Boolean = internalRep.isValid(jsonValue)
 

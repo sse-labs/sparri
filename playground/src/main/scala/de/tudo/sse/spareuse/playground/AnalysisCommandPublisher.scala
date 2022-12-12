@@ -20,10 +20,11 @@ object AnalysisCommandPublisher extends RunnerCommandJsonSupport{
     val startCmd = RunnerCommand("mvn-constant-classes:1.0.0", "test", Set("org.sonatype.tycho:maven-osgi-compiler-plugin", "org.sonatype.tycho:maven-osgi-test-plugin"), "").toJson.compactPrint
     val startCmd2 = RunnerCommand("mvn-dependencies:1.0.0", "test", Set("org.springframework:spring-jms!org.springframework:spring-jms:2.5.6.SEC03", "org.springframework:spring-jms!org.springframework:spring-jms:2.5.6"), "-no-transitive -use-jeka").toJson.compactPrint
     val startCmd3 = RunnerCommand("mvn-constant-classes:1.0.0", "test", Set("com.google.code.gson:gson"), "").toJson.compactPrint
+    val startCmd4 = RunnerCommand("mvn-partial-callgraphs:1.0.0", "test", Set("com.google.code.gson:gson!com.google.code.gson:gson:2.9.0"), "").toJson.compactPrint
 
-    log.info(s"Publishing Cmd JSON: $startCmd3")
+    log.info(s"Publishing Cmd JSON: $startCmd4")
 
-    writer.appendToQueue(startCmd3)
+    writer.appendToQueue(startCmd4)
 
     log.info("Done Publishing cmd JSON.")
 

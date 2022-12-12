@@ -122,12 +122,18 @@ package object postgresql {
 
     def id: Rep[Long] = column[Long]("ID", O.PrimaryKey, O.AutoInc)
 
-    def analysisRunID: Rep[Long] = column[Long]("ANALYSIS_ID")
+    def analysisRunID: Rep[Long] = column[Long]("ANALYSIS_RUN_ID")
 
-    def inputEntityID: Rep[Long] = column[Long]("INPUT_ID")
+    def inputEntityID: Rep[Long] = column[Long]("INPUT_ENTITY_ID")
 
     override def * : ProvenShape[AnalysisRunInput] =
       (id, analysisRunID, inputEntityID) <> ((AnalysisRunInput.apply _).tupled, AnalysisRunInput.unapply)
+
+    def analysisRun: ForeignKeyQuery[SoftwareAnalysisRuns, SoftwareAnalysisRunRepr] =
+      foreignKey("RUN_FK", analysisRunID, TableQuery[SoftwareAnalysisRuns])(_.id)
+
+    def inputEntity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
+      foreignKey("INPUT_FK", inputEntityID, TableQuery[SoftwareEntities])(_.id)
 
   }
 

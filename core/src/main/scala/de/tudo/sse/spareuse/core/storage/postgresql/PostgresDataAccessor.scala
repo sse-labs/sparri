@@ -82,16 +82,43 @@ class PostgresDataAccessor extends DataAccessor {
 
     getEntityRepr(ident, kind).flatMap { rootEntityRepr =>
 
+      val parentOptTry = getFullyResolvedParent(rootEntityRepr)
+
+      if(parentOptTry.isFailure) return Failure(parentOptTry.failed.get)
+
       // Resolve child entities only if needed
       val allChildEntities = if (SoftwareEntityKind.isLessSpecific(kind, resolutionScope))
         getAllChildEntitiesOf(rootEntityRepr.id, resolutionScope) else Success(Seq.empty)
 
       allChildEntities match {
         case Success(childEntities) =>
-          buildEntityObjectTree(Seq(rootEntityRepr) ++ childEntities, rootEntityRepr.id)
+          buildEntityObjectTree(Seq(rootEntityRepr) ++ childEntities, rootEntityRepr.id).map { finalEntity =>
+            if(parentOptTry.get.isDefined) finalEntity.setParent(parentOptTry.get.get)
+
+            finalEntity
+          }
+
         case Failure(ex) =>
           Failure(ex)
       }
+    }
+  }
+
+  private def getFullyResolvedParent(repr: SoftwareEntityRepr): Try[Option[SoftwareEntityData]] = Try {
+
+    def getReprById(id: Long): SoftwareEntityRepr = Await.result(db.run(entitiesTable.filter( e => e.id === id).take(1).result), simpleQueryTimeout).head
+
+
+    repr.parentId.map { parentId =>
+      val parentRepr = getReprById(parentId)
+
+      val parentParentOpt = getFullyResolvedParent(parentRepr).get
+
+      val parentEntity = buildEntities(Seq(parentRepr)).head
+
+      if(parentParentOpt.isDefined) parentEntity.setParent(parentParentOpt.get)
+
+      parentEntity
     }
   }
 
@@ -366,7 +393,10 @@ class PostgresDataAccessor extends DataAccessor {
     Await.ready(inputInsertAction, simpleQueryTimeout)
 
     val runResults: Seq[AnalysisResult] = Try {
-      run.results.map( r => AnalysisResult(-1, r.uid, newRunId, r.isRevoked, serializer.write(r.content).compactPrint)).toSeq
+      run.results.map( r => {
+        val content = serializer.write(r.content).compactPrint
+        AnalysisResult(-1, r.uid, newRunId, r.isRevoked, content)
+      }).toSeq
     } match {
       case Success(results) => results
       case Failure(ex) =>

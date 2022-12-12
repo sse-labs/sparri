@@ -1,12 +1,12 @@
 package de.tudo.sse.spareuse.core.formats.json
 
 import de.tudo.sse.spareuse.core.formats
-import de.tudo.sse.spareuse.core.formats.{AnyValueFormat, BaseValueFormat}
+import de.tudo.sse.spareuse.core.formats.{AnyValueFormat, BaseValueFormat, ListResultFormat, ObjectResultFormat}
 import de.tudo.sse.spareuse.core.model.analysis.GraphResult
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import spray.json.{DeserializationException, JsArray, JsBoolean, JsNumber, JsObject, JsString, JsValue, JsonWriter, enrichAny}
 
-import scala.reflect.runtime.universe.MethodSymbol
+import scala.reflect.runtime.universe.{MethodSymbol, TermSymbol}
 
 class CustomObjectWriter(format: AnyValueFormat) extends JsonWriter[Object] {
 
@@ -36,9 +36,16 @@ class CustomObjectWriter(format: AnyValueFormat) extends JsonWriter[Object] {
         (serializeKey(key, keyFormat), value.toJson(valueWriter))
       })
 
-    case gf@formats.GraphResultFormat(_, _, _, _) if obj.isInstanceOf[GraphResult] =>
+    case gf@formats.GraphResultFormat(edgeF, nodeF, _, _) if obj.isInstanceOf[GraphResult] =>
+      val graph = obj.asInstanceOf[GraphResult]
 
-      new CustomObjectWriter(gf.toObjectFormat).write(obj)
+      val nodeWriter = new CustomObjectWriter(ListResultFormat(gf.nodeObjectFormat))
+      val edgeWriter = new CustomObjectWriter(ListResultFormat(gf.edgeObjectFormat))
+
+      val nodesSerialized = nodeWriter.write(graph.nodes)
+      val edgesSerialized = edgeWriter.write(graph.edges)
+
+      JsObject(Map("nodes" -> nodesSerialized, "edges" -> edgesSerialized))
 
     case formats.ObjectResultFormat(props) =>
       val objectFieldValues = getObjectFieldMap(obj).filter( t => props.exists( p => p.propertyName.equalsIgnoreCase(t._1)))
@@ -68,9 +75,12 @@ class CustomObjectWriter(format: AnyValueFormat) extends JsonWriter[Object] {
    */
   private def getObjectFieldMap(obj: Object) :Map[String, Any] = {
     val rm = scala.reflect.runtime.currentMirror
-    val accessors = rm.classSymbol(obj.getClass).toType.members.collect {
-      case m: MethodSymbol if m.isGetter => m
-    }
+
+    val cs = rm.classSymbol(obj.getClass)
+    val tm = cs.toType.members
+
+
+    val accessors = tm.filter( s => s.isTerm && s.asTerm.isGetter).map(_.asTerm)
 
     val instanceMirror = rm.reflect(obj)
 

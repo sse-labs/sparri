@@ -23,12 +23,12 @@ object JavaConverter {
   }
 
   def toMethod(repr: SoftwareEntityRepr, methodData: JavaMethodRepr): JavaMethod = {
-    val paramTypeNames = methodData._4.split(",")
+    val paramTypeNames = if(!methodData._4.trim.isBlank) methodData._4.split(",") else Array.empty[String]
 
     if (paramTypeNames.length != methodData._3)
       throw new IllegalStateException("Corrupt database, parameter count does not match actual parameters")
 
-    new JavaMethod(repr.name, methodData._2, paramTypeNames, repr.repository)
+    new JavaMethod(repr.name, methodData._2, paramTypeNames.toSeq, repr.repository)
   }
 
   def toInvocation(repr: SoftwareEntityRepr, invokeData: JavaInvocationRepr): JavaInvokeStatement = {
