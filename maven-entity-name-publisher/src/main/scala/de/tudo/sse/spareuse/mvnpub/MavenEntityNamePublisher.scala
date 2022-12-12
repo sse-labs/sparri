@@ -3,9 +3,11 @@ package de.tudo.sse.spareuse.mvnpub
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.{Sink, Source}
 import de.tudo.sse.spareuse.core.maven.MavenIdentifier
+import de.tudo.sse.spareuse.core.model.entities.{MinerCommand, MinerCommandJsonSupport}
 import de.tudo.sse.spareuse.core.utils.rabbitmq.MqMessageWriter
 import de.tudo.sse.spareuse.core.utils.streaming.AsyncStreamWorker
 import de.tudo.sse.spareuse.mvnpub.maven.IndexProcessing
+import spray.json.enrichAny
 
 import java.net.URI
 import scala.collection.mutable
@@ -13,7 +15,8 @@ import scala.concurrent.Future
 
 class MavenEntityNamePublisher(config: MavenEntityPublisherConfig)
     extends IndexProcessing
-    with AsyncStreamWorker[MavenIdentifier] {
+    with AsyncStreamWorker[MavenIdentifier]
+    with MinerCommandJsonSupport {
 
   private final val printoutStepping: Int = 5000
 
@@ -47,7 +50,9 @@ class MavenEntityNamePublisher(config: MavenEntityPublisherConfig)
         log.info(s"Published  ${hashesSeen.size} entity names so far..")
       }
 
-      mqWriter.appendToQueue(ident.toString, Some(1))
+      val command = MinerCommand(Set(ident.toString), None)
+
+      mqWriter.appendToQueue(command.toJson.compactPrint, Some(1))
 
       hashesSeen.add(hash)
     }

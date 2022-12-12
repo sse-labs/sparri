@@ -1,6 +1,6 @@
 package de.tudo.sse.spareuse.execution
 
-import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, StartRunCommand}
+import de.tudo.sse.spareuse.core.model.analysis.RunnerCommand
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import de.tudo.sse.spareuse.execution.analyses.AnalysisImplementation
 
@@ -12,7 +12,7 @@ package object utils {
    * @param analysisCmd Command that failed the validation
    * @param cause Optional throwable that caused the validation to fail
    */
-  class AnalysisRunNotPossibleException(reason: String, analysisCmd: StartRunCommand, cause: Option[Throwable] = None) extends Throwable {
+  class AnalysisRunNotPossibleException(reason: String, analysisCmd: RunnerCommand, cause: Option[Throwable] = None) extends Throwable {
 
     override def getMessage: String = s"Execution of ${analysisCmd.analysisName} not possible: $reason" + cause.map(c => s" (Caused by ${c.getClass}").getOrElse("")
 
@@ -22,13 +22,13 @@ package object utils {
 
   object AnalysisRunNotPossibleException {
 
-    def apply(reason: String, cause: Throwable)(implicit cmd: StartRunCommand): AnalysisRunNotPossibleException =
+    def apply(reason: String, cause: Throwable)(implicit cmd: RunnerCommand): AnalysisRunNotPossibleException =
       new AnalysisRunNotPossibleException(reason, cmd, Some(cause))
 
-    def apply(reason: String)(implicit cmd: StartRunCommand): AnalysisRunNotPossibleException =
+    def apply(reason: String)(implicit cmd: RunnerCommand): AnalysisRunNotPossibleException =
       new AnalysisRunNotPossibleException(reason, cmd, None)
 
-    def apply(reason: String, cmd: StartRunCommand, cause: Throwable): AnalysisRunNotPossibleException =
+    def apply(reason: String, cmd: RunnerCommand, cause: Throwable): AnalysisRunNotPossibleException =
       new AnalysisRunNotPossibleException(reason, cmd, Some(cause))
 
   }
@@ -46,7 +46,7 @@ package object utils {
    * @param inputEntities The set of (resolved) input entities
    * @param analysisImpl A reference to the analysis implementation
    */
-  case class ValidStartRunCommand(startCmd: StartRunCommand,
+  case class ValidStartRunCommand(startCmd: RunnerCommand,
                                        inputEntities: Set[SoftwareEntityData],
                                        analysisImpl: AnalysisImplementation) extends ValidRunnerCommand {
     override val runnerCommand: RunnerCommand = startCmd

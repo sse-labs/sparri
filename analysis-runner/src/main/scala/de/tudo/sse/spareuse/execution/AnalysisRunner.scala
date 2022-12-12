@@ -4,15 +4,19 @@ import akka.stream.scaladsl.Sink
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
 import de.tudo.sse.spareuse.core.formats.json.CustomObjectWriter
+import de.tudo.sse.spareuse.core.maven.MavenIdentifier
 import de.tudo.sse.spareuse.core.model.{AnalysisResultData, AnalysisRunData}
-import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, StartRunCommand}
+import de.tudo.sse.spareuse.core.model.analysis.RunnerCommand
+import de.tudo.sse.spareuse.core.model.entities.{MinerCommand, MinerCommandJsonSupport}
 import de.tudo.sse.spareuse.core.storage.DataAccessor
 import de.tudo.sse.spareuse.core.storage.postgresql.PostgresDataAccessor
+import de.tudo.sse.spareuse.core.utils.http
 import de.tudo.sse.spareuse.core.utils.rabbitmq.{MqMessageWriter, MqStreamIntegration}
 import de.tudo.sse.spareuse.core.utils.streaming.AsyncStreamWorker
 import de.tudo.sse.spareuse.execution.analyses.impl.{MvnConstantClassAnalysisImpl, MvnDependencyAnalysisImpl, MvnPartialCallgraphAnalysisImpl}
 import de.tudo.sse.spareuse.execution.analyses.{AnalysisImplementation, AnalysisRegistry}
 import de.tudo.sse.spareuse.execution.utils.{AnalysisRunNotPossibleException, ValidRunnerCommand, ValidStartRunCommand}
+import spray.json.{enrichAny, enrichString}
 
 import java.time.LocalDateTime
 import scala.concurrent.Future
@@ -20,7 +24,8 @@ import scala.util.{Failure, Success, Try}
 
 class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
   extends MqStreamIntegration
-  with AsyncStreamWorker[String] {
+  with AsyncStreamWorker[String]
+  with MinerCommandJsonSupport {
 
   private val entityQueueWriter = new MqMessageWriter(configuration.toWriterConfig)
 
@@ -64,7 +69,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
   }
 
   private def parseCommand(msg: String): Option[RunnerCommand] = {
-    RunnerCommand.fromJson(msg) match {
+    Try(msg.parseJson.convertTo[RunnerCommand]) match {
       case Success(cmd) => Some(cmd)
       case Failure(ex) =>
         log.error(s"Message from queue could not be parsed: $msg", ex)
@@ -89,13 +94,13 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
   private def validatePrerequisites(command: RunnerCommand): Option[ValidRunnerCommand] = {
     Try {
 
-      command match {
-        case startCmd: StartRunCommand if isSyntaxValid(startCmd) =>
-          implicit val theCommand: StartRunCommand = startCmd
 
-          log.debug(s"Validating command: User ${startCmd.userName} requests to start analysis ${startCmd.analysisName}.")
+        if (isSyntaxValid(command)) {
+          implicit val theCommand: RunnerCommand = command
 
-          val parts = startCmd.analysisName.split(":")
+          log.debug(s"Validating command: User ${command.userName} requests to start analysis ${command.analysisName}.")
+
+          val parts = command.analysisName.split(":")
           val analysisName = parts(0)
           val analysisVersion = parts(1)
 
@@ -106,35 +111,71 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
             // Check that analysis is registered in DB. Should always be the case
             ensureAnalysisIsRegistered(analysisName, analysisVersion)
 
-            // Filter input entity names for ones that are actually present in DB
-            val validEntityNames = filterValidEntityNames(startCmd.inputEntityNames, theAnalysisImpl)
+            // Filter out all input entities for which results already exist (if analysis is batch processing)
+            var namesToProcess = filterUnprocessedEntityNames(command.inputEntityNames, theAnalysisImpl)
 
-            // Check whether parts of the results have already been computed, remove those inputs (if possible)
-            val nonProcessedValidNames = filterUnprocessedEntityNames(validEntityNames, theAnalysisImpl)
+            // If some inputs are not indexed yet:
+            //  - For Batch analyses we can execute the analysis now with all indexed inputs, and queue non-indexed inputs for mining.
+            //    After the mining is done, a callback will re-trigger the analysis for the newly indexed inputs. If there are inputs
+            //    that are not indexed and not valid (i.e. mining will never succeed), we print a warning and not queue them for mining.
+            //  - For Non-Batch analyses we have to queue all missing inputs for mining and wait for the callback to re-trigger the
+            //    analysis. If there are inputs that are not indexed and not valid (i.e. mining will never succeed), we can throw a
+            //    terminal error, since the analysis can never be executed with this input configuration.
+            val entityNamesNotIndexed = getEntityNamesNotInDb(namesToProcess, theAnalysisImpl)
+            val entityNamesToQueue = entityNamesNotIndexed.filter { n =>
+              val isValidName = isValidEntityName(n)
+
+              if (!isValidName) {
+                log.warn("Input is not a valid entity name: " + n)
+
+                if (!theAnalysisImpl.inputBatchProcessing)
+                  throw new AnalysisRunNotPossibleException("Set of inputs contains an invalid entity name that can never be resolved: " + n, command)
+              }
+
+              isValidName
+            }
+
+            if (entityNamesToQueue.nonEmpty) {
+              // Will re-trigger this analysis, which works fine both in batch and non-batch mode
+              val minerCommand = MinerCommand(entityNamesToQueue, Some(command))
+
+              entityQueueWriter.appendToQueue(minerCommand.toJson.compactPrint, Some(2))
+
+              if (!theAnalysisImpl.inputBatchProcessing) {
+                log.warn("Analysis will be rescheduled once input mining is done.")
+                return None
+              }
+            }
+
+
+            namesToProcess = namesToProcess.diff(entityNamesNotIndexed)
 
             // Check that after all non-indexed names have been removed, there are in fact inputs left to process.
-            if (nonProcessedValidNames.isEmpty) {
-              throw new AnalysisRunNotPossibleException("No valid entity names that have not yet been processed left in input", startCmd)
+            if (namesToProcess.isEmpty) {
+              log.warn("No inputs left to process at this time")
+              return None
             }
 
             // Download entity information for the analysis from the DB
-            Try(nonProcessedValidNames.map(name => dataAccessor.getEntity(name, theAnalysisImpl.inputEntityKind, theAnalysisImpl.requiredInputResolutionLevel).get)) match {
+            Try(namesToProcess.map(name => dataAccessor.getEntity(name, theAnalysisImpl.inputEntityKind, theAnalysisImpl.requiredInputResolutionLevel).get)) match {
               case Success(entities) =>
                 // Finally check that the analysis can in fact be executed with those parameters
-                if (theAnalysisImpl.executionPossible(entities.toSeq, startCmd.configurationRaw)) {
+                if (theAnalysisImpl.executionPossible(entities.toSeq, command.configurationRaw)) {
                   log.debug(s"Command successfully validated, analysis $analysisName:$analysisVersion will be started shortly.")
-                  ValidStartRunCommand(startCmd, entities, theAnalysisImpl)
+                  ValidStartRunCommand(command, entities, theAnalysisImpl)
                 } else throw AnalysisRunNotPossibleException("Given configuration not executable")
               case Failure(ex) =>
                 throw AnalysisRunNotPossibleException("Failed to download entities from database", ex)
             }
 
 
-          } else { throw AnalysisRunNotPossibleException("No matching analysis implementation registered.") }
+          } else {
+            throw AnalysisRunNotPossibleException("No matching analysis implementation registered.")
+          }
 
-        case sth@_ => throw new IllegalArgumentException("Unsupported runner command type: " + sth.getClass)
-      }
-
+        } else {
+          throw AnalysisRunNotPossibleException("Command syntax invalid")(command)
+        }
     } match {
       case Success(validRunnerCommand) =>
         Some(validRunnerCommand)
@@ -201,7 +242,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
   // |                       COMMAND VALIDATION UTILS                         |
   // --------------------------------------------------------------------------
 
-  private def isSyntaxValid(cmd: StartRunCommand): Boolean = {
+  private def isSyntaxValid(cmd: RunnerCommand): Boolean = {
     val nameParts = cmd.analysisName.split(":")
 
     if(nameParts.length != 2 || nameParts(0).isBlank || nameParts(1).isBlank) false
@@ -211,35 +252,12 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
   }
 
-
-  private def filterValidEntityNames(inputEntityNames: Set[String],
-                                  analysisImpl: AnalysisImplementation)(implicit cmd: StartRunCommand): Set[String] = {
-
-    val invalidEntityNames = inputEntityNames.filterNot(name => dataAccessor.hasEntity(name, analysisImpl.inputEntityKind))
-
-    // Queue the requested entities that are not yet in DB for priority processing
-    invalidEntityNames.foreach { entityName =>
-      log.warn(s"Input name $entityName of expected kind ${analysisImpl.inputEntityKind} not found.")
-
-      entityQueueWriter.appendToQueue(entityName, priority = Some(2))
-    }
-
-
-    if (invalidEntityNames.nonEmpty && analysisImpl.inputBatchProcessing) {
-      // This means individual entity names can be removed from the input list
-      log.warn(s" ${invalidEntityNames.size} invalid input names have been removed for processing.")
-      inputEntityNames.diff(invalidEntityNames)
-    } else if (invalidEntityNames.nonEmpty) {
-      // This means no entities can be removed without corrupting the result, so execution may not proceed
-      log.error(s"Not all inputs could be found in the DB, analysis cannot be executed.")
-      throw AnalysisRunNotPossibleException("Not all required inputs found in database")
-    } else {
-      // This means all entities are present, so we can proceed either way
-      inputEntityNames
-    }
+  private def getEntityNamesNotInDb(inputEntityNames: Set[String], analysisImpl: AnalysisImplementation): Set[String] = {
+    inputEntityNames.filterNot(name => dataAccessor.hasEntity(name, analysisImpl.inputEntityKind))
   }
 
-  private def filterUnprocessedEntityNames(inputEntityNames: Set[String], analysisImpl: AnalysisImplementation)(implicit cmd: StartRunCommand): Set[String] = {
+
+  private def filterUnprocessedEntityNames(inputEntityNames: Set[String], analysisImpl: AnalysisImplementation)(implicit cmd: RunnerCommand): Set[String] = {
     dataAccessor.getAnalysisRuns(analysisImpl.name, analysisImpl.version) match {
       case Success(runData) =>
         if (analysisImpl.inputBatchProcessing) {
@@ -255,7 +273,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
     }
   }
 
-  private def ensureAnalysisIsRegistered(analysisName: String, analysisVersion: String)(implicit cmd: StartRunCommand): Unit = {
+  private def ensureAnalysisIsRegistered(analysisName: String, analysisVersion: String)(implicit cmd: RunnerCommand): Unit = {
     dataAccessor.getAnalysisData(analysisName, analysisVersion) match {
       case Success(analysisData) if analysisData.isRevoked =>
         log.warn(s"Analysis $analysisName:$analysisVersion has been revoked, results may not be valid.")
@@ -264,5 +282,37 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
         throw AnalysisRunNotPossibleException("Analysis not registered in database,", ex)
       case _ =>
     }
+  }
+
+
+  private def isValidEntityName(name: String): Boolean = {
+
+    if(name.isBlank) return false
+
+    val parts = name.split("!")
+    if(parts.isEmpty){ false }
+    else if (parts.length == 1){
+      // Library only, so ensure we have G:A format
+      val ga = parts(0).split(":")
+
+      if(ga.length == 2 && !ga(0).isBlank && !ga(1).isBlank){
+        val libUri = MavenIdentifier(MavenIdentifier.DefaultRepository, ga(0), ga(1), "").toLibLocation
+        http.checkUriExists(libUri.toString)
+      } else {
+        false
+      }
+
+    } else {
+      // Program, so ensure we have G:A!G:A:V
+      val gav = parts(1).split(":")
+      if(gav.length == 3 && gav.forall(s => !s.isBlank)){
+        val artifactUri = MavenIdentifier(MavenIdentifier.DefaultRepository, gav(0), gav(1), gav(2)).toPomLocation
+        http.checkUriExists(artifactUri.toString)
+      } else {
+        false
+      }
+    }
+
+
   }
 }

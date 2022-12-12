@@ -2,23 +2,28 @@ package de.tudo.sse.spareuse.mvnem
 
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.{Sink, Source}
+import spray.json.{enrichAny, enrichString}
 import de.tudo.sse.spareuse.core.maven.{MavenIdentifier, MavenJarDownloader, MavenOnlineJar, MavenReleaseListDiscovery}
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaLibrary, JavaProgram}
+import de.tudo.sse.spareuse.core.model.entities.{MinerCommand, MinerCommandJsonSupport}
 import de.tudo.sse.spareuse.core.model.entities.conversion.OPALJavaConverter
 import de.tudo.sse.spareuse.core.opal.OPALProjectHelper
 import de.tudo.sse.spareuse.core.utils.http.HttpDownloadException
-import de.tudo.sse.spareuse.core.utils.rabbitmq.MqStreamIntegration
+import de.tudo.sse.spareuse.core.utils.rabbitmq.{MqMessageWriter, MqStreamIntegration}
 import de.tudo.sse.spareuse.core.utils.streaming.AsyncStreamWorker
 import de.tudo.sse.spareuse.mvnem.storage.EntityMinerStorageAdapter
 import de.tudo.sse.spareuse.mvnem.storage.impl.PostgresStorageAdapter
 
+import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.language.implicitConversions
 import scala.util.{Failure, Success, Try}
 
 class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     extends MqStreamIntegration
     with AsyncStreamWorker[String]
-    with MavenReleaseListDiscovery {
+    with MavenReleaseListDiscovery
+    with MinerCommandJsonSupport {
 
   override val workerName: String = "maven-entity-miner"
 
@@ -26,14 +31,18 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
   private final val opalProjectHelper = new OPALProjectHelper()
   private final val storageAdapter: EntityMinerStorageAdapter = new PostgresStorageAdapter()(streamMaterializer.executionContext)
 
+  private final val analysisQueueWriter = new MqMessageWriter(configuration.toWriterConfig)
+
 
   override def initialize(): Unit = {
     storageAdapter.initialize()
+    analysisQueueWriter.initialize()
   }
 
   override def shutdown(): Unit = {
     downloader.shutdown()
     storageAdapter.shutdown()
+    analysisQueueWriter.shutdown()
     super.shutdown()
   }
 
@@ -41,65 +50,62 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
   override protected def buildStreamPipeline(source: Source[String, NotUsed]): Future[Done] = {
     source
-      .flatMapConcat(msg => processMessage(msg))
-      .filter(jarFileOpt => jarFileOpt.isDefined)
-      .map(jarFileOpt => transform(jarFileOpt.get))
-      .filter(storableOpt => storableOpt.isDefined)
-      .map(storableOpt => storableOpt.get)
+      .map(getJarsForMessage)
+      .map(extractEntities)
       .runWith(buildStorageSink())(streamMaterializer)
   }
 
+  private def getJarsForMessage(message: String): ResolvedMinerCommand = {
 
-  /**
-   * Processes a message received from the queue into a JAR file with an open input stream ready for consumption. May return
-   * None if the message was a remote control message, or an artifact with no associate JAR file.
-   * @param message String message received from the queue
-   * @return Either a JAR file representation, or None if the message was a remote control message
-   */
-  private def processMessage(message: String): Source[Option[MavenOnlineJar], NotUsed] = {
+    val command = Try(message.parseJson.convertTo[MinerCommand]) match {
+      case Success(mc) => mc
+      case Failure(_) => MinerCommand(Set(message), None) //TODO: This is convenience to support old queue format
+    }
 
-    // Very minimal remote control capabilities. Commands can be inserted via the MessageQueue (high prio msgs), need
-    // to be prefixed with "[[MinerCommand]]". All other message will be interpreted as library names.
-    val minerCommandPrefix = "[[MinerCommand]]"
-    def isApplicationCommand(s: String): Boolean = s.startsWith(minerCommandPrefix)
-    def getCommand(s: String): String = s.replace(minerCommandPrefix, "")
+    val allIdentifiers = command.entityReferences.map(ref => (ref, messageToIdentifiers(ref))).flatMap {
+      case (ref, Some(identifiers)) =>
+        log.info(s"${identifiers.size} identifiers found for message $ref")
+        identifiers
+      case (ref, None) =>
+        log.warn(s"No valid GA, GAV or UID reference: $ref")
+        Set.empty
+    }
 
-    if(isApplicationCommand(message)){
-
-      getCommand(message).toLowerCase match {
-        case "stop" => streamKillSwitch.shutdown()
-        case cmd@_ =>
-          log.warn(s"Unknown application command: $cmd")
-      }
-
-      Source.empty
-    } else {
-
-      messageToIdentifiers(message) match {
-        case Some(identifiers) =>
-
-          log.info(s"${identifiers.size} identifiers found for message $message")
-
-          Source.fromIterator(() => identifiers.map{ ident =>
-            downloader.downloadJar(ident) match {
-              case Success(jarFile) => Some(jarFile)
-              case Failure(HttpDownloadException(404, _, _)) =>
-                // Do nothing when JAR does not exist
-                None
-              case Failure(ex) =>
-                log.error(s"Failed to download JAR file for ${ident.toUniqueString}", ex)
-                None
-            }
-          }.iterator)
-
-
-        case None =>
-          log.warn(s"No valid GA, GAV or UID message: $message")
-          Source.empty
+    val allJars = allIdentifiers.flatMap { ident =>
+      downloader.downloadJar(ident) match {
+        case Success(jarFile) => Some(jarFile)
+        case Failure(HttpDownloadException(404, _, _)) =>
+          // Do nothing when JAR does not exist
+          None
+        case Failure(ex) =>
+          log.error(s"Failed to download JAR file for ${ident.toUniqueString}", ex)
+          None
       }
     }
 
+    ResolvedMinerCommand(command, allJars)
   }
+
+  def extractEntities(command: ResolvedMinerCommand): TransformedMinerCommand = {
+    val entities = command.jars.flatMap(transform)
+
+    TransformedMinerCommand(command.cmd, entities)
+  }
+
+  def storeEntities(command: TransformedMinerCommand): Future[Unit] = {
+    val f: Future[Unit] = Future.sequence(command.entities.map(store)).map( _ => {})
+
+    f.onComplete { _ =>
+      if(command.cmd.analysisToTrigger.isDefined){
+        val analysisCommand = command.cmd.analysisToTrigger.get
+        log.info(s"Rescheduling analysis ${analysisCommand.analysisName} after mining of ${analysisCommand.inputEntityNames.size} input(s) has been completed.")
+        analysisQueueWriter.appendToQueue(analysisCommand.toJson.compactPrint)
+      }
+    }
+
+    f
+  }
+
 
   /**
    * Method that extracts the program identifiers to process for a given message. The miner processes plain string messages,
@@ -186,21 +192,28 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     result
   }
 
-  private def store(data: JavaProgram): Future[Unit] =
+  private def store(data: JavaProgram): Future[Unit] = {
+    log.info("Storing program " + data.name + " ...")
     storageAdapter.storeJavaProgram(data).map(_ => ())(streamMaterializer.executionContext)
+  }
 
-  private[mvnem] def buildStorageSink(): Sink[JavaProgram, Future[Done]] = {
+  private[mvnem] def buildStorageSink(): Sink[TransformedMinerCommand, Future[Done]] = {
     Sink.foreachAsync(configuration.storageParallel) { data =>
 
-      store(data).andThen {
+      storeEntities(data).andThen {
         case Success(_) =>
-          log.info(s"Successfully stored ${data.name}")
+          val label = if (data.entities.size == 1) data.entities.head.name else s"${data.entities.size} program(s)"
+          log.info(s"Successfully stored $label for command")
         case Failure(ex) =>
-          log.error(s"Failed to store ${data.name}", ex)
+          log.error(s"Failed to store ${data.entities.size} program(s) for command ${data.cmd}", ex)
       }(streamMaterializer.executionContext)
 
     }
   }
+
+
+  case class ResolvedMinerCommand(cmd: MinerCommand, jars: Set[MavenOnlineJar])
+  case class TransformedMinerCommand(cmd:MinerCommand, entities: Set[JavaProgram])
 
 
 }
