@@ -15,6 +15,7 @@ import slick.jdbc.PostgresProfile.api._
 import spray.json.JsonWriter
 
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.util.UUID
 import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
@@ -419,7 +420,14 @@ class PostgresDataAccessor extends DataAccessor {
     val runRepr: SoftwareAnalysisRunRepr = getRunRepr(runUid)
     setRunState(runRepr.id, RunState.Finished.id)
 
-    //TODO: Set Run Logs + Timestamp
+    val newTimeStamp = timeStamp.format(DateTimeFormatter.ISO_DATE_TIME)
+    val logsString = logs.mkString(";;;")
+
+    val updateTimeStampAction = db.run(analysisRunsTable.filter(r => r.uid === runUid).map(r => r.timestamp).update(newTimeStamp))
+    val updateLogsAction = db.run(analysisRunsTable.filter(r => r.uid === runUid).map(r => r.logs).update(logsString))
+
+    Await.ready(updateTimeStampAction, simpleQueryTimeout)
+    Await.ready(updateLogsAction, simpleQueryTimeout)
 
     val runResults: Seq[AnalysisResult] = Try {
       results.map(r => {
@@ -440,7 +448,8 @@ class PostgresDataAccessor extends DataAccessor {
     val analysisId = getAnalysisRepr(analysisName, analysisVersion).id
 
     // Insert run
-    val runRepr = SoftwareAnalysisRunRepr(-1, getFreshRunUuid(), runConfig, RunState.Created.id, isRevoked = false, analysisId)
+    val timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME)
+    val runRepr = SoftwareAnalysisRunRepr(-1, getFreshRunUuid(), runConfig, RunState.Created.id, isRevoked = false, analysisId, "", timestamp)
     val newRunId = Await.result(db.run(idReturningAnalysisRunTable += runRepr), simpleQueryTimeout)
 
     // Connect inputs to run

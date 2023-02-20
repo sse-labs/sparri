@@ -7,6 +7,9 @@ import de.tudo.sse.spareuse.core.storage.postgresql.ResultType.{BaseResult, Grap
 import slick.lifted.{ForeignKeyQuery, ProvenShape, Tag}
 import slick.jdbc.PostgresProfile.api._
 
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
+
 
 package object postgresql {
 
@@ -82,13 +85,13 @@ package object postgresql {
       foreignKey("FORMAT_FK", formatId, TableQuery[ResultFormats])(_.id)
   }
 
-  case class SoftwareAnalysisRunRepr(id: Long, uid:String, config: String, state: Int, isRevoked: Boolean, parentId: Long){
+  case class SoftwareAnalysisRunRepr(id: Long, uid:String, config: String, state: Int, isRevoked: Boolean, parentId: Long, logs: String, timestamp: String){
 
     def toAnalysisRunData(analysisName: String, analysisVersion: String, inputs: Set[SoftwareEntityData] = Set.empty,
                           results: Set[AnalysisResultData] = Set.empty): AnalysisRunData = {
-      //TODO: Timestamp, logs
       val rState = RunState(state)
-      AnalysisRunData(uid, null, Array.empty, config, rState, isRevoked, inputs, results, analysisName, analysisVersion)
+      AnalysisRunData(uid, LocalDateTime.from(DateTimeFormatter.ISO_DATE_TIME.parse(timestamp)), logs.split(";;;"),
+        config, rState, isRevoked, inputs, results, analysisName, analysisVersion)
     }
 
   }
@@ -96,9 +99,6 @@ package object postgresql {
   class SoftwareAnalysisRuns(tag: Tag) extends Table[SoftwareAnalysisRunRepr](tag, "analysisruns"){
 
     def id: Rep[Long] = column[Long]("ID", O.PrimaryKey, O.AutoInc)
-
-    //TODO: Timestamp
-    //TODO: Logs
 
     def uid: Rep[String] = column[String]("UID", O.Unique)
 
@@ -110,9 +110,14 @@ package object postgresql {
 
     def parentID: Rep[Long] = column[Long]("ANALYSIS_ID")
 
+    def logs: Rep[String] = column[String]("LOGS")
+
+    def timestamp: Rep[String] = column[String]("TIMESTAMP")
+
 
     override def * : ProvenShape[SoftwareAnalysisRunRepr] =
-      (id, uid, configuration, state, isRevoked, parentID) <> ((SoftwareAnalysisRunRepr.apply _).tupled, SoftwareAnalysisRunRepr.unapply)
+      (id, uid, configuration, state, isRevoked, parentID, logs, timestamp) <>
+        ((SoftwareAnalysisRunRepr.apply _).tupled, SoftwareAnalysisRunRepr.unapply)
 
     def parent: ForeignKeyQuery[SoftwareAnalyses, SoftwareAnalysisRepr] =
       foreignKey("ANALYSIS_FK", parentID, TableQuery[SoftwareAnalyses])(_.id)
