@@ -23,7 +23,7 @@ lazy val mergeStrategySettings = assemblyMergeStrategy := {
 }
 
 lazy val root = (project in file("."))
-	.aggregate(core, `maven-entity-name-publisher`, `maven-entity-miner`, webapi, `analysis-runner`)
+	.aggregate(core, `maven-entity-name-publisher`, `maven-entity-miner`, webapi, `analysis-runner`, evaluation)
 
 lazy val core = (project in file("core"))
 	.settings(
@@ -114,6 +114,8 @@ lazy val webapi = (project in file("webapi"))
 
 		docker / imageNames := Seq(ImageName(s"cf-webapi:latest"))
 	)
+
+lazy val evaluation = (project in file("evaluation")).dependsOn(core).settings( libraryDependencies ++= Seq(dependencies.logback))
 	
 lazy val dependencies = new {
 

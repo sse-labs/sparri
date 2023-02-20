@@ -7,7 +7,7 @@ import scala.util.Try
 
 class WebapiConfig private(val bindHost: String,
                            val bindPort: Int) {
-  def asMinerQueuePublishConfig: MqDirectQueuePublishConfiguration = ???
+  def asMinerQueuePublishConfig: MqDirectQueuePublishConfiguration = ??? // TODO: MQ Configs!
   def asAnalysisQueuePublishConfig: MqDirectQueuePublishConfiguration = ???
 }
 

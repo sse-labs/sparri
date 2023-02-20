@@ -1,16 +1,19 @@
 package de.tudo.sse.classfilefeatures.webapi.core
 
 import de.tudo.sse.classfilefeatures.webapi.WebapiConfig
-import de.tudo.sse.classfilefeatures.webapi.model.{EntityRepr, genericEntityToEntityRepr, toEntityRepr}
+import de.tudo.sse.classfilefeatures.webapi.model.requests.ExecuteAnalysisRequest
+import de.tudo.sse.classfilefeatures.webapi.model.{AnalysisRunRepr, EntityRepr, genericEntityToEntityRepr, toEntityRepr, toRunRepr}
 import de.tudo.sse.spareuse.core.utils.rabbitmq.MqMessageWriter
-import de.tudo.sse.spareuse.core.model.SoftwareEntityKind
+import de.tudo.sse.spareuse.core.model.{RunState, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
+import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, RunnerCommandJsonSupport}
 import de.tudo.sse.spareuse.core.storage.DataAccessor
 import org.slf4j.{Logger, LoggerFactory}
+import spray.json.enrichAny
 
 import scala.util.{Failure, Success, Try}
 
-class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor){
+class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor) extends RunnerCommandJsonSupport {
 
   private val log: Logger = LoggerFactory.getLogger(getClass)
 
@@ -55,6 +58,55 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
 
   def getEntity(entityName: String): Try[EntityRepr] = {
     dataAccessor.getEntity(entityName).map(toEntityRepr)
+  }
+
+  def getAllResultsFor(entityName: String, analysisFilter: Option[String], limit: Int, skip: Int): Try[Any] = Try {
+    val analysisNameAndVersionOpt = analysisFilter.map( s => {
+      val parts = s.split(":")
+      (parts(0).trim, parts(1).trim)
+    })
+
+    dataAccessor.getResultsFor(entityName, analysisNameAndVersionOpt, limit, skip).get.map(???) //TODO: Design API repr
+  }
+
+  def getRun(analysisName: String, analysisVersion: String, runId: String): Try[AnalysisRunRepr] = {
+    dataAccessor
+      .getAnalysisRun(analysisName, analysisVersion, runId, includeResults = false)
+      .map(toRunRepr)
+  }
+
+  def getRunIdIfPresent(analysisName: String, analysisVersion: String, request: ExecuteAnalysisRequest): Try[Option[String]] = {
+    dataAccessor.getAnalysisRuns(analysisName, analysisVersion) match {
+      case Success(runs) =>
+        Success(
+          runs.find{ r =>
+            r.configuration.equals(request.Configuration) &&
+            r.inputs.map(_.uid).equals(request.Inputs.toSet) &&
+            r.state.equals(RunState.Finished)
+          }.map(_.uid)
+        )
+      case Failure(ex) =>
+        log.error(s"Failed to retrieve runs from DB for $analysisName:$analysisVersion", ex)
+        Failure(ex)
+    }
+  }
+
+  def triggerNewAnalysisRun(analysisName: String, analysisVersion: String, request: ExecuteAnalysisRequest): Try[String] = Try {
+
+    // Create new empty record for analysis run
+    val newId = dataAccessor.storeEmptyAnalysisRun(analysisName, analysisVersion, request.Configuration, request.Inputs.toSet).get
+
+    // Queue run execution
+    val name = s"$analysisName:$analysisVersion"
+    val command = RunnerCommand(name, newId, request.User.getOrElse("Anonymous"), request.Inputs.toSet, request.Configuration)
+
+    val writer = new MqMessageWriter(configuration.asAnalysisQueuePublishConfig)
+    writer.initialize()
+    writer.appendToQueue(command.toJson.compactPrint)
+    writer.shutdown()
+
+    newId
+
   }
 
   def processEnqueueLibraryRequest(libraryName: String): Boolean = {

@@ -1,6 +1,6 @@
 package de.tudo.sse.spareuse.core.storage
 
-import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData, SoftwareEntityKind}
+import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData, RunState, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaProgram
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import de.tudo.sse.spareuse.core.storage.postgresql.ResultType.{BaseResult, GraphResult, ListResult, MapResult, ObjectResult}
@@ -82,12 +82,13 @@ package object postgresql {
       foreignKey("FORMAT_FK", formatId, TableQuery[ResultFormats])(_.id)
   }
 
-  case class SoftwareAnalysisRunRepr(id: Long, uid:String, config: String, isRevoked: Boolean, parentId: Long){
+  case class SoftwareAnalysisRunRepr(id: Long, uid:String, config: String, state: Int, isRevoked: Boolean, parentId: Long){
 
     def toAnalysisRunData(analysisName: String, analysisVersion: String, inputs: Set[SoftwareEntityData] = Set.empty,
                           results: Set[AnalysisResultData] = Set.empty): AnalysisRunData = {
-      //TODO: Timestamp, logs, results if requested
-      AnalysisRunData(uid, null, Array.empty, config, isRevoked, inputs, results, analysisName, analysisVersion)
+      //TODO: Timestamp, logs
+      val rState = RunState(state)
+      AnalysisRunData(uid, null, Array.empty, config, rState, isRevoked, inputs, results, analysisName, analysisVersion)
     }
 
   }
@@ -103,13 +104,15 @@ package object postgresql {
 
     def configuration: Rep[String] = column[String]("CONFIGURATION")
 
+    def state: Rep[Int] = column[Int]("STATE")
+
     def isRevoked: Rep[Boolean] = column[Boolean]("REVOKED")
 
     def parentID: Rep[Long] = column[Long]("ANALYSIS_ID")
 
 
     override def * : ProvenShape[SoftwareAnalysisRunRepr] =
-      (id, uid, configuration, isRevoked, parentID) <> ((SoftwareAnalysisRunRepr.apply _).tupled, SoftwareAnalysisRunRepr.unapply)
+      (id, uid, configuration, state, isRevoked, parentID) <> ((SoftwareAnalysisRunRepr.apply _).tupled, SoftwareAnalysisRunRepr.unapply)
 
     def parent: ForeignKeyQuery[SoftwareAnalyses, SoftwareAnalysisRepr] =
       foreignKey("ANALYSIS_FK", parentID, TableQuery[SoftwareAnalyses])(_.id)

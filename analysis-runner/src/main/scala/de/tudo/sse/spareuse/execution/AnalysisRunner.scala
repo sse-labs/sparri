@@ -5,7 +5,7 @@ import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
 import de.tudo.sse.spareuse.core.formats.json.CustomObjectWriter
 import de.tudo.sse.spareuse.core.maven.MavenIdentifier
-import de.tudo.sse.spareuse.core.model.{AnalysisResultData, AnalysisRunData}
+import de.tudo.sse.spareuse.core.model.{AnalysisResultData, AnalysisRunData, RunState}
 import de.tudo.sse.spareuse.core.model.analysis.RunnerCommand
 import de.tudo.sse.spareuse.core.model.entities.{MinerCommand, MinerCommandJsonSupport}
 import de.tudo.sse.spareuse.core.storage.DataAccessor
@@ -104,6 +104,10 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
           val analysisName = parts(0)
           val analysisVersion = parts(1)
 
+          // Assert that empty run entry has been created beforehand
+          if (!dataAccessor.hasAnalysisRun(analysisName, analysisVersion, command.runId))
+            throw new AnalysisRunNotPossibleException("Designated run id not in DB: " + command.runId, command)
+
           // Assert that the required analysis implementation is available. This is the fastest requirement to check.
           if (AnalysisRegistry.analysisImplementationAvailable(analysisName, analysisVersion)) {
             val theAnalysisImpl = AnalysisRegistry.getAnalysisImplementation(analysisName, analysisVersion)
@@ -191,6 +195,8 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
       log.info(s"Starting analysis ${cmd.analysisName} with ${inputEntities.size} inputs. Requested by user ${cmd.userName}.")
 
+      Try(dataAccessor.setRunState(cmd.runId, RunState.Running)) // Best effort: Try to set state to running, failure will not affect anything though
+
       Future {
         analysisImpl.executeAnalysis(inputEntities.toSeq, cmd.configurationRaw) match {
           case Success(results) =>
@@ -204,9 +210,9 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
             val runLogs = analysisImpl.getLogs
 
-            val run = AnalysisRunData(dataAccessor.getFreshRunUuid(), LocalDateTime.now(), runLogs.toArray, cmd.configurationRaw, isRevoked = false, inputEntities, runResults, analysisImpl.name, analysisImpl.version)
+            val dbRunId = cmd.runId
 
-            dataAccessor.storeAnalysisRun(run)(serializer) match {
+            dataAccessor.setRunResults(dbRunId, LocalDateTime.now(), runLogs.toArray, runResults)(serializer) match {
               case Success(_) =>
                 log.info(s"Successfully stored ${results.size} results.")
               case Failure(ex) =>
@@ -214,8 +220,8 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
             }
 
           case Failure(ex) =>
+            dataAccessor.setRunState(cmd.runId, RunState.Failed)
             log.error(s"Analysis execution failed.", ex)
-          //TODO: Error Handling
         }
       }(this.streamMaterializer.executionContext)
 
@@ -261,10 +267,14 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
     dataAccessor.getAnalysisRuns(analysisImpl.name, analysisImpl.version) match {
       case Success(runData) =>
         if (analysisImpl.inputBatchProcessing) {
-          val allInputsProcessed = runData.flatMap(_.inputs.map(_.uid))
+          val allInputsProcessed = runData
+            .filter(_.state.equals(RunState.Finished)) // Only consider non-failed runs!
+            .flatMap(_.inputs.map(_.uid))
           inputEntityNames.diff(allInputsProcessed)
         } else {
-          val allInputSets = runData.map(_.inputs.map(_.uid))
+          val allInputSets = runData
+            .filter(_.state.equals(RunState.Finished)) // Only consider non-failed runs!
+            .map(_.inputs.map(_.uid))
           if (allInputSets.contains(inputEntityNames)) Set.empty
           else inputEntityNames
         }

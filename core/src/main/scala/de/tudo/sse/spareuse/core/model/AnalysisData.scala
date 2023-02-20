@@ -1,6 +1,7 @@
 package de.tudo.sse.spareuse.core.model
 
 import de.tudo.sse.spareuse.core.formats.AnalysisResultFormat
+import de.tudo.sse.spareuse.core.model.RunState.RunState
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 
@@ -17,5 +18,16 @@ object AnalysisData {
   }
 }
 
-case class AnalysisRunData(uid: String, timestamp: LocalDateTime, logs: Array[String], configuration: String, isRevoked: Boolean,
+case class AnalysisRunData(uid: String, timestamp: LocalDateTime, logs: Array[String], configuration: String, state: RunState, isRevoked: Boolean,
                            inputs: Set[SoftwareEntityData], results: Set[AnalysisResultData], parentAnalysisName: String, parentAnalysisVersion: String)
+
+object RunState extends Enumeration {
+
+  type RunState = Value
+
+  val Created: Value = Value(0)
+  val Running: Value = Value(1)
+  val Failed: Value = Value(2)
+  val Finished: Value = Value(3)
+
+}

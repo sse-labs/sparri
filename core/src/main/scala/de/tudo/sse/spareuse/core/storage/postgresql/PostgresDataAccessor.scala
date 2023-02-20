@@ -1,7 +1,8 @@
 package de.tudo.sse.spareuse.core.storage.postgresql
 
 import de.tudo.sse.spareuse.core.formats.{AnyValueFormat, EmptyFormat, EntityReferenceFormat, GraphResultFormat, ListResultFormat, MapResultFormat, NamedPropertyFormat, NumberFormat, ObjectResultFormat, StringFormat}
-import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisRunData, SoftwareEntityKind}
+import de.tudo.sse.spareuse.core.model.RunState.RunState
+import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData, RunState, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
 import de.tudo.sse.spareuse.core.storage.DataAccessor
@@ -13,6 +14,7 @@ import slick.lifted.TableQuery
 import slick.jdbc.PostgresProfile.api._
 import spray.json.JsonWriter
 
+import java.time.LocalDateTime
 import java.util.UUID
 import scala.concurrent.Await
 import scala.concurrent.duration.DurationInt
@@ -363,7 +365,7 @@ class PostgresDataAccessor extends DataAccessor {
   }
 
   private def getAnalysisRuns(analysisId: Long, analysisName: String, analysisVersion: String, includeResults: Boolean): Set[AnalysisRunData] = {
-
+    //TODO: Results?
     val queryF = db
       .run(analysisRunsTable.filter(r => r.parentID === analysisId).result)
       .map { allRuns =>
@@ -381,30 +383,73 @@ class PostgresDataAccessor extends DataAccessor {
     getAnalysisRuns(analysisId, analysisName, analysisVersion, includeResults)
   }
 
-  override def storeAnalysisRun(run: AnalysisRunData)(implicit serializer: JsonWriter[Object]): Try[Unit] = Try {
-    val analysisId = getAnalysisRepr(run.parentAnalysisName, run.parentAnalysisVersion).id
+  override def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false): Try[AnalysisRunData] = Try {
+    val analysisId = getAnalysisRepr(analysisName, analysisVersion).id
 
-    val runRepr = SoftwareAnalysisRunRepr(-1, run.uid, run.configuration, run.isRevoked, analysisId)
-    val newRunId = Await.result(db.run(idReturningAnalysisRunTable += runRepr), simpleQueryTimeout)
+    //TODO: Results
 
-    val inputEntityIds = Await.result(db.run(entitiesTable.filter(e => e.qualifier inSet run.inputs.map(_.uid)).map(_.id).result), simpleQueryTimeout)
+    val queryF = db
+      .run(analysisRunsTable.filter(r => r.parentID === analysisId && r.uid === runUid).take(1).result)
+      .map(r => r.map(run => run.toAnalysisRunData(analysisName, analysisVersion, getInputsForRun(run.id))))(db.ioExecutionContext)
 
-    val inputInsertAction = db.run(DBIO.sequence( inputEntityIds.map( id => analysisRunInputsTable += AnalysisRunInput(-1, newRunId, id))))
-    Await.ready(inputInsertAction, simpleQueryTimeout)
+    Await.result(queryF, simpleQueryTimeout).head
+  }
+
+  private def getRunRepr(runUid: String): SoftwareAnalysisRunRepr = {
+    val queryF = db.run(analysisRunsTable.filter(r => r.uid === runUid).take(1).result)
+
+    Await.result(queryF, simpleQueryTimeout).headOption match {
+      case Some(result) => result
+      case None => throw new IllegalStateException(s"Analysis Run with uid $runUid not present in db")
+    }
+
+  }
+
+  private def setRunState(runId: Long, runState: Int): Unit = {
+    val action = db.run(analysisRunsTable.filter(r => r.id === runId).map(r => r.state).update(runState))
+    Await.ready(action, simpleQueryTimeout)
+  }
+
+  override def setRunState(runUid: String, state: RunState): Try[Unit] = Try {
+    val runRepr = getRunRepr(runUid)
+    setRunState(runRepr.id, state.id)
+  }
+
+  override def setRunResults(runUid: String, timeStamp: LocalDateTime, logs: Array[String], results: Set[AnalysisResultData])(implicit serializer: JsonWriter[Object]): Try[Unit] = Try {
+    val runRepr: SoftwareAnalysisRunRepr = getRunRepr(runUid)
+    setRunState(runRepr.id, RunState.Finished.id)
+
+    //TODO: Set Run Logs + Timestamp
 
     val runResults: Seq[AnalysisResult] = Try {
-      run.results.map( r => {
+      results.map(r => {
         val content = serializer.write(r.content).compactPrint
-        AnalysisResult(-1, r.uid, newRunId, r.isRevoked, content)
+        AnalysisResult(-1, r.uid, runRepr.id, r.isRevoked, content)
       }).toSeq
     } match {
       case Success(results) => results
       case Failure(ex) =>
-        log.error(s"Failed to serialize analysis results for run ${run.uid}", ex)
+        log.error(s"Failed to serialize analysis results for run ${runRepr.uid}", ex)
         throw ex
     }
 
-    Await.ready(db.run(DBIO.sequence(runResults.map(r => analysisResultsTable += r ))), longActionTimeout)
+    Await.ready(db.run(DBIO.sequence(runResults.map(r => analysisResultsTable += r))), longActionTimeout)
+  }
+
+  override def storeEmptyAnalysisRun(analysisName: String, analysisVersion: String, runConfig: String, runInputIds: Set[String]): Try[String] = Try {
+    val analysisId = getAnalysisRepr(analysisName, analysisVersion).id
+
+    // Insert run
+    val runRepr = SoftwareAnalysisRunRepr(-1, getFreshRunUuid(), runConfig, RunState.Created.id, isRevoked = false, analysisId)
+    val newRunId = Await.result(db.run(idReturningAnalysisRunTable += runRepr), simpleQueryTimeout)
+
+    // Connect inputs to run
+    val inputEntityIds = Await.result(db.run(entitiesTable.filter(e => e.qualifier inSet runInputIds).map(_.id).result), simpleQueryTimeout)
+
+    val inputInsertAction = db.run(DBIO.sequence(inputEntityIds.map(id => analysisRunInputsTable += AnalysisRunInput(-1, newRunId, id))))
+    Await.ready(inputInsertAction, simpleQueryTimeout)
+
+    runRepr.uid
   }
 
   override def getFreshResultUuids(noOfUuids: Int): Set[String] = {
@@ -433,6 +478,34 @@ class PostgresDataAccessor extends DataAccessor {
     while(exists) { uuid = UUID.randomUUID().toString }
 
     uuid
+  }
+
+  override def getResultsFor(entityName: String, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]] = {
+    val eid = getEntityId(entityName)
+
+    //TODO: Complete
+
+
+
+    if(analysisFilter.isDefined){
+      val queryF = db.run {
+        val resultToAnalysis = for {(resultAndRunTable, analysisTable) <- analysisResultsTable join analysisRunsTable on (_.runID === _.id) join analysesTable on (_._2.parentID === _.id)} yield (resultAndRunTable._1, analysisTable.name, analysisTable.version)
+
+        //if (analysisFilter.isDefined)
+          //resultToAnalysis.filter(t => t._1).filter(t => t._2 === analysisFilter.get._1 && t._3 === analysisFilter.get._2).map(t => t._2).result
+        ???
+      }
+    }
+
+
+
+    ???
+  }
+
+  private def getEntityId(qualifier: String): Long = {
+    val queryF = db.run(entitiesTable.filter(swe => swe.qualifier === qualifier).take(1).map(_.id).result)
+
+    Await.result(queryF, simpleQueryTimeout).head
   }
 
   private def getUidForEntityId(id: Long): String = {

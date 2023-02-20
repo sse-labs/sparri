@@ -99,7 +99,24 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
   }
 
   private def allResultsForEntityRouteImpl(entityName: String, limit: Int, skip: Int, queriedAnalysis: Option[String])(implicit request: HttpRequest): Route = {
+    log.debug(s"Results for entity requested, name=$entityName. Filters: Analysis=${queriedAnalysis.getOrElse("None")}")
 
+    if(queriedAnalysis.isDefined){
+      val queriedAnalysisStr = queriedAnalysis.get
+      if(queriedAnalysisStr.isBlank) return complete(BadRequest, "Invalid analysis filter specified")
+      else if(queriedAnalysisStr.split(":").length != 2) return complete(BadRequest, "Analysis name to filter for must be of format <name>:<version>")
+      else {
+        val parts = queriedAnalysisStr.split(":")
+        if(!requestHandler.hasAnalysis(parts(0), Some(parts(1)))) return complete(NotFound, s"Analysis $queriedAnalysisStr not found in database")
+      }
+    }
+
+    requestHandler.getAllResultsFor(entityName, queriedAnalysis, limit, skip) match {
+      case Success(result) => ???
+      case Failure(ex) =>
+        log.error(s"Failure while retrieving results for entity $entityName", ex)
+        complete(InternalServerError)
+    }
   }
 
 }
