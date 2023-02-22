@@ -61,7 +61,13 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
   }
 
   private def allAnalysesRouteImpl(limit: Int, skip: Int)(implicit request:HttpRequest): Route = {
-
+    requestHandler.getAnalyses(limit, skip) match {
+      case Success(analyses) =>
+        complete(analyses.toJson)
+      case Failure(ex) =>
+        log.error("Failed to return list of analyses", ex)
+        complete(InternalServerError)
+    }
   }
 
   private def singleAnalysisRouteImpl(analysisName: String)(implicit request:HttpRequest): Route = {

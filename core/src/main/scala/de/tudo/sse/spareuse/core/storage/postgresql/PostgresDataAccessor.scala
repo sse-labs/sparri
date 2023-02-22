@@ -1,6 +1,6 @@
 package de.tudo.sse.spareuse.core.storage.postgresql
 
-import de.tudo.sse.spareuse.core.formats.{AnyValueFormat, EmptyFormat, EntityReferenceFormat, GraphResultFormat, ListResultFormat, MapResultFormat, NamedPropertyFormat, NumberFormat, ObjectResultFormat, StringFormat}
+import de.tudo.sse.spareuse.core.formats.{AnalysisResultFormat, AnyValueFormat, BaseValueFormat, EmptyFormat, EntityReferenceFormat, GraphResultFormat, ListResultFormat, MapResultFormat, NamedPropertyFormat, NumberFormat, ObjectResultFormat, StringFormat}
 import de.tudo.sse.spareuse.core.model.RunState.RunState
 import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData, RunState, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
@@ -161,6 +161,106 @@ class PostgresDataAccessor extends DataAccessor {
         }
       case _ => throw new IllegalStateException("Illegal database state: Predefined Formats are not stored correctly")
     }
+  }
+
+  private def getResultFormat(rootId: Long): AnyValueFormat = {
+
+    def getNestedFormats: Seq[NestedResultFormatReference] = {
+      val queryF = db.run(nestedResultFormatsTable.filter(n => n.originId === rootId).result)
+      Await.result(queryF, simpleQueryTimeout)
+    }
+
+    rootId match {
+      // Don't need to read from DB for base values
+      case ResultFormatPredef.StringFormat.id => StringFormat
+      case ResultFormatPredef.NumberFormat.id => NumberFormat
+      case ResultFormatPredef.EntityRefFormat.id => EntityReferenceFormat
+      case ResultFormatPredef.EmptyFormat.id => EmptyFormat
+
+      // All other ids will be some form of composite format
+      case _ =>
+        // Get raw format entry from DB, get list of all nested formats
+        val rawFormatRepr = Await.result(db.run(resultFormatsTable.filter(f => f.id === rootId).take(1).result), simpleQueryTimeout).head
+        val nestedFormats = getNestedFormats
+
+        // Parse nested formats based on format type
+        rawFormatRepr.resultType match {
+          case ResultType.listTypeId if nestedFormats.size == 1 =>
+
+            val elemFormatNesting = nestedFormats.head
+            val elemFormat = getResultFormat(elemFormatNesting.targetId)
+            ListResultFormat(elemFormat, elemFormatNesting.description)
+
+          case ResultType.mapTypeId if nestedFormats.size == 2 =>
+
+            val keyFormatNesting = nestedFormats.find(n => n.nestingKind == ResultNestingKind.MapKey.id).get
+            val valueFormatNesting = nestedFormats.find(n => n.nestingKind == ResultNestingKind.MapValue.id).get
+
+            val keyFormat = getResultFormat(keyFormatNesting.targetId)
+            val valueFormat = getResultFormat(valueFormatNesting.targetId)
+
+            if(!keyFormat.isBaseValue)
+              throw new IllegalStateException("Corrupt format definition: Map key needs to be base value")
+
+            MapResultFormat(keyFormat.asInstanceOf[BaseValueFormat], valueFormat, keyFormatNesting.description, valueFormatNesting.description)
+
+          case ResultType.objectTypeId =>
+
+            val objectProperties = nestedFormats.map { nesting =>
+              val propFormat = getResultFormat(nesting.targetId)
+
+              if(!propFormat.isInstanceOf[NamedPropertyFormat])
+                throw new IllegalStateException("Corrupt format definition: Nested formats in object need to be Named Properties")
+
+              propFormat.asInstanceOf[NamedPropertyFormat]
+            }.toSet
+
+            ObjectResultFormat(objectProperties)
+
+          case ResultType.graphTypeId =>
+
+            val nodePropNestings = nestedFormats.filter(n => n.nestingKind == ResultNestingKind.NodeProperty.id)
+            val edgePropNestings = nestedFormats.filter(n => n.nestingKind == ResultNestingKind.EdgeProperty.id)
+
+            var nodeDescription = ""
+
+            val nodeProps = nodePropNestings.map{ nesting =>
+              if(nodeDescription.equals("")) nodeDescription = nesting.description
+              val format = getResultFormat(nesting.targetId)
+
+
+              if(!format.isInstanceOf[NamedPropertyFormat])
+                throw new IllegalStateException("Corrupt format definition: Nested formats in graph nodes need to be Named Properties")
+
+              format.asInstanceOf[NamedPropertyFormat]
+            }.toSet
+
+            var edgeDescription = ""
+
+            val edgeProps = edgePropNestings.map{ nesting =>
+              if(edgeDescription.equals("")) edgeDescription = nesting.description
+              val format = getResultFormat(nesting.targetId)
+
+              if (!format.isInstanceOf[NamedPropertyFormat])
+                throw new IllegalStateException("Corrupt format definition: Nested formats in graph edges need to be Named Properties")
+
+              format.asInstanceOf[NamedPropertyFormat]
+            }.toSet
+
+            GraphResultFormat(edgeProps, nodeProps, nodeDescription, edgeDescription)
+
+          case ResultType.namedPropTypeId if nestedFormats.size == 1 =>
+
+            val innerFormatNesting = nestedFormats.head
+
+            val innerFormat = getResultFormat(innerFormatNesting.targetId)
+
+            NamedPropertyFormat(rawFormatRepr.identifier, innerFormat, innerFormatNesting.description)
+        }
+
+
+    }
+
   }
 
   private def storeResultFormat(format: AnyValueFormat): Long = {
@@ -352,8 +452,32 @@ class PostgresDataAccessor extends DataAccessor {
     val analysisRuns = if (includeRuns) getAnalysisRuns(repr.id, analysisName, analysisVersion, includeResults = false)
     else Set.empty[AnalysisRunData]
 
-    // TODO: Input Formats
-    repr.toAnalysisData(analysisRuns)
+    getResultFormat(repr.formatId) match {
+      case f: AnalysisResultFormat =>
+        repr.toAnalysisData(f, analysisRuns)
+      case _ =>
+        throw new IllegalStateException("Corrupt format definition: Analysis result format must not be base value")
+    }
+  }
+
+
+  override def getAnalyses(includeRuns: Boolean = false, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisData]] = Try {
+
+    val queryF = db.run(analysesTable.drop(skip).take(limit).result)
+
+    Await
+      .result(queryF, simpleQueryTimeout)
+      .map{ analysisRepr =>
+        val analysisRuns = if (includeRuns) getAnalysisRuns(analysisRepr.id, analysisRepr.name, analysisRepr.version, includeResults = false)
+          else Set.empty[AnalysisRunData]
+
+        getResultFormat(analysisRepr.formatId) match {
+          case f: AnalysisResultFormat =>
+            analysisRepr.toAnalysisData(f, analysisRuns)
+          case _ =>
+            throw new IllegalStateException("Corrupt format definition: Analysis result format must not be base value")
+        }
+      }.toSet
   }
 
   private def getInputsForRun(analysisRunId: Long): Set[SoftwareEntityData] = {
@@ -368,12 +492,16 @@ class PostgresDataAccessor extends DataAccessor {
   }
 
   private def getAnalysisRuns(analysisId: Long, analysisName: String, analysisVersion: String, includeResults: Boolean): Set[AnalysisRunData] = {
-    //TODO: Results?
+
     val queryF = db
       .run(analysisRunsTable.filter(r => r.parentID === analysisId).result)
       .map { allRuns =>
         allRuns.map { run =>
-          run.toAnalysisRunData(analysisName, analysisVersion, getInputsForRun(run.id))
+          val results = if (includeResults) {
+            getRunResultsAsJSON(run.uid).get
+          } else Set.empty[AnalysisResultData]
+
+          run.toAnalysisRunData(analysisName, analysisVersion, getInputsForRun(run.id), results)
         }
       }(db.ioExecutionContext)
 
@@ -389,11 +517,13 @@ class PostgresDataAccessor extends DataAccessor {
   override def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false): Try[AnalysisRunData] = Try {
     val analysisId = getAnalysisRepr(analysisName, analysisVersion).id
 
-    //TODO: Results
+    val results = if(includeResults){
+      getRunResultsAsJSON(runUid).get
+    } else Set.empty[AnalysisResultData]
 
     val queryF = db
       .run(analysisRunsTable.filter(r => r.parentID === analysisId && r.uid === runUid).take(1).result)
-      .map(r => r.map(run => run.toAnalysisRunData(analysisName, analysisVersion, getInputsForRun(run.id))))(db.ioExecutionContext)
+      .map(r => r.map(run => run.toAnalysisRunData(analysisName, analysisVersion, getInputsForRun(run.id), results)))(db.ioExecutionContext)
 
     Await.result(queryF, simpleQueryTimeout).head
   }
@@ -610,10 +740,10 @@ class PostgresDataAccessor extends DataAccessor {
 
   implicit private def tryToBool: Try[Boolean] => Boolean = {
     case Success(value) => value
-    case Failure(ex) => {
+    case Failure(ex) =>
       log.error("Failed to perform DB lookup", ex)
       false
-    }
+
   }
 
   override def hasAnalysis(analysisName: String): Boolean = Try {

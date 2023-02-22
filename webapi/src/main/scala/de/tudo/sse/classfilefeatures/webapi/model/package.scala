@@ -1,12 +1,26 @@
 package de.tudo.sse.classfilefeatures.webapi
 
-import de.tudo.sse.spareuse.core.model.{AnalysisResultData, AnalysisRunData}
+import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData}
 import de.tudo.sse.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
 import de.tudo.sse.spareuse.core.utils.toHex
 
 import java.time.format.DateTimeFormatter
 
 package object model {
+
+
+  def toAnalysisRepr(data: AnalysisData): AnalysisInformationRepr = {
+    AnalysisInformationRepr(data.name,
+      data.description,
+      data.version,
+      data.isRevoked,
+      data.inputKind.toString,
+      data.inputLanguages.toArray,
+      if(data.builtOn.isBlank) None else Some(data.builtOn),
+      data.registeredBy,
+      "", //TODO: serialize formats
+      data.executions.map(_.uid).toArray)
+  }
 
   def toEntityRepr(entity: SoftwareEntityData): EntityRepr = {
     val children = if(entity.getChildren.isEmpty) None else Some(entity.getChildren.map(toEntityRepr).toArray)

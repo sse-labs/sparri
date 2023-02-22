@@ -35,7 +35,7 @@ class MqMessageReader(configuration: MqConnectionConfiguration, abortOnEmptyQueu
     } match {
       case Success(message) => Some(message)
       case Failure(ex: java.lang.RuntimeException) if ex.getMessage.toLowerCase.contains("no response from queue") =>
-        /*if(abortOnEmptyQueue)*/ log.info("No more messages from queue")
+        if(abortOnEmptyQueue) log.info("No more messages from queue")
 
         shutdown()
 

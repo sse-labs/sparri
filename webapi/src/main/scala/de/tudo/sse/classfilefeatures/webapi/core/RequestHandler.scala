@@ -2,7 +2,7 @@ package de.tudo.sse.classfilefeatures.webapi.core
 
 import de.tudo.sse.classfilefeatures.webapi.WebapiConfig
 import de.tudo.sse.classfilefeatures.webapi.model.requests.ExecuteAnalysisRequest
-import de.tudo.sse.classfilefeatures.webapi.model.{AnalysisResultRepr, AnalysisRunRepr, EntityRepr, genericEntityToEntityRepr, toEntityRepr, toResultRepr, toRunRepr}
+import de.tudo.sse.classfilefeatures.webapi.model.{AnalysisInformationRepr, AnalysisResultRepr, AnalysisRunRepr, EntityRepr, genericEntityToEntityRepr, toAnalysisRepr, toEntityRepr, toResultRepr, toRunRepr}
 import de.tudo.sse.spareuse.core.utils.rabbitmq.MqMessageWriter
 import de.tudo.sse.spareuse.core.model.{RunState, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
@@ -29,6 +29,12 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
 
   def hasEntity(entityName: String): Boolean = {
     existingEntitiesCache.getWithCache(entityName, () => dataAccessor.hasEntity(entityName))
+  }
+
+  def getAnalyses(limit: Int, skip: Int): Try[Set[AnalysisInformationRepr]] = {
+    dataAccessor
+      .getAnalyses(includeRuns = true, skip, limit)
+      .map(allAnalyses => allAnalyses.map(toAnalysisRepr))
   }
 
   def hasAnalysis(analysisName: String, version: Option[String] = None): Boolean = {

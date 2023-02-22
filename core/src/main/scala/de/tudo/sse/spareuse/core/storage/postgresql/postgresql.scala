@@ -1,5 +1,6 @@
 package de.tudo.sse.spareuse.core.storage
 
+import de.tudo.sse.spareuse.core.formats.{AnalysisResultFormat, EmptyFormat}
 import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData, RunState, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaProgram
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
@@ -44,10 +45,9 @@ package object postgresql {
 
   case class SoftwareAnalysisRepr(id: Long, name: String, version: String, description: String, builtOn: String,
                                   registeredBy: String, inputLanguages: String, formatId: Long, revoked: Boolean, inputKind: Int){
-    def toAnalysisData(executions: Set[AnalysisRunData] = Set.empty): AnalysisData = {
-      //TODO: Handle Formats
+    def toAnalysisData(format: AnalysisResultFormat, executions: Set[AnalysisRunData] = Set.empty): AnalysisData = {
       AnalysisData(name, version, description, builtOn, registeredBy, inputLanguages.split(",").toSet, revoked,
-        null, SoftwareEntityKind.fromId(inputKind), executions)
+        format, SoftwareEntityKind.fromId(inputKind), executions)
     }
   }
 
@@ -201,16 +201,23 @@ package object postgresql {
     val allPredefFormats: Seq[ResultFormat] = Seq(StringFormat, NumberFormat, EntityRefFormat, EmptyFormat)
   }
 
-  object ResultType extends Enumeration {
+  final object ResultType extends Enumeration {
 
     type ResultType = Value
 
-    val BaseResult: ResultType = Value(1)
-    val MapResult: ResultType = Value(2)
-    val ListResult: ResultType = Value(3)
-    val ObjectResult: ResultType = Value(4)
-    val GraphResult: ResultType = Value(5)
-    val NamedPropertyResult: ResultType = Value(6)
+    final val baseTypeId = 1
+    final val mapTypeId = 2
+    final val listTypeId = 3
+    final val objectTypeId = 4
+    final val graphTypeId = 5
+    final val namedPropTypeId = 6
+
+    val BaseResult: ResultType = Value(baseTypeId)
+    val MapResult: ResultType = Value(mapTypeId)
+    val ListResult: ResultType = Value(listTypeId)
+    val ObjectResult: ResultType = Value(objectTypeId)
+    val GraphResult: ResultType = Value(graphTypeId)
+    val NamedPropertyResult: ResultType = Value(namedPropTypeId)
   }
 
   class ResultFormats(tag: Tag) extends Table[ResultFormat](tag, "resultformats"){
