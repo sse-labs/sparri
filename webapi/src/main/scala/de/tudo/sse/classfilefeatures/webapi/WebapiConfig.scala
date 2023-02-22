@@ -78,7 +78,7 @@ object WebapiConfig {
 
     val analysisConnName = if(c.hasPath(analysisQConnKey)) c.getString(analysisQConnKey) else "spar-webapi"
 
-    if(!c.hasPath(entityQNameKey) || !c.hasPath(entityQExchangeKey) || c.hasPath(entityQRoutingKey))
+    if(!c.hasPath(entityQNameKey) || !c.hasPath(entityQExchangeKey) || !c.hasPath(entityQRoutingKey))
       throw new IllegalArgumentException("Entity queue configuration incomplete. Required are: name, exchange, routing-key")
 
     val entityConnName = if(c.hasPath(entityQConnKey)) c.getString(entityQConnKey) else "spar-webapi"

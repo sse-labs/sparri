@@ -47,7 +47,20 @@ trait AnalysisAccessor {
 
   def hasAnalysisRun(analysisName: String, analysisVersion: String, runUid: String): Boolean
 
-  def getResultsFor(entityName: String, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]]
+  /**
+   * This methods retrieves all results associated with the given entity, optionally filtered by analysis name and version.
+   * Result contents are NOT deserialized, but retrieved as their JSON String representation. This is meant for all
+   * use-cases in the API, where results will be retrieved, serialized and returned to the user either way, thus saving a
+   * deserialization-serialization roundtrip.
+   *
+   * @param entityName Unique entity name to retrieve results for
+   * @param analysisFilter Optional filter for a given pair of analysis name and version
+   * @param limit pagination: Number of results to retrieve
+   * @param skip pagination: Number of results to skip
+   * @return Try of the set of results for this entity. The 'content: Object' attribute will hold the result contents as
+   *         a PLAIN JSON STRING
+   */
+  def getJSONResultsFor(entityName: String, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]]
 
   def registerIfNotPresent(analysis: AnalysisData): Unit
 

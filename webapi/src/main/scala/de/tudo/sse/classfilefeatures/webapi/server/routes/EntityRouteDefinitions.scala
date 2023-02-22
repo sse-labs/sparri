@@ -112,7 +112,7 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
     }
 
     requestHandler.getAllResultsFor(entityName, queriedAnalysis, limit, skip) match {
-      case Success(result) => ???
+      case Success(result) => complete(result.toJson)
       case Failure(ex) =>
         log.error(s"Failure while retrieving results for entity $entityName", ex)
         complete(InternalServerError)

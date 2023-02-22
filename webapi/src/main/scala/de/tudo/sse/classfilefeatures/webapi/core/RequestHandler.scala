@@ -60,14 +60,15 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     dataAccessor.getEntity(entityName).map(toEntityRepr)
   }
 
-  def getAllResultsFor(entityName: String, analysisFilter: Option[String], limit: Int, skip: Int): Try[AnalysisResultRepr] = Try {
+  def getAllResultsFor(entityName: String, analysisFilter: Option[String], limit: Int, skip: Int): Try[Set[AnalysisResultRepr]] = {
     val analysisNameAndVersionOpt = analysisFilter.map( s => {
       val parts = s.split(":")
       (parts(0).trim, parts(1).trim)
     })
 
-    dataAccessor.getResultsFor(entityName, analysisNameAndVersionOpt, limit, skip).get.map(???) //TODO: Need to build serializer here / assert results are non-deserialized
-    ???
+    dataAccessor
+      .getJSONResultsFor(entityName, analysisNameAndVersionOpt, limit, skip)
+      .map(results => results.map(toResultRepr))
   }
 
   def getRun(analysisName: String, analysisVersion: String, runId: String): Try[AnalysisRunRepr] = {

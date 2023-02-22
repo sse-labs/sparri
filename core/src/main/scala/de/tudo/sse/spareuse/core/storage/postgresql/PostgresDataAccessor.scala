@@ -521,26 +521,36 @@ class PostgresDataAccessor extends DataAccessor {
     uuid
   }
 
-  override def getResultsFor(entityName: String, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]] = {
+  override def getJSONResultsFor(entityName: String, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]] = Try {
+    //TODO: Implement analysis filter!
     val eid = getEntityId(entityName)
-
-    //TODO: Complete
-
-
-
-    if(analysisFilter.isDefined){
-      val queryF = db.run {
-        val resultToAnalysis = for {(resultAndRunTable, analysisTable) <- analysisResultsTable join analysisRunsTable on (_.runID === _.id) join analysesTable on (_._2.parentID === _.id)} yield (resultAndRunTable._1, analysisTable.name, analysisTable.version)
-
-        //if (analysisFilter.isDefined)
-          //resultToAnalysis.filter(t => t._1).filter(t => t._2 === analysisFilter.get._1 && t._3 === analysisFilter.get._2).map(t => t._2).result
-        ???
-      }
+    // Get all results associated with this entity
+    val entityResultsF = db.run{
+      val join = for { (_, result) <- resultValiditiesTable.filter(v => v.entityId === eid) join analysisResultsTable on (_.resultId === _.id)}
+        yield result
+      join.drop(skip).take(limit).result
     }
 
+    val allEntityResults = Await.result(entityResultsF, longActionTimeout)
 
+    // Results may be associated with more than one entity, therefore: Collect mapping of results to entities for all results
+    val resultEntitiesF = db.run {
+      val join = for {(resultValidity, entity) <- resultValiditiesTable.filter(v => v.resultId inSet allEntityResults.map(_.id)) join entitiesTable on (_.entityId === _.id)}
+        yield (resultValidity.resultId, entity)
+      join.result
+    }
 
-    ???
+    val resultToInputEntitiesMapping = Await.result(resultEntitiesF, longActionTimeout)
+
+    // Build results
+    allEntityResults.map{ resultRep =>
+      val allAssociatedEntities = resultToInputEntitiesMapping
+        .filter(t => t._1 == resultRep.id)
+        .map(t => toGenericEntityData(t._2))
+
+      AnalysisResultData(resultRep.uid, resultRep.isRevoked, resultRep.jsonContent, allAssociatedEntities.toSet)
+    }.toSet
+
   }
 
   private def getEntityId(qualifier: String): Long = {
