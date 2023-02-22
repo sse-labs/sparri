@@ -167,6 +167,29 @@ package object postgresql {
 
 
   }
+
+  case class AnalysisResultValidity(id: Long, analysisResultId: Long, entityId: Long)
+
+  class AnalysisResultValidities(tag: Tag) extends Table[AnalysisResultValidity](tag, "resultentities"){
+    def id: Rep[Long] = column[Long]("ID", O.PrimaryKey, O.AutoInc)
+
+    def resultId: Rep[Long] = column[Long]("ANALYSIS_RESULT_ID")
+
+    def entityId: Rep[Long] = column[Long]("ENTITY_ID")
+
+    override def * : ProvenShape[AnalysisResultValidity] =
+      (id, resultId, entityId) <> ((AnalysisResultValidity.apply _).tupled, AnalysisResultValidity.unapply)
+
+    def result: ForeignKeyQuery[AnalysisResults, AnalysisResult] =
+      foreignKey("RESULT_FK", resultId, TableQuery[AnalysisResults])(_.id)
+
+    def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
+      foreignKey("ENTITY_FK", entityId, TableQuery[SoftwareEntities])(_.id)
+
+  }
+
+
+
   case class ResultFormat(id: Long, identifier: String, resultType: Int)
 
   object ResultFormatPredef {

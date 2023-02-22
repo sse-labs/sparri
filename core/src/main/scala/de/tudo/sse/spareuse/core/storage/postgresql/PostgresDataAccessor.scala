@@ -44,9 +44,11 @@ class PostgresDataAccessor extends DataAccessor {
   private val analysisResultsTable = TableQuery[AnalysisResults]
   private val resultFormatsTable = TableQuery[ResultFormats]
   private val nestedResultFormatsTable = TableQuery[NestedResultFormatReferences]
+  private val resultValiditiesTable = TableQuery[AnalysisResultValidities]
 
   private lazy val idReturningAnalysisRunTable = analysisRunsTable returning analysisRunsTable.map(_.id)
   private lazy val idReturningFormatTable = resultFormatsTable returning resultFormatsTable.map(_.id)
+  private lazy val idReturningResultTable = analysisResultsTable returning analysisResultsTable.map(_.id)
 
   override def initializeEntityTables(): Unit = {
     val setupAction = DBIO.seq(entitiesTable.schema.createIfNotExists, javaClassesTable.schema.createIfNotExists,
@@ -64,7 +66,7 @@ class PostgresDataAccessor extends DataAccessor {
   override def initializeAnalysisTables(): Unit = {
     val setupAction = DBIO.seq(resultFormatsTable.schema.createIfNotExists, nestedResultFormatsTable.schema.createIfNotExists,
       analysesTable.schema.createIfNotExists, analysisRunsTable.schema.createIfNotExists, analysisRunInputsTable.schema.createIfNotExists,
-      analysisResultsTable.schema.createIfNotExists)
+      analysisResultsTable.schema.createIfNotExists, resultValiditiesTable.schema.createIfNotExists)
 
     val setupF = db.run(setupAction)
 
@@ -429,20 +431,50 @@ class PostgresDataAccessor extends DataAccessor {
     Await.ready(updateTimeStampAction, simpleQueryTimeout)
     Await.ready(updateLogsAction, simpleQueryTimeout)
 
-    val runResults: Seq[AnalysisResult] = Try {
-      results.map(r => {
-        val content = serializer.write(r.content).compactPrint
-        AnalysisResult(-1, r.uid, runRepr.id, r.isRevoked, content)
-      }).toSeq
-    } match {
-      case Success(results) => results
-      case Failure(ex) =>
-        log.error(s"Failed to serialize analysis results for run ${runRepr.uid}", ex)
-        throw ex
+    results.foreach{ runResult =>
+      // Serialize result content
+      val content = serializer.write(runResult.content).compactPrint
+      val resultDbObj = AnalysisResult(-1, runResult.uid, runRepr.id, runResult.isRevoked, content)
+
+      // Write result entry
+      val resultDbId = Await.result(db.run(idReturningResultTable += resultDbObj), simpleQueryTimeout)
+
+      // Connect to affected entities
+      runResult.affectedEntities.map(e => getEntityRepr(e.uid, e.kind).get.id).foreach { affectedEntityId =>
+        Await.ready(db.run(resultValiditiesTable += AnalysisResultValidity(-1, resultDbId, affectedEntityId)), simpleQueryTimeout)
+      }
+
+
+    }
+  }
+
+  override def getRunResultsAsJSON(runUid: String, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]] = Try {
+    val runRepr: SoftwareAnalysisRunRepr = getRunRepr(runUid)
+
+    val resQuery = db.run(analysisResultsTable.filter(r => r.runID === runRepr.id).drop(skip).take(limit).result)
+    val allResults = Await.result(resQuery, longActionTimeout)
+
+
+    val resultEntitiesF = db.run {
+      val join = for {(resultValidity, entity) <- resultValiditiesTable join entitiesTable on (_.entityId === _.id)}
+        yield (resultValidity.resultId, entity)
+      join.filter(t => t._1 inSet allResults.map(_.id).toSet).result
     }
 
-    Await.ready(db.run(DBIO.sequence(runResults.map(r => analysisResultsTable += r))), longActionTimeout)
+    val resultToInputEntitiesMapping = Await.result(resultEntitiesF, longActionTimeout)
+
+    allResults.map{ resultRep =>
+      val allAssociatedEntities = resultToInputEntitiesMapping
+        .filter(t => t._1 == resultRep.id)
+        .map(t => toGenericEntityData(t._2))
+
+      AnalysisResultData(resultRep.uid, resultRep.isRevoked, resultRep.jsonContent, allAssociatedEntities.toSet)
+    }.toSet
+
   }
+
+
+
 
   override def storeEmptyAnalysisRun(analysisName: String, analysisVersion: String, runConfig: String, runInputIds: Set[String]): Try[String] = Try {
     val analysisId = getAnalysisRepr(analysisName, analysisVersion).id

@@ -1,6 +1,6 @@
 package de.tudo.sse.classfilefeatures.webapi
 
-import de.tudo.sse.spareuse.core.model.AnalysisRunData
+import de.tudo.sse.spareuse.core.model.{AnalysisResultData, AnalysisRunData}
 import de.tudo.sse.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
 import de.tudo.sse.spareuse.core.utils.toHex
 
@@ -16,6 +16,19 @@ package object model {
   def toRunRepr(data: AnalysisRunData): AnalysisRunRepr = {
     AnalysisRunRepr(data.uid, data.timestamp.format(DateTimeFormatter.ISO_DATE_TIME), data.logs.toSeq, data.configuration,
       data.state.toString, data.isRevoked, data.parentAnalysisName, data.parentAnalysisVersion, data.inputs.map(toEntityRepr).toSeq)
+  }
+
+  def toResultRepr(data: AnalysisResultData): AnalysisResultRepr = {
+
+    if(!data.content.isInstanceOf[String])
+      throw new IllegalStateException("Cannot serialize arbitrary objects here")
+
+    AnalysisResultRepr(
+      data.uid,
+      data.isRevoked,
+      data.content.asInstanceOf[String],
+      data.affectedEntities.map(_.uid) // This only works for fully-built entity trees or generic entities!
+    )
   }
 
   def genericEntityToEntityRepr(entity: GenericEntityData): EntityRepr = {

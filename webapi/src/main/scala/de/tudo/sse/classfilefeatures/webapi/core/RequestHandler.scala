@@ -2,14 +2,14 @@ package de.tudo.sse.classfilefeatures.webapi.core
 
 import de.tudo.sse.classfilefeatures.webapi.WebapiConfig
 import de.tudo.sse.classfilefeatures.webapi.model.requests.ExecuteAnalysisRequest
-import de.tudo.sse.classfilefeatures.webapi.model.{AnalysisRunRepr, EntityRepr, genericEntityToEntityRepr, toEntityRepr, toRunRepr}
+import de.tudo.sse.classfilefeatures.webapi.model.{AnalysisResultRepr, AnalysisRunRepr, EntityRepr, genericEntityToEntityRepr, toEntityRepr, toResultRepr, toRunRepr}
 import de.tudo.sse.spareuse.core.utils.rabbitmq.MqMessageWriter
 import de.tudo.sse.spareuse.core.model.{RunState, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, RunnerCommandJsonSupport}
 import de.tudo.sse.spareuse.core.storage.DataAccessor
 import org.slf4j.{Logger, LoggerFactory}
-import spray.json.enrichAny
+import spray.json.{JsonWriter, enrichAny}
 
 import scala.util.{Failure, Success, Try}
 
@@ -60,13 +60,14 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     dataAccessor.getEntity(entityName).map(toEntityRepr)
   }
 
-  def getAllResultsFor(entityName: String, analysisFilter: Option[String], limit: Int, skip: Int): Try[Any] = Try {
+  def getAllResultsFor(entityName: String, analysisFilter: Option[String], limit: Int, skip: Int): Try[AnalysisResultRepr] = Try {
     val analysisNameAndVersionOpt = analysisFilter.map( s => {
       val parts = s.split(":")
       (parts(0).trim, parts(1).trim)
     })
 
-    dataAccessor.getResultsFor(entityName, analysisNameAndVersionOpt, limit, skip).get.map(???) //TODO: Design API repr
+    dataAccessor.getResultsFor(entityName, analysisNameAndVersionOpt, limit, skip).get.map(???) //TODO: Need to build serializer here / assert results are non-deserialized
+    ???
   }
 
   def getRun(analysisName: String, analysisVersion: String, runId: String): Try[AnalysisRunRepr] = {
@@ -107,6 +108,12 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
 
     newId
 
+  }
+
+  def getRunResults(runId: String, limit: Int, skip: Int): Try[Set[AnalysisResultRepr]] = {
+    dataAccessor.getRunResultsAsJSON(runId, skip, limit).map { allResults =>
+      allResults.map(result => toResultRepr(result))
+    }
   }
 
   def processEnqueueLibraryRequest(libraryName: String): Boolean = {

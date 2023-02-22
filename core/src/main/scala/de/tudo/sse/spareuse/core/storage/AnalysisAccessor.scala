@@ -24,6 +24,17 @@ trait AnalysisAccessor {
 
   def setRunResults(runUid: String, timeStamp: LocalDateTime, logs: Array[String], results: Set[AnalysisResultData])(implicit serializer: JsonWriter[Object]): Try[Unit]
 
+  /**
+   * This Method retrieves all results for the given run, but does not deserialize the contents into an actual object
+   * structure. This is meant for all use-cases in the API, where results will be retrieved, serialized and returned
+   * to the user either way, thus saving a deserialization-serialization roundtrip.
+   * @param runUid UUID of the analysis run to return results for
+   * @param skip Number of result entries to skip. Default is 0.
+   * @param limit Number of result entries to retrieve. Default is 100.
+   * @return Try of the set of results. The 'content: Object' attribute will hold the result contents as a PLAIN JSON STRING
+   */
+  def getRunResultsAsJSON(runUid: String, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]]
+
   def setRunState(runUid: String, state: RunState): Try[Unit]
 
   def getFreshResultUuids(noOfUuids: Int): Set[String]

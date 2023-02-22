@@ -6,3 +6,4 @@ trait JsonSupport extends AnalysisInformationReprJsonSupport
   with EntityReprJsonSupport
   with AnalysisRunReprJsonSupport
   with RequestsJsonSupport
+  with AnalysisResultReprJsonSupport

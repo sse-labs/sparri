@@ -54,7 +54,7 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
           get { extractPaginationHeaders(request){ (limit, skip) => allRunInputsRouteImpl(analysisName, analysisVersion, runId, limit, skip) } }
         } ~
         path("results"){
-          get { extractPaginationHeaders(request){ (limit, skip) => allRunResultsRouteImpl(analysisName, analysisVersion, runId, limit, skip) } }
+          get { extractPaginationHeaders(request){ (limit, skip) => allRunResultsRouteImpl(runId, limit, skip) } }
         }
       }
     }
@@ -117,8 +117,14 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
     }
   }
 
-  private def allRunResultsRouteImpl(analysisName: String, analysisVersion: String, runId: String, limit: Int, skip: Int)(implicit request:HttpRequest): Route = {
-
+  private def allRunResultsRouteImpl(runId: String, limit: Int, skip: Int)(implicit request:HttpRequest): Route = {
+    requestHandler.getRunResults(runId, limit, skip) match {
+      case Success(results) =>
+        complete(results.toJson)
+      case Failure(ex) =>
+        log.error(s"Failed to retrieve results for run $runId", ex)
+        complete(InternalServerError)
+    }
   }
 
   private def allRunInputsRouteImpl(analysisName: String, analysisVersion: String, runId: String, limit: Int, skip: Int)(implicit request:HttpRequest): Route = {
