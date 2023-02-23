@@ -12,14 +12,14 @@ object JavaConverter {
 
   def toProgram(repr: SoftwareEntityRepr): JavaProgram = {
     val hashedBytes: Array[Byte] = repr.hexHash.map(fromHex).getOrElse(Array.empty)
-    new JavaProgram(repr.name, repr.name, repr.repository, hashedBytes)
+    new JavaProgram(repr.name, repr.name, repr.fqn, repr.repository, hashedBytes)
   }
 
-  def toPackage(repr: SoftwareEntityRepr): JavaPackage = new JavaPackage(repr.name, repr.repository)
+  def toPackage(repr: SoftwareEntityRepr): JavaPackage = new JavaPackage(repr.name, repr.fqn, repr.repository)
 
   def toClass(repr: SoftwareEntityRepr, classData: JavaClassRepr): JavaClass = {
     val hashedBytes: Array[Byte] = repr.hexHash.map(fromHex).getOrElse(Array.empty)
-    new JavaClass(repr.name, classData._2, classData._3, repr.repository, hashedBytes)
+    new JavaClass(repr.name, classData._2, repr.fqn, classData._3, repr.repository, hashedBytes)
   }
 
   def toMethod(repr: SoftwareEntityRepr, methodData: JavaMethodRepr): JavaMethod = {
@@ -28,18 +28,18 @@ object JavaConverter {
     if (paramTypeNames.length != methodData._3)
       throw new IllegalStateException("Corrupt database, parameter count does not match actual parameters")
 
-    new JavaMethod(repr.name, methodData._2, paramTypeNames.toSeq, repr.repository)
+    new JavaMethod(repr.name, methodData._2, paramTypeNames.toSeq, repr.fqn, repr.repository)
   }
 
   def toInvocation(repr: SoftwareEntityRepr, invokeData: JavaInvocationRepr): JavaInvokeStatement = {
     val invocationType = JavaInvocationType.fromId(invokeData._5)
 
-    new JavaInvokeStatement(repr.name, invokeData._2, invokeData._3, invokeData._4, invocationType, invokeData._6, repr.repository)
+    new JavaInvokeStatement(repr.name, invokeData._2, invokeData._3, invokeData._4, invocationType, invokeData._6, repr.fqn, repr.repository)
   }
 
   def toFieldAccess(repr: SoftwareEntityRepr, fieldAccessData: JavaFieldAccessRepr): JavaFieldAccessStatement = {
     val accessType = JavaFieldAccessType.fromId(fieldAccessData._4)
 
-    new JavaFieldAccessStatement(repr.name, fieldAccessData._2, fieldAccessData._3, accessType, fieldAccessData._5, repr.repository)
+    new JavaFieldAccessStatement(repr.name, fieldAccessData._2, fieldAccessData._3, accessType, fieldAccessData._5, repr.fqn, repr.repository)
   }
 }

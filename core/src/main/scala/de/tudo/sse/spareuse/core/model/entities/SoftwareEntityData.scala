@@ -13,7 +13,7 @@ trait SoftwareEntityData {
 
   val binaryHash: Option[Array[Byte]]
 
-  def uid: String
+  val uid: String
 
   protected var parent: Option[SoftwareEntityData] = None
   protected var children: mutable.Set[SoftwareEntityData] = mutable.Set.empty
