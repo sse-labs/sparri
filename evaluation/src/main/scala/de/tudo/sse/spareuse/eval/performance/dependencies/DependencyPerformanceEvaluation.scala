@@ -37,20 +37,20 @@ object DependencyPerformanceEvaluation extends App {
         val timedSimpleResults = timedExec(() => simpleAnalysis.getAllDependencies(input))
         val timedReuseResults = timedExec(() => reuseAnalysis.getAllDependencies(input))
 
-        reuseRuntimes.append(timedReuseResults.getDurationMillis)
-
         if (timedSimpleResults.getContent.isFailure || !timedSimpleResults.getContent.get.equals(gavToDependenciesMap(input)))
           logger.error("Invalid results for simple dependency analysis")
         else
           simpleRuntimes.append(timedSimpleResults.getDurationMillis)
 
-        /*if(timedReuseResults._2.isFailure || ! timedReuseResults._2.get.equals(gavToDependenciesMap(input)))
+        if(timedReuseResults.getContent.isFailure || ! timedReuseResults.getContent.get.equals(gavToDependenciesMap(input)))
           logger.error("Invalid results for reuse dependency analysis")
         else
-          reuseRuntimes.add(timedReuseResults._1)*/
+          reuseRuntimes.append(timedReuseResults.getDurationMillis)
       }
 
     }
+
+    reuseAnalysis.close()
 
     logger.info(s"Got ${simpleRuntimes.size} valid simple runtimes and ${reuseRuntimes.size} valid reuse runtimes.")
 
