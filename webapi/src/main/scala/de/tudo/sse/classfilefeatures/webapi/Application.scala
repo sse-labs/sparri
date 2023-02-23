@@ -16,7 +16,7 @@ object Application {
         val theApp = new ClassfileWebApi(theConfig)
 
         if (theApp.initialize()) {
-          theApp.runUntilButtonPressed()
+          theApp.run()
         } else {
           theApp.shutdown()
         }

@@ -56,6 +56,20 @@ class ClassfileWebApi(private val configuration: WebapiConfig) {
     }
   }
 
+  def run(): Unit = {
+    Try(server.startServer(configuration.bindHost, configuration.bindPort)) match {
+      case Success(bindingFuture) =>
+
+        implicit val dispatcher: ExecutionContext = theSystem.dispatcher
+
+        log.info(s"WebApi online at ${configuration.bindHost}:${configuration.bindPort}")
+
+      case Failure(ex) =>
+        log.error(s"Failed to start server at ${configuration.bindHost}:${configuration.bindPort}", ex)
+        shutdown()
+    }
+  }
+
   def shutdown(): Unit = {
     log.info("Shutting down WebApi ..")
 
