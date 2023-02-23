@@ -652,8 +652,9 @@ class PostgresDataAccessor extends DataAccessor {
   }
 
   override def getJSONResultsFor(entityName: String, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]] = Try {
-    //TODO: Implement analysis filter!
+
     val eid = getEntityId(entityName)
+
     // Get all results associated with this entity
     val entityResultsF = db.run{
       val join = for { (_, result) <- resultValiditiesTable.filter(v => v.entityId === eid) join analysisResultsTable on (_.resultId === _.id)}
@@ -661,7 +662,20 @@ class PostgresDataAccessor extends DataAccessor {
       join.drop(skip).take(limit).result
     }
 
-    val allEntityResults = Await.result(entityResultsF, longActionTimeout)
+    var allEntityResults = Await.result(entityResultsF, longActionTimeout)
+
+    // Apply analysis filter
+    if(analysisFilter.isDefined) {
+      val analysisRepr = getAnalysisRepr(analysisFilter.get._1, analysisFilter.get._2)
+
+      allEntityResults = allEntityResults.filter{ result =>
+        val analysisId = Await.result(db.run{ analysisRunsTable.filter(run => run.id === result.runId).map(run => run.parentID).take(1).result }, simpleQueryTimeout).head
+
+        analysisId == analysisRepr.id
+      }
+    }
+
+
 
     // Results may be associated with more than one entity, therefore: Collect mapping of results to entities for all results
     val resultEntitiesF = db.run {

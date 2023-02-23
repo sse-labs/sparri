@@ -15,7 +15,7 @@ object DependencyPerformanceEvaluation extends App {
   val gavToDependenciesMap: Map[String, Set[String]] = Map("org.gwtproject.core:gwt-core:1.0.0-RC1" -> Set("com.google.jsinterop:jsinterop-annotations:1.0.2", "com.google.elemental2:elemental2-core:1.1.0", "com.google.elemental2:elemental2-promise:1.1.0", "com.google.elemental2:elemental2-dom:1.1.0", "com.google.jsinterop:jsinterop-annotations:2.0.0", "com.google.jsinterop:base:1.0.0"))
 
   val simpleAnalysis = new SimpleTransitiveDependencyAnalysis
-  val reuseAnalysis = new ReuseBasedTransitiveDependencyAnalysis("")//TODO: URL for test instance
+  val reuseAnalysis = new ReuseBasedTransitiveDependencyAnalysis("http://localhost:33449/api/")//TODO: URL for test instance
 
   val preparePartialResultsOp = timedExec (() => Try (reuseAnalysis.ensureAllPartialResultsPresent((gavToDependenciesMap.keys ++ gavToDependenciesMap.values.flatten).toSet)))
 

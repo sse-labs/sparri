@@ -156,6 +156,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
             // Check that after all non-indexed names have been removed, there are in fact inputs left to process.
             if (namesToProcess.isEmpty) {
+              //TODO: Update Run State!
               log.warn("No inputs left to process at this time")
               return None
             }
@@ -184,6 +185,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       case Success(validRunnerCommand) =>
         Some(validRunnerCommand)
       case Failure(ex) =>
+        //TODO: Update run state
         log.error("Command validation failed, no analysis will be executed.", ex)
         None
     }

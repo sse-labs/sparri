@@ -86,10 +86,14 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
   def getRunIdIfPresent(analysisName: String, analysisVersion: String, request: ExecuteAnalysisRequest): Try[Option[String]] = {
     dataAccessor.getAnalysisRuns(analysisName, analysisVersion) match {
       case Success(runs) =>
+        val requestInputs = request.Inputs.toSet
         Success(
           runs.find{ r =>
+
+            val runInputs = r.inputs.map(_.uid)
+
             r.configuration.equals(request.Configuration) &&
-            r.inputs.map(_.uid).equals(request.Inputs.toSet) &&
+            runInputs.equals(requestInputs) &&
             r.state.equals(RunState.Finished)
           }.map(_.uid)
         )
