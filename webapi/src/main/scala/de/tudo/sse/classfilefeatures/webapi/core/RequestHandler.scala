@@ -106,7 +106,7 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
   def triggerNewAnalysisRun(analysisName: String, analysisVersion: String, request: ExecuteAnalysisRequest): Try[String] = Try {
 
     // Create new empty record for analysis run
-    val newId = dataAccessor.storeEmptyAnalysisRun(analysisName, analysisVersion, request.Configuration, request.Inputs.toSet).get
+    val newId = dataAccessor.storeEmptyAnalysisRun(analysisName, analysisVersion, request.Configuration).get
 
     // Queue run execution
     val name = s"$analysisName:$analysisVersion"

@@ -22,7 +22,7 @@ trait AnalysisAccessor {
 
   def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false): Try[AnalysisRunData]
 
-  def storeEmptyAnalysisRun(analysisName: String, analysisVersion: String, runConfig: String, runInputIds: Set[String]): Try[String]
+  def storeEmptyAnalysisRun(analysisName: String, analysisVersion: String, runConfig: String): Try[String]
 
   def setRunResults(runUid: String, timeStamp: LocalDateTime, logs: Array[String], results: Set[AnalysisResultData])(implicit serializer: JsonWriter[Object]): Try[Unit]
 
@@ -37,7 +37,7 @@ trait AnalysisAccessor {
    */
   def getRunResultsAsJSON(runUid: String, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]]
 
-  def setRunState(runUid: String, state: RunState): Try[Unit]
+  def setRunState(runUid: String, state: RunState, runInputIdsOpt: Option[Set[String]]): Try[Unit]
 
   def getFreshResultUuids(noOfUuids: Int): Set[String]
 

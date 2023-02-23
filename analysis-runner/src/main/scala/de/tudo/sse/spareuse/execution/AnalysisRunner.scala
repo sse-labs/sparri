@@ -185,7 +185,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       case Success(validRunnerCommand) =>
         Some(validRunnerCommand)
       case Failure(ex) =>
-        //TODO: Update run state
+        //TODO: Update run state & Inputs if possible!
         log.error("Command validation failed, no analysis will be executed.", ex)
         None
     }
@@ -197,7 +197,12 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
       log.info(s"Starting analysis ${cmd.analysisName} with ${inputEntities.size} inputs. Requested by user ${cmd.userName}.")
 
-      Try(dataAccessor.setRunState(cmd.runId, RunState.Running)) // Best effort: Try to set state to running, failure will not affect anything though
+      // Sets state of analysis run to "Running" and connects inputs to run
+      Try(dataAccessor.setRunState(cmd.runId, RunState.Running, Some(inputEntities.map(_.uid)))) match {
+        case Failure(ex) =>
+          log.error("Failed to update analysis run record in db", ex)
+        case _ =>
+      }
 
       Future {
         analysisImpl.executeAnalysis(inputEntities.toSeq, cmd.configurationRaw) match {
@@ -222,7 +227,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
             }
 
           case Failure(ex) =>
-            dataAccessor.setRunState(cmd.runId, RunState.Failed)
+            dataAccessor.setRunState(cmd.runId, RunState.Failed, None)
             log.error(s"Analysis execution failed.", ex)
         }
       }(this.streamMaterializer.executionContext)

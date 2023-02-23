@@ -543,9 +543,17 @@ class PostgresDataAccessor extends DataAccessor {
     Await.ready(action, simpleQueryTimeout)
   }
 
-  override def setRunState(runUid: String, state: RunState): Try[Unit] = Try {
+  override def setRunState(runUid: String, state: RunState, runInputIdsOpt: Option[Set[String]]): Try[Unit] = Try {
     val runRepr = getRunRepr(runUid)
     setRunState(runRepr.id, state.id)
+
+    if(runInputIdsOpt.isDefined){
+      // Connect inputs to run
+      val inputEntityIds = Await.result(db.run(entitiesTable.filter(e => e.qualifier inSet runInputIdsOpt.get).map(_.id).result), simpleQueryTimeout)
+
+      val inputInsertAction = db.run(DBIO.sequence(inputEntityIds.map(id => analysisRunInputsTable += AnalysisRunInput(-1, runRepr.id, id))))
+      Await.ready(inputInsertAction, simpleQueryTimeout)
+    }
   }
 
   override def setRunResults(runUid: String, timeStamp: LocalDateTime, logs: Array[String], results: Set[AnalysisResultData])(implicit serializer: JsonWriter[Object]): Try[Unit] = Try {
@@ -606,19 +614,13 @@ class PostgresDataAccessor extends DataAccessor {
 
 
 
-  override def storeEmptyAnalysisRun(analysisName: String, analysisVersion: String, runConfig: String, runInputIds: Set[String]): Try[String] = Try {
+  override def storeEmptyAnalysisRun(analysisName: String, analysisVersion: String, runConfig: String): Try[String] = Try {
     val analysisId = getAnalysisRepr(analysisName, analysisVersion).id
 
     // Insert run
     val timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME)
     val runRepr = SoftwareAnalysisRunRepr(-1, getFreshRunUuid(), runConfig, RunState.Created.id, isRevoked = false, analysisId, "", timestamp)
     val newRunId = Await.result(db.run(idReturningAnalysisRunTable += runRepr), simpleQueryTimeout)
-
-    // Connect inputs to run
-    val inputEntityIds = Await.result(db.run(entitiesTable.filter(e => e.qualifier inSet runInputIds).map(_.id).result), simpleQueryTimeout)
-
-    val inputInsertAction = db.run(DBIO.sequence(inputEntityIds.map(id => analysisRunInputsTable += AnalysisRunInput(-1, newRunId, id))))
-    Await.ready(inputInsertAction, simpleQueryTimeout)
 
     runRepr.uid
   }
