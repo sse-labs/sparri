@@ -1,31 +1,40 @@
 package de.tudo.sse.spareuse.eval.performance.dependencies
 
-import de.tudo.sse.spareuse.eval.performance.timedExec
-import org.slf4j.LoggerFactory
+import de.tudo.sse.spareuse.eval.performance.{PerformanceEvaluation, gavToEntityId, timedExec}
 
 import scala.util.{Failure, Success, Try}
 import scala.collection.mutable
 
-object DependencyPerformanceEvaluation extends App {
+object DependencyPerformanceEvaluation extends PerformanceEvaluation {
 
-  val logger = LoggerFactory.getLogger(getClass)
-  val numberOfRepetitions = 5
+  private val gavToDependenciesMap: Map[String, Set[String]] =
+    Map("org.gwtproject.core:gwt-core:1.0.0-RC1" -> Set("com.google.jsinterop:jsinterop-annotations:1.0.2", "com.google.elemental2:elemental2-core:1.1.0", "com.google.elemental2:elemental2-promise:1.1.0", "com.google.elemental2:elemental2-dom:1.1.0", "com.google.jsinterop:jsinterop-annotations:2.0.0", "com.google.jsinterop:base:1.0.0"))
+
+  private val simpleAnalysis = new SimpleTransitiveDependencyAnalysis
+  private val reuseAnalysis = new ReuseBasedTransitiveDependencyAnalysis("http://localhost:33449/api/") //TODO: URL for test instance
 
 
-  val gavToDependenciesMap: Map[String, Set[String]] = Map("org.gwtproject.core:gwt-core:1.0.0-RC1" -> Set("com.google.jsinterop:jsinterop-annotations:1.0.2", "com.google.elemental2:elemental2-core:1.1.0", "com.google.elemental2:elemental2-promise:1.1.0", "com.google.elemental2:elemental2-dom:1.1.0", "com.google.jsinterop:jsinterop-annotations:2.0.0", "com.google.jsinterop:base:1.0.0"))
+  override val name: String = "TransitiveDependencies"
+  override val numberOfRepetitions = 10
 
-  val simpleAnalysis = new SimpleTransitiveDependencyAnalysis
-  val reuseAnalysis = new ReuseBasedTransitiveDependencyAnalysis("http://localhost:33449/api/")//TODO: URL for test instance
 
-  val preparePartialResultsOp = timedExec (() => Try (reuseAnalysis.ensureAllPartialResultsPresent((gavToDependenciesMap.keys ++ gavToDependenciesMap.values.flatten).toSet)))
+  override def requiredEntityIds: Set[String] = (gavToDependenciesMap.keys ++ gavToDependenciesMap.values.flatten)
+    .toSet
+    .map(gavToEntityId)
 
-  preparePartialResultsOp.getContent match {
-    case Success(_) =>
-      logger.info(s"Reuse: Pre-Calculations took ${preparePartialResultsOp.getDurationMillis}ms to finish.")
-      compareAnalyses()
-    case Failure(ex) =>
-      logger.error("Failed to trigger initial calculation of partial dependencies on server side.", ex)
+  override def evaluate(): Try[Unit] = Try {
+    // Prepare all partial results (i.e. direct dependencies for all expected results)
+    val preparePartialResultsOp = timedExec(() => Try(reuseAnalysis.ensureAllPartialResultsPresent((gavToDependenciesMap.keys ++ gavToDependenciesMap.values.flatten).toSet)))
+
+    preparePartialResultsOp.getContent match {
+      case Success(_) =>
+        logger.info(s"Reuse: Pre-Calculations took ${preparePartialResultsOp.getDurationMillis}ms to finish.")
+        compareAnalyses()
+      case Failure(ex) =>
+        logger.error("Failed to trigger initial calculation of partial dependencies on server side.", ex)
+    }
   }
+
 
   private def compareAnalyses(): Unit ={
     val simpleRuntimes = new mutable.ListBuffer[Long]()
@@ -64,10 +73,6 @@ object DependencyPerformanceEvaluation extends App {
       logger.info(s"Reuse: AVG $reuseAverageMillis ms [${reuseRuntimes.map(r => s"$r ms").mkString(",")}]")
     }
   }
-
-
-
-
 
 
 }

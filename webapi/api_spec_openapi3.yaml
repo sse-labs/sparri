@@ -478,7 +478,7 @@ paths:
           description: "If the analysis or the analysis run are not found, 404 is returned."
   
           
-  /processing/enqueueProgram:
+  /processing/enqueueEntity:
     post:
       tags: ["Processing Related Endpoints"]
       description: "Inserts a given package into the mining queue with high priority"
@@ -490,27 +490,13 @@ paths:
             schema:
               $ref: "#/components/schemas/TriggerMinerRequest"
       responses:
-        '201':
+        '202':
           description: "Mining request has been accepted"
+        '302':
+          description: "Found, entity is already indexed"
         '400':
           description: "Bad request missing required parameters"
-  
-  /processing/enqueueLibrary:
-    post:
-      tags: ["Processing Related Endpoints"]
-      description: "Inserts all packages of a given library into the mining queue with high priority"
-      requestBody:
-        description: "Request specifying the identifier of the library to mine"
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TriggerMinerRequest"
-      responses:
-        '201':
-          description: "Mining request has been accepted"
-        '400':
-          description: "Bad request missing required parameters"
+
   
 components:
   schemas:

@@ -1,5 +1,6 @@
 package de.tudo.sse.spareuse.eval.performance.dependencies
 import de.tudo.sse.spareuse.core.utils.http.HttpDownloadException
+import de.tudo.sse.spareuse.eval.performance.gavToEntityId
 import org.apache.http.client.methods.{CloseableHttpResponse, HttpGet, HttpPost}
 import org.apache.http.entity.StringEntity
 import org.apache.http.impl.client.HttpClients
@@ -35,10 +36,7 @@ class ReuseBasedTransitiveDependencyAnalysis(baseUrl: String) extends Transitive
 
 
   def getDirectDependencies(artifactGav: String): Set[String] = {
-    val entityIdent = {
-      val parts = artifactGav.split(":")
-      parts(0) + ":" + parts(1) + "!" + artifactGav
-    }
+    val entityIdent = gavToEntityId(artifactGav)
 
     val getRequest = new HttpGet(baseUrl + "/entities/" + entityIdent + "/results?analysis=mvn-dependencies:1.0.0")
     val response = httpClient.execute(getRequest)
@@ -80,10 +78,7 @@ class ReuseBasedTransitiveDependencyAnalysis(baseUrl: String) extends Transitive
 
   def ensureAllPartialResultsPresent(expectedGAVs: Set[String]): Unit = {
 
-    val expectedIds = expectedGAVs.map { gav =>
-      val parts = gav.split(":")
-      s"${parts(0)}:${parts(1)}" + "!" + gav
-    }
+    val expectedIds = expectedGAVs.map(gavToEntityId)
 
     val uri = baseUrl + "analyses/mvn-dependencies/1.0.0/runs"
     val execRequest: HttpPost = new HttpPost(uri)

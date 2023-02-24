@@ -15,8 +15,7 @@ trait ProcessingRouteDefinitions extends BasicRouteDefinition {
 
   protected def processingRoutes(implicit request: HttpRequest): Route = {
     pathPrefix("processing") {
-      pathPrefix("enqueueProgram") { triggerMinerForProgramRouteImpl } ~
-      pathPrefix("enqueueLibrary") { triggerMinerForLibraryRouteImpl }
+      pathPrefix("enqueueEntity") { triggerMinerForEntityRouteImpl }
     }
   }
 
@@ -24,33 +23,20 @@ trait ProcessingRouteDefinitions extends BasicRouteDefinition {
    |           ROUTE IMPLEMENTATIONS        |
    -----------------------------------------*/
 
-  private def triggerMinerForProgramRouteImpl(implicit request: HttpRequest): Route = post {
+  private def triggerMinerForEntityRouteImpl(implicit request: HttpRequest): Route = post {
     entityAs[EnqueueRequest]{ entity =>
 
-      if(requestHandler.hasLibrary(entity.Identifier)) {
+      log.debug(s"Entity indexing requested for id ${entity.Identifier}")
+
+      if(requestHandler.hasEntity(entity.Identifier)) {
         val libUri = Uri(s"entities/${entity.Identifier}")
         respondWithHeaders(Location(libUri)) { complete(Found, s"Library ${entity.Identifier} has already been processed.")}
       } else {
-        val enqueueSuccess = ???
+        val enqueueSuccess = requestHandler.triggerEntityMining(entity.Identifier)
         if(enqueueSuccess) complete(Accepted)
         else complete(InternalServerError)
       }
 
-    }
-  }
-
-  private def triggerMinerForLibraryRouteImpl(implicit request: HttpRequest): Route = post {
-    entityAs[EnqueueRequest]{ entity =>
-      if (???) {
-        val libUri = Uri(s"entities/${entity.Identifier}")
-        respondWithHeaders(Location(libUri)) {
-          complete(Found, s"Program ${entity.Identifier} has already been processed.")
-        }
-      } else {
-        val enqueueSuccess = ???
-        if (enqueueSuccess) complete(Accepted)
-        else complete(InternalServerError)
-      }
     }
   }
 

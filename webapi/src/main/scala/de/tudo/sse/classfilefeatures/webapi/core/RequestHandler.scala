@@ -7,13 +7,14 @@ import de.tudo.sse.spareuse.core.utils.rabbitmq.MqMessageWriter
 import de.tudo.sse.spareuse.core.model.{RunState, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, RunnerCommandJsonSupport}
+import de.tudo.sse.spareuse.core.model.entities.{MinerCommand, MinerCommandJsonSupport}
 import de.tudo.sse.spareuse.core.storage.DataAccessor
 import org.slf4j.{Logger, LoggerFactory}
 import spray.json.{JsonWriter, enrichAny}
 
 import scala.util.{Failure, Success, Try}
 
-class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor) extends RunnerCommandJsonSupport {
+class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor) extends RunnerCommandJsonSupport with MinerCommandJsonSupport {
 
   private val log: Logger = LoggerFactory.getLogger(getClass)
 
@@ -127,19 +128,21 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     }
   }
 
-  def processEnqueueLibraryRequest(libraryName: String): Boolean = {
+  def triggerEntityMining(entityIdent: String): Boolean = {
 
     Try {
       val writer = new MqMessageWriter(configuration.asMinerQueuePublishConfig)
       writer.initialize()
 
-      writer.appendToQueue(libraryName)
+      val msg = MinerCommand(Set(entityIdent), None)
+
+      writer.appendToQueue(msg.toJson.compactPrint)
 
       writer.shutdown()
     } match {
       case Success(_) => true
       case Failure(ex) =>
-        log.error(s"Failed to enqueue library $libraryName", ex)
+        log.error(s"Failed to enqueue entity id $entityIdent", ex)
         false
     }
 
