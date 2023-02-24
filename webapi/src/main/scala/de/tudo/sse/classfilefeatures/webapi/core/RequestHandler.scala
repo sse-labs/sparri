@@ -112,10 +112,13 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     // Queue run execution
     val name = s"$analysisName:$analysisVersion"
     val command = RunnerCommand(name, newId, request.User.getOrElse("Anonymous"), request.Inputs.toSet, request.Configuration)
+    val commandJson = command.toJson.compactPrint
+
+    log.info(s"Publishing a new Runner Command for analysis $name : $commandJson")
 
     val writer = new MqMessageWriter(configuration.asAnalysisQueuePublishConfig)
     writer.initialize()
-    writer.appendToQueue(command.toJson.compactPrint)
+    writer.appendToQueue(commandJson)
     writer.shutdown()
 
     newId
@@ -134,9 +137,11 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
       val writer = new MqMessageWriter(configuration.asMinerQueuePublishConfig)
       writer.initialize()
 
-      val msg = MinerCommand(Set(entityIdent), None)
+      val msg = MinerCommand(Set(entityIdent), None).toJson.compactPrint
 
-      writer.appendToQueue(msg.toJson.compactPrint)
+      log.info(s"Publishing a new Miner Command for entity $entityIdent : $msg")
+
+      writer.appendToQueue(msg, Some(3))
 
       writer.shutdown()
     } match {

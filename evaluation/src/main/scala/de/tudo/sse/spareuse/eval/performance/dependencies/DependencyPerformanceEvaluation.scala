@@ -5,13 +5,13 @@ import de.tudo.sse.spareuse.eval.performance.{PerformanceEvaluation, gavToEntity
 import scala.util.{Failure, Success, Try}
 import scala.collection.mutable
 
-object DependencyPerformanceEvaluation extends PerformanceEvaluation {
+class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEvaluation {
 
   private val gavToDependenciesMap: Map[String, Set[String]] =
     Map("org.gwtproject.core:gwt-core:1.0.0-RC1" -> Set("com.google.jsinterop:jsinterop-annotations:1.0.2", "com.google.elemental2:elemental2-core:1.1.0", "com.google.elemental2:elemental2-promise:1.1.0", "com.google.elemental2:elemental2-dom:1.1.0", "com.google.jsinterop:jsinterop-annotations:2.0.0", "com.google.jsinterop:base:1.0.0"))
 
   private val simpleAnalysis = new SimpleTransitiveDependencyAnalysis
-  private val reuseAnalysis = new ReuseBasedTransitiveDependencyAnalysis("http://localhost:33449/api/") //TODO: URL for test instance
+  private val reuseAnalysis = new ReuseBasedTransitiveDependencyAnalysis(apiBaseUrl)
 
 
   override val name: String = "TransitiveDependencies"
@@ -73,6 +73,4 @@ object DependencyPerformanceEvaluation extends PerformanceEvaluation {
       logger.info(s"Reuse: AVG $reuseAverageMillis ms [${reuseRuntimes.map(r => s"$r ms").mkString(",")}]")
     }
   }
-
-
 }

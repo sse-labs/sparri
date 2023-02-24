@@ -1,5 +1,6 @@
 package de.tudo.sse.spareuse.eval.performance
 
+import de.tudo.sse.spareuse.eval.performance.cgs.CallgraphPerformanceEvaluation
 import de.tudo.sse.spareuse.eval.performance.dependencies.DependencyPerformanceEvaluation
 import org.apache.http.client.methods.HttpGet
 import org.apache.http.impl.client.HttpClients
@@ -13,9 +14,10 @@ object PerformanceEvaluationApp {
 
   private val logger: Logger = LoggerFactory.getLogger(getClass)
 
-  private val allRegisteredEvaluations: Seq[PerformanceEvaluation]= Seq(DependencyPerformanceEvaluation)
-
   private val apiBaseUrl = "http://localhost:33449/api/"
+
+  private val allRegisteredEvaluations: Seq[PerformanceEvaluation]= Seq(//new DependencyPerformanceEvaluation(apiBaseUrl),
+    new CallgraphPerformanceEvaluation(apiBaseUrl))
 
 
   private def ensureAllEntitiesPresent(): Try[Unit] = {

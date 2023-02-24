@@ -88,6 +88,9 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
 
 
     entityAs[ExecuteAnalysisRequest]{ entity =>
+
+      log.debug(s"New analysis run requested, name=$analysisName, version=$analysisVersion, #inputs=${entity.Inputs.length}, user=${entity.User.getOrElse("None")}")
+
       // Check if run for those inputs with this configuration exists
       requestHandler.getRunIdIfPresent(analysisName, analysisVersion, entity) match {
         // If it exists, respond with "Found" and location of run result
@@ -114,6 +117,9 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
   }
 
   private def singleAnalysisRunRouteImpl(analysisName: String, analysisVersion: String, runId: String)(implicit request:HttpRequest): Route = {
+
+    log.debug(s"Single analysis run requested, name=$analysisName, version=$analysisVersion, runId=$runId")
+
     // Can be sure identifying triple of name, version and run is present!
     requestHandler.getRun(analysisName, analysisVersion, runId) match {
       case Success(repr) =>
