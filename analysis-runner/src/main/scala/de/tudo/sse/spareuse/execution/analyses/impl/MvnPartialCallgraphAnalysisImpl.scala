@@ -1,23 +1,36 @@
 package de.tudo.sse.spareuse.execution.analyses.impl
 
 import de.tudo.sse.spareuse.core.formats
-import de.tudo.sse.spareuse.core.formats.{AnalysisResultFormat, EmptyFormat, GraphResultFormat, NamedPropertyFormat}
+import de.tudo.sse.spareuse.core.formats.{AnalysisResultFormat, ListResultFormat, NamedPropertyFormat, ObjectResultFormat}
 import de.tudo.sse.spareuse.core.maven.MavenIdentifier
-import de.tudo.sse.spareuse.core.model.analysis.{EdgeWithIds, GraphResult, NodeWithId}
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaProgram
 import de.tudo.sse.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import de.tudo.sse.spareuse.core.opal.OPALProjectHelper
 import de.tudo.sse.spareuse.core.utils.http.HttpDownloadException
 import de.tudo.sse.spareuse.execution.analyses.{AnalysisImplementation, Result}
-import de.tudo.sse.spareuse.execution.analyses.impl.MvnPartialCallgraphAnalysisImpl.{InternalEdge, InternalGraph, InternalNode, parseConfig, validCallgraphAlgorithms}
+import de.tudo.sse.spareuse.execution.analyses.impl.MvnPartialCallgraphAnalysisImpl.{InternalCallSite, InternalMethod, parseConfig, validCallgraphAlgorithms}
+import org.opalj.br.instructions.Instruction
+import org.opalj.br.{DeclaredMethod, Method}
 import org.opalj.tac.cg.{CHACallGraphKey, CTACallGraphKey, RTACallGraphKey, XTACallGraphKey}
 
+import java.util.concurrent.atomic.AtomicInteger
 import scala.util.{Failure, Success, Try}
 
 class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
-  private val resultFormat: AnalysisResultFormat = GraphResultFormat(Set(NamedPropertyFormat("callSitePc", formats.NumberFormat)),Set(NamedPropertyFormat("methodName", formats.StringFormat)), "", "")
+  private val resultFormat: AnalysisResultFormat = ListResultFormat(
+    ObjectResultFormat(Set(
+      NamedPropertyFormat("mId", formats.NumberFormat, "The unique id assigned to this method"),
+      NamedPropertyFormat("mFqn", formats.StringFormat, "The fully qualified name of this method"),
+      NamedPropertyFormat("css", ListResultFormat(ObjectResultFormat(Set(
+        NamedPropertyFormat("csPc", formats.NumberFormat, "PC of this callsite inside the enclosing method body"),
+        NamedPropertyFormat("targets", ListResultFormat(formats.NumberFormat), "List of method ids that have been resolved as targets for this callsite"),
+        NamedPropertyFormat("incomplete", formats.NumberFormat, "Indicates whether the resolution of this callsite was incomplete"),
+        NamedPropertyFormat("instr", formats.StringFormat, "String representation of the callsite instruction")
+      )), "List of callsites for this method"))
+    ))
+  , "List of Method definitions with callsite information")
 
   override val analysisData: AnalysisData = AnalysisData.systemAnalysis("mvn-partial-callgraphs", "1.0.0", "TBD", "OPAL", Set("java", "scala"),
     resultFormat, SoftwareEntityKind.Program)
@@ -64,33 +77,71 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
           val classes = opalHelper.readClassesFromJarStream(inputStream, jarUrl, loadImplementation = true).get
           val project = opalHelper.buildOPALProject(classes, List.empty, config.includeJre, setLibraryMode = !config.applicationMode)
 
+
           val cg = project.get(opalCgKey)
+          val methodIdCnt = new AtomicInteger(0)
 
-          var nodeId = 0
 
-          val nodeLookup = cg.reachableMethods().map(m => {
-            val tuple = (m, nodeId)
-            nodeId += 1
-            tuple
-          }).toMap
-
-          val edgesIt = cg.reachableMethods().flatMap { rm =>
-            val sourceId = nodeLookup(rm)
-
-            cg.calleesOf(rm).flatMap{ callee =>
-              val pc = callee._1
-              callee._2.flatMap { target =>
-                if(nodeLookup.contains(target)){
-                  val targetId = nodeLookup(target)
-                  Some(new InternalEdge(sourceId, targetId, pc))
-                } else None
-              }
-            }
+          // Build Internal representations without callsites (to assign ids)
+          def toMethodObj(definedMethod: Method): InternalMethod = {
+            new InternalMethod(methodIdCnt.getAndIncrement(), definedMethod.toJava, List.empty)
           }
 
-          val explicitGraph: GraphResult = new InternalGraph(nodeLookup.map(t => new InternalNode(t._2, t._1.toJava)).toSeq, edgesIt.toSeq)
+          val methodObjLookup: Map[DeclaredMethod, Seq[InternalMethod]] = cg
+            .reachableMethods()
+            .map { declMethod =>
+              if(declMethod.hasMultipleDefinedMethods){
+                (declMethod, declMethod
+                  .asMultipleDefinedMethods
+                  .definedMethods
+                  .map(toMethodObj))
+              } else if(declMethod.hasSingleDefinedMethod){
+                (declMethod, Seq(toMethodObj(declMethod.asDefinedMethod.definedMethod)))
+              } else {
+                (declMethod, Seq(new InternalMethod(methodIdCnt.getAndIncrement(), declMethod.toJava, List.empty)))
+              }
+            }.toMap
 
-          Some(Result(explicitGraph, Set(program)))
+          val allMethodDataWithCallSites = cg
+            .reachableMethods()
+            .flatMap{ declMethod =>
+              val incompleteCsPcs = cg.incompleteCallSitesOf(declMethod).toSet
+
+              val methodBodies = if(declMethod.hasMultipleDefinedMethods) declMethod.asMultipleDefinedMethods.definedMethods.map(_.body)
+                else if(declMethod.hasSingleDefinedMethod) Seq(declMethod.asDefinedMethod.definedMethod.body)
+                else Seq.empty
+
+              def getCallSiteInstruction(pc: Int): Option[Instruction] = {
+                methodBodies
+                  .find(_.isDefined)
+                  .map{ codeOpt =>
+                    codeOpt.get.instructions(pc)
+                  }
+              }
+
+              val allMethodCallSites = cg
+                .calleesOf(declMethod)
+                .map{ callSiteInfo =>
+                  val pc = callSiteInfo._1
+                  new InternalCallSite(
+                    pc, // PC of this callsite
+                    callSiteInfo._2.flatMap(dm => methodObjLookup.getOrElse(dm, Seq.empty).map(_.mId)).toList, // All ids of confirmed targets of this callsite
+                    incompleteCsPcs.contains(pc), // Whether this callsite is incomplete atm
+                    getCallSiteInstruction(pc).map(_.toString(pc)).getOrElse("<none>")
+                  )
+                }
+                .toList
+
+              methodObjLookup(declMethod).map(mObj => mObj.withCallSiteInfo(allMethodCallSites))
+            }
+            .toList
+
+          log.info(s"Done building partial callgraph representation for ${program.name}")
+
+          //TODO: Need type hierarchy!
+
+          Some(Result(allMethodDataWithCallSites, Set(program)))
+
         case Failure(HttpDownloadException(status, _, _)) if status == 404 =>
           log.warn(s"No JAR file available for ${program.identifier}")
           None
@@ -130,22 +181,22 @@ object MvnPartialCallgraphAnalysisImpl {
     PartialCallgraphAnalysisConfig(algo, includeJre, appMode)
   }
 
-  class InternalGraph(nodeSeq: Seq[InternalNode], edgeSeq: Seq[InternalEdge]) extends GraphResult{
-    override val nodes: Seq[NodeWithId] = nodeSeq
-    override val edges: Seq[EdgeWithIds] = edgeSeq
+  class InternalMethod(id: Int, fqn: String, callSites: List[InternalCallSite]){
+
+    def withCallSiteInfo(info: List[InternalCallSite]) =
+      new InternalMethod(id, fqn, info)
+
+    val mId: Int = id
+    val mFqn: String = fqn
+    val css: List[InternalCallSite] = callSites
   }
 
-  class InternalEdge(source: Int, target: Int, pc: Int) extends EdgeWithIds {
-    override val __from__ : Long = source
-    override val __to__ : Long = target
+  class InternalCallSite(pc: Int, resolvedTargetIds: List[Int], isIncomplete: Boolean, instruction: String) {
 
-    val callSitePc: Int = pc
-  }
-
-  class InternalNode(id: Int, name: String) extends NodeWithId {
-    override val __uid__ : Long = id
-
-    val methodName: String = name
+    val csPc: Int = pc
+    val targets: List[Int] = resolvedTargetIds
+    val incomplete: Int = if(isIncomplete) 1 else 0
+    val instr: String = instruction
   }
 
 }
