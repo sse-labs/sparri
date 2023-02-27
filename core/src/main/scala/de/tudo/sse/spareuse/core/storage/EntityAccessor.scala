@@ -35,6 +35,8 @@ trait EntityAccessor {
 
   def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Try[Seq[GenericEntityData]]
 
+  def getEntityChildren(uid: String, skip: Int, limit:Int): Try[Seq[SoftwareEntityData]]
+
   def getEntityKind(entityIdent: String): Try[SoftwareEntityKind]
 
   def getEntity(ident: String): Try[SoftwareEntityData] = {

@@ -91,7 +91,15 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
   }
 
   private def allEntityChildrenRouteImpl(entityName: String, limit: Int, skip: Int)(implicit request: HttpRequest): Route = {
+    log.debug(s"Entity children requested, name=$entityName (skip=$skip, limit=$limit) .")
+    requestHandler.getEntityChildren(entityName, skip, limit) match {
+      case Success(childReps) =>
+        complete(childReps.toJson)
+      case Failure(ex) =>
+        log.error("Failed to retrieve entity children", ex)
+        complete(InternalServerError)
 
+    }
   }
 
   private def allAnalysisRunsForEntityRouteImpl(entityName: String, limit: Int, skip: Int)(implicit request: HttpRequest): Route = {

@@ -67,6 +67,10 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     dataAccessor.getEntity(entityName).map(toEntityRepr)
   }
 
+  def getEntityChildren(entityName: String, skip: Int, limit: Int): Try[Seq[EntityRepr]] = Try {
+    dataAccessor.getEntityChildren(entityName, skip, limit).get.map(toEntityRepr)
+  }
+
   def getAllResultsFor(entityName: String, analysisFilter: Option[String], limit: Int, skip: Int): Try[Set[AnalysisResultRepr]] = {
     val analysisNameAndVersionOpt = analysisFilter.map( s => {
       val parts = s.split(":")

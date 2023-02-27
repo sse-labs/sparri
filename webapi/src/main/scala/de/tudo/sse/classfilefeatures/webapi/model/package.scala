@@ -1,5 +1,6 @@
 package de.tudo.sse.classfilefeatures.webapi
 
+import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaMethod}
 import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData}
 import de.tudo.sse.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
 import de.tudo.sse.spareuse.core.utils.toHex
@@ -23,8 +24,35 @@ package object model {
   }
 
   def toEntityRepr(entity: SoftwareEntityData): EntityRepr = {
+
+    var superTypeOpt: Option[String] = None
+    var returnTypeOpt: Option[String] = None
+    var paramTypesOpt: Option[Array[String]] = None
+
+    //TODO: Extend so that special info for instructions is also serialized!
+    entity match {
+      case jc: JavaClass =>
+        superTypeOpt = jc.superType
+      case jm: JavaMethod =>
+        returnTypeOpt = Some(jm.returnType)
+        paramTypesOpt = Some(jm.paramTypes.toArray)
+      case _ =>
+    }
+
     val children = if(entity.getChildren.isEmpty) None else Some(entity.getChildren.map(toEntityRepr).toArray)
-    EntityRepr(entity.name, entity.uid, entity.kind.toString, entity.language, entity.repository, entity.getParent.map(_.uid), entity.binaryHash.map(toHex), children)
+
+    EntityRepr(entity.name,
+      entity.uid,
+      entity.kind.toString,
+      entity.language,
+      entity.repository,
+      entity.getParent.map(_.uid),
+      entity.binaryHash.map(toHex),
+      children,
+      superTypeOpt,
+      returnTypeOpt,
+      paramTypesOpt
+    )
   }
 
   def toRunRepr(data: AnalysisRunData): AnalysisRunRepr = {
@@ -46,6 +74,7 @@ package object model {
   }
 
   def genericEntityToEntityRepr(entity: GenericEntityData): EntityRepr = {
-    EntityRepr(entity.name, entity. uid, entity.kind.toString, entity.language, entity.repository, entity.parentUid, entity.binaryHash.map(toHex), None)
+    EntityRepr(entity.name, entity. uid, entity.kind.toString, entity.language, entity.repository, entity.parentUid,
+      entity.binaryHash.map(toHex), None, None, None, None)
   }
 }

@@ -620,7 +620,7 @@ class PostgresDataAccessor extends DataAccessor {
     // Insert run
     val timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME)
     val runRepr = SoftwareAnalysisRunRepr(-1, getFreshRunUuid(), runConfig, RunState.Created.id, isRevoked = false, analysisId, "", timestamp)
-    val newRunId = Await.result(db.run(idReturningAnalysisRunTable += runRepr), simpleQueryTimeout)
+    Await.ready(db.run(idReturningAnalysisRunTable += runRepr), simpleQueryTimeout)
 
     runRepr.uid
   }
@@ -697,6 +697,16 @@ class PostgresDataAccessor extends DataAccessor {
       AnalysisResultData(resultRep.uid, resultRep.isRevoked, resultRep.jsonContent, allAssociatedEntities.toSet)
     }.toSet
 
+  }
+
+  override def getEntityChildren(uid: String, skip: Int, limit:Int): Try[Seq[SoftwareEntityData]] = Try {
+    val parentEntityId = getEntityId(uid)
+
+    val queryF = db.run(entitiesTable.filter(swe => swe.parentID === parentEntityId).drop(skip).take(limit).result)
+
+    val entityRepResult = Await.result(queryF, longActionTimeout)
+
+    buildEntities(entityRepResult)
   }
 
   private def getEntityId(qualifier: String): Long = {

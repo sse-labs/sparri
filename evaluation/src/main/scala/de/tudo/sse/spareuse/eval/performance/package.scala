@@ -11,7 +11,7 @@ import spray.json.{JsArray, JsObject, JsString, JsValue, enrichString}
 
 import java.nio.charset.StandardCharsets
 import scala.collection.mutable
-import scala.util.{Success, Try}
+import scala.util.{Failure, Success, Try}
 
 package object performance {
 
@@ -132,6 +132,29 @@ package object performance {
     }
   }
 
+  def getAllTypesForProgram(gav: String, baseUrl: String, httpClient: CloseableHttpClient): Try[Any] = Try {
+    val packagesRequest = new HttpGet(baseUrl + "/entities/" + gavToEntityId(gav) + "/children")
+    val response = httpClient.execute(packagesRequest)
+
+    if(response.getStatusLine.getStatusCode != 200) {
+      response.close()
+      throw new IllegalStateException(s"Failed to retrieve packages for program $gav (Status code ${response.getStatusLine.getStatusCode}) ")
+    }
+
+    val contentT = Try(EntityUtils.toString(response.getEntity, StandardCharsets.UTF_8).parseJson)
+    response.close()
+
+    contentT match {
+      case Success(JsArray(values)) =>//TODO
+        println(values.size)
+      case Failure(ex) =>
+        throw new IllegalStateException(s"Failed to retrieve packages for program $gav", ex)
+      case _ =>
+        throw new IllegalStateException("Invalid response formats")
+    }
+
+  }
+
   def getAnalysisResultsForEntity(entityId: String, analysisName: String, analysisVersion: String,
                                   baseUrl: String, httpClient:CloseableHttpClient): Try[JsValue] = Try {
 
@@ -153,6 +176,8 @@ package object performance {
           throw new IllegalStateException(s"Content of analysis result missing")
         }
 
+      case Failure(ex) =>
+        throw new IllegalStateException(s"Invalid response for result $entityId", ex)
       case _ =>
         throw new IllegalStateException(s"Invalid response for result $entityId")
     }
