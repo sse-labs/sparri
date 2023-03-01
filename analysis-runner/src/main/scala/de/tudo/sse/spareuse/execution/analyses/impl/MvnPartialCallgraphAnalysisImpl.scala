@@ -89,6 +89,9 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
           val methodObjLookup: Map[DeclaredMethod, Seq[InternalMethod]] = cg
             .reachableMethods()
+            .filter{ declMethod => // Filter out non-project (i.e. JRE) methods
+              project.isProjectType(declMethod.declaringClassType)
+            }
             .map { declMethod =>
               if(declMethod.hasMultipleDefinedMethods){
                 (declMethod, declMethod
@@ -104,6 +107,9 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
           val allMethodDataWithCallSites = cg
             .reachableMethods()
+            .filter { declMethod => // Filter out non-project (i.e. JRE) methods
+              project.isProjectType(declMethod.declaringClassType)
+            }
             .flatMap{ declMethod =>
               val incompleteCsPcs = cg.incompleteCallSitesOf(declMethod).toSet
 
@@ -137,8 +143,6 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
             .toList
 
           log.info(s"Done building partial callgraph representation for ${program.name}")
-
-          //TODO: Need type hierarchy!
 
           Some(Result(allMethodDataWithCallSites, Set(program)))
 

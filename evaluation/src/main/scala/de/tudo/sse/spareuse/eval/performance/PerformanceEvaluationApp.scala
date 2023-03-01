@@ -14,7 +14,7 @@ object PerformanceEvaluationApp {
 
   private val logger: Logger = LoggerFactory.getLogger(getClass)
 
-  private val apiBaseUrl = "http://ls5vs029.cs.tu-dortmund.de:9090/api/"
+  private val apiBaseUrl = "http://localhost:33449/api/"//"http://ls5vs029.cs.tu-dortmund.de:9090/api/"
 
   private val allRegisteredEvaluations: Seq[PerformanceEvaluation]= Seq(//new DependencyPerformanceEvaluation(apiBaseUrl),
     new CallgraphPerformanceEvaluation(apiBaseUrl))

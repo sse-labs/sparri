@@ -1,5 +1,7 @@
 package de.tudo.sse.spareuse.eval
 
+import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaPackage}
+import de.tudo.sse.spareuse.core.utils.fromHex
 import de.tudo.sse.spareuse.core.utils.http.HttpDownloadException
 import org.apache.http.client.HttpClient
 import org.apache.http.client.methods.{CloseableHttpResponse, HttpGet, HttpPost}
@@ -9,6 +11,7 @@ import org.apache.http.protocol.HTTP
 import org.apache.http.util.EntityUtils
 import spray.json.{JsArray, JsObject, JsString, JsValue, enrichString}
 
+import java.net.{URL, URLEncoder}
 import java.nio.charset.StandardCharsets
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
@@ -132,8 +135,8 @@ package object performance {
     }
   }
 
-  def getAllTypesForProgram(gav: String, baseUrl: String, httpClient: CloseableHttpClient): Try[Any] = Try {
-    val packagesRequest = new HttpGet(baseUrl + "/entities/" + gavToEntityId(gav) + "/children")
+  def getAllTypesForProgram(gav: String, baseUrl: String, httpClient: CloseableHttpClient): Try[Seq[JavaClass]] = Try {
+    val packagesRequest = new HttpGet(baseUrl + "entities/" + gavToEntityId(gav) + "/children")
     val response = httpClient.execute(packagesRequest)
 
     if(response.getStatusLine.getStatusCode != 200) {
@@ -145,14 +148,61 @@ package object performance {
     response.close()
 
     contentT match {
-      case Success(JsArray(values)) =>//TODO
-        println(values.size)
+      case Success(JsArray(values)) =>
+        values
+          .collect {
+            case jo: JsObject =>
+              new JavaPackage(
+                jo.fields("Name").asInstanceOf[JsString].value,
+                jo.fields("Identifier").asInstanceOf[JsString].value,
+                jo.fields("Repository").asInstanceOf[JsString].value)
+          }.flatMap{ p =>
+            getAllTypesForPackage(p.uid, baseUrl, httpClient).get
+          }
       case Failure(ex) =>
         throw new IllegalStateException(s"Failed to retrieve packages for program $gav", ex)
       case _ =>
         throw new IllegalStateException("Invalid response formats")
     }
 
+  }
+
+  def getAllTypesForPackage(packageIdent: String, baseUrl: String, httpClient: CloseableHttpClient): Try[Seq[JavaClass]] = Try {
+
+    //TODO: Proper encoding
+    val encodedPackageIdent = packageIdent.replace("/", "%2F").replace("!", "%21").replace(":","%3A")
+
+    val typesRequest = new HttpGet(baseUrl + "entities/" + encodedPackageIdent + "/children")
+    val response = httpClient.execute(typesRequest)
+
+    if (response.getStatusLine.getStatusCode != 200) {
+      response.close()
+      throw new IllegalStateException(s"Failed to retrieve types for package $packageIdent (Status code ${response.getStatusLine.getStatusCode}) ")
+    }
+
+    val contentT = Try(EntityUtils.toString(response.getEntity, StandardCharsets.UTF_8).parseJson)
+    response.close()
+
+    contentT match {
+      case Success(JsArray(values)) =>
+        values.collect {
+          case jo: JsObject =>
+            new JavaClass(
+              jo.fields("Name").asInstanceOf[JsString].value,
+              jo.fields("ThisTypeFqn").asInstanceOf[JsString].value,
+              jo.fields("Identifier").asInstanceOf[JsString].value,
+              jo.fields.get("SuperTypeFqn").map {
+                case s: JsString => s.value
+                case _ => throw new IllegalStateException("Invalid response format")
+              },
+              jo.fields("Repository").asInstanceOf[JsString].value,
+              fromHex(jo.fields("Hash").asInstanceOf[JsString].value))
+        }
+      case Failure(ex) =>
+        throw new IllegalStateException(s"Failed to retrieve types for package $packageIdent", ex)
+      case _ =>
+        throw new IllegalStateException("Invalid response formats")
+    }
   }
 
   def getAnalysisResultsForEntity(entityId: String, analysisName: String, analysisVersion: String,

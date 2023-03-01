@@ -25,6 +25,7 @@ package object model {
 
   def toEntityRepr(entity: SoftwareEntityData): EntityRepr = {
 
+    var thisTypeFqnOpt: Option[String] = None
     var superTypeOpt: Option[String] = None
     var returnTypeOpt: Option[String] = None
     var paramTypesOpt: Option[Array[String]] = None
@@ -32,6 +33,7 @@ package object model {
     //TODO: Extend so that special info for instructions is also serialized!
     entity match {
       case jc: JavaClass =>
+        thisTypeFqnOpt = Some(jc.thisType)
         superTypeOpt = jc.superType
       case jm: JavaMethod =>
         returnTypeOpt = Some(jm.returnType)
@@ -49,6 +51,7 @@ package object model {
       entity.getParent.map(_.uid),
       entity.binaryHash.map(toHex),
       children,
+      thisTypeFqnOpt,
       superTypeOpt,
       returnTypeOpt,
       paramTypesOpt
@@ -75,6 +78,6 @@ package object model {
 
   def genericEntityToEntityRepr(entity: GenericEntityData): EntityRepr = {
     EntityRepr(entity.name, entity. uid, entity.kind.toString, entity.language, entity.repository, entity.parentUid,
-      entity.binaryHash.map(toHex), None, None, None, None)
+      entity.binaryHash.map(toHex), None, None, None, None, None)
   }
 }
