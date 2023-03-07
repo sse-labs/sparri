@@ -65,7 +65,7 @@ class CallgraphPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEval
         directRuntimes.append(timedSimpleResults.getDurationMillis)
 
       if (timedReuseResults.getContent.isFailure) //TODO: Check content semantics
-        logger.error("Invalid results for reuse dependency analysis")
+        logger.error("Invalid results for reuse dependency analysis", timedReuseResults.getContent.failed.get)
       else
         reuseRuntimes.append(timedReuseResults.getDurationMillis)
 

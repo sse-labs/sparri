@@ -1,10 +1,12 @@
 package de.tudo.sse.spareuse.eval.performance.cgs
-import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaClass
-import de.tudo.sse.spareuse.eval.performance.{gavToEntityId, getAllTypesForProgram, getAnalysisResultsForEntity, runFinished, triggerAnalysisRun}
+import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, buildMethodFor}
+import de.tudo.sse.spareuse.eval.performance.{gavToEntityId, getAllTypesForProgram, getAnalysisResultsForEntity, runFinished, timedExec, triggerAnalysisRun}
 import org.apache.http.impl.client.HttpClients
 import spray.json.{JsArray, JsNumber, JsObject, JsString}
 
+import scala.annotation.switch
 import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 import scala.util.{Failure, Success, Try}
 
 class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnalysis {
@@ -17,62 +19,66 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
   override def prepareData(rootGav: String, dependencyGavs: Set[String]): Try[Unit] = Try {
 
-    theCg = Some(new StitchedCallGraph(rootGav, dependencyGavs))
+    val timedOp = timedExec { () =>
+      theCg = Some(new StitchedCallGraph(rootGav, dependencyGavs))
 
-    def toMethodLookup(json: JsArray): Map[Long, MethodRepr] = {
-      json.elements.map {
-        case jo: JsObject =>
-          val mId = jo.fields("mId").asInstanceOf[JsNumber].value.longValue()
-          val mFqn = jo.fields("mFqn").asInstanceOf[JsString].value
+      def toMethodLookup(json: JsArray): Map[Long, MethodRepr] = {
+        json.elements.map {
+          case jo: JsObject =>
+            val mId = jo.fields("mId").asInstanceOf[JsNumber].value.longValue()
+            val mFqn = jo.fields("mFqn").asInstanceOf[JsString].value
 
-          val callSites = jo.fields("css").asInstanceOf[JsArray].elements.map {
-            case siteObj: JsObject =>
-              val pc = siteObj.fields("csPc").asInstanceOf[JsNumber].value.intValue()
-              val isIncomplete = siteObj.fields("incomplete").asInstanceOf[JsNumber].value.intValue() > 0
-              val instrRep = siteObj.fields("instr").asInstanceOf[JsString].value
-              val targets = siteObj.fields("targets").asInstanceOf[JsArray].elements.map {
-                case n: JsNumber => n.value.longValue()
-                case _ => throw new IllegalStateException("Invalid format of partial results")
-              }.toList
+            val callSites = jo.fields("css").asInstanceOf[JsArray].elements.map {
+              case siteObj: JsObject =>
+                val pc = siteObj.fields("csPc").asInstanceOf[JsNumber].value.intValue()
+                val isIncomplete = siteObj.fields("incomplete").asInstanceOf[JsNumber].value.intValue() > 0
+                val instrRep = siteObj.fields("instr").asInstanceOf[JsString].value
+                val targets = siteObj.fields("targets").asInstanceOf[JsArray].elements.map {
+                  case n: JsNumber => n.value.longValue()
+                  case _ => throw new IllegalStateException("Invalid format of partial results")
+                }.toList
 
-              CallSiteRepr(pc, isIncomplete, targets, instrRep)
-            case _ =>
-              throw new IllegalStateException("Invalid format of partial results")
-          }.toList
+                CallSiteRepr(pc, isIncomplete, targets, instrRep)
+              case _ =>
+                throw new IllegalStateException("Invalid format of partial results")
+            }.toList
 
-          (mId, MethodRepr(mId, mFqn, callSites))
-        case _ =>
-          throw new IllegalStateException("Invalid format of partial results")
-      }.toMap
-    }
-
-
-
-    getAnalysisResultsForEntity(gavToEntityId(rootGav), analysisName, analysisVersion, apiBaseUrl, httpClient).get match {
-      case ja: JsArray =>
-        val types = getAllTypesForProgram(rootGav, apiBaseUrl, httpClient).get
-        val cg = PartialCallGraph(rootGav, toMethodLookup(ja))
-        theCg.get.addPartialInfo(rootGav, cg, types)
-      case _ =>
-        throw new IllegalStateException("Expected a JSON Array")
-    }
-
-    dependencyGavs
-      .foreach{ gav =>
-        val entityId = gavToEntityId(gav)
-        getAnalysisResultsForEntity(entityId, analysisName, analysisVersion, apiBaseUrl, httpClient).get match {
-          case ja: JsArray =>
-            val cg = PartialCallGraph(gav, toMethodLookup(ja))
-            val types = getAllTypesForProgram(gav, apiBaseUrl, httpClient).get
-            theCg.get.addPartialInfo(gav, cg, types)
+            (mId, MethodRepr(mId, mFqn, callSites))
           case _ =>
-            throw new IllegalStateException("Expected a JSON Array")
-        }
+            throw new IllegalStateException("Invalid format of partial results")
+        }.toMap
+
       }
 
-    logger.info(s"Successfully retrieved ${dependencyGavs.size + 1} partial callgraphs")
 
+      getAnalysisResultsForEntity(gavToEntityId(rootGav), analysisName, analysisVersion, apiBaseUrl, httpClient).get match {
+        case ja: JsArray =>
+          val types = getAllTypesForProgram(rootGav, apiBaseUrl, httpClient).get
+          val cg = PartialCallGraph(rootGav, toMethodLookup(ja))
+          theCg.get.addPartialInfo(rootGav, cg, types)
+        case _ =>
+          throw new IllegalStateException("Expected a JSON Array")
+      }
 
+      dependencyGavs
+        .foreach { gav =>
+          val entityId = gavToEntityId(gav)
+          getAnalysisResultsForEntity(entityId, analysisName, analysisVersion, apiBaseUrl, httpClient).get match {
+            case ja: JsArray =>
+              val cg = PartialCallGraph(gav, toMethodLookup(ja))
+              val types = getAllTypesForProgram(gav, apiBaseUrl, httpClient).get
+              theCg.get.addPartialInfo(gav, cg, types)
+            case _ =>
+              throw new IllegalStateException("Expected a JSON Array")
+          }
+        }
+
+      logger.info(s"Successfully retrieved ${dependencyGavs.size + 1} partial callgraphs")
+    }
+
+    logger.info(s"Preparing data took ${timedOp.getDurationMillis}ms")
+
+    timedOp.getContent
   }
 
   override def buildFullCallgraph(): Try[Any] = Try {
@@ -109,31 +115,310 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
   case class PartialCallGraph(gav: String, methodLookup: Map[Long, MethodRepr])
 
-  case class MethodRepr(id: Long, fqn: String, callSites: List[CallSiteRepr])
+  case class MethodRepr(id: Long, fqn: String, callSites: List[CallSiteRepr]){
 
-  case class CallSiteRepr(pc: Int, isIncomplete: Boolean, targets: List[Long], instrRep: String)
+    lazy val identifier: MethodIdentifier = toIdentifier(fqn)
+
+    lazy val incompleteCallSites: Seq[CallSiteRepr] = callSites.filter(_.isIncomplete)
+
+    lazy val hasIncompleteCallSites: Boolean = incompleteCallSites.nonEmpty
+
+    private def toIdentifier(methodIdent: String): MethodIdentifier = {
+
+      var state = 0
+      val builder = new mutable.StringBuilder()
+
+      var declaringType: String = null
+      var visibility: String = ""
+      var isStatic: Boolean = false
+      var returnType: String = null
+      var name: String = null
+      val arguments = new ListBuffer[String]()
+
+      for(c <- methodIdent.toCharArray){
+        (state: @switch) match {
+          case 0 =>
+            if(c == '{'){
+              declaringType = builder.toString()
+              builder.clear()
+              state = 2
+            } else if(!c.isSpaceChar) builder.append(c)
+
+          case 2 =>
+            if(c.isSpaceChar && builder.nonEmpty){
+              val tmp = builder.toString()
+              if(tmp.equalsIgnoreCase("static")){
+                isStatic = true
+                builder.clear() // Stay in this state !
+              } else if(tmp.equalsIgnoreCase("public") || tmp.equalsIgnoreCase("private") || tmp.equalsIgnoreCase("protected")){
+                visibility = tmp
+                builder.clear() // Stay in this state !
+              } else {
+                returnType = tmp
+                builder.clear()
+                state = 3
+              }
+            } else if(!c.isSpaceChar) builder.append(c)
+
+          case 3 =>
+            if(c == '('){
+              name = builder.toString()
+              builder.clear()
+              state = 4
+            } else if(!c.isSpaceChar) builder.append(c)
+
+          case 4 =>
+            if(c == ')'){
+              if(builder.nonEmpty) arguments.append(builder.toString())
+              builder.clear()
+              return MethodIdentifier(declaringType, name, returnType, arguments, isStatic, visibility)
+            } else if(c == ',') {
+              arguments.append(builder.toString())
+              builder.clear()
+            } else if (!c.isSpaceChar) builder.append(c)
+
+          case _ =>
+        }
+      }
+
+      throw new IllegalStateException(s"Failed to parse method identifier $methodIdent")
+    }
+
+  }
+
+  case class MethodIdentifier(mDeclaringTypeFqn: String, mName: String, mRetType: String, mArgumentTypes: Seq[String], isStatic: Boolean, visibility: String)
+
+  case class CallSiteRepr(pc: Int, isIncomplete: Boolean, targets: List[Long], instrRep: String) {
+
+    lazy val instruction: InvocationInstr = parseInstruction(instrRep)
+
+
+    private def parseInstruction(instrRep: String): InvocationInstr = {
+      val arr = instrRep.toCharArray
+
+      var state = 0
+
+      val builder = new mutable.StringBuilder
+
+      var kindStr: String = null
+      var typeStr: String = null
+      var retStr: String = null
+      var nameStr: String = null
+      val arguments = new ListBuffer[String]
+
+      for (c <- arr) {
+        (state: @switch) match {
+          case 0 =>
+            if (c == '/') state = 1
+            else if (c == '(') {
+              kindStr = builder.toString()
+              builder.clear()
+              state = 4
+            }
+            else if (!c.isSpaceChar) builder.append(c)
+
+          case 1 =>
+            if (c == '*') state = 2
+
+          case 2 =>
+            if (c == '*') state = 3
+
+          case 3 =>
+            if (c == '/') state = 0
+
+          case 4 =>
+            if (c == '{') {
+              typeStr = builder.toString()
+              builder.clear()
+              state = 5
+            } else if (!c.isSpaceChar) builder.append(c)
+
+          case 5 =>
+            if (c.isSpaceChar && builder.nonEmpty) {
+              retStr = builder.toString()
+              builder.clear()
+              state = 6
+            } else if (!c.isSpaceChar) builder.append(c)
+
+          case 6 =>
+            if (c == '(') {
+              nameStr = builder.toString()
+              builder.clear()
+              state = 7
+            } else if (!c.isSpaceChar) builder.append(c)
+
+          case 7 =>
+            if (c == ')') {
+              if (builder.nonEmpty) arguments.append(builder.toString())
+              builder.clear()
+              return InvocationInstr(kindStr, typeStr, nameStr, retStr, arguments.toList)
+            } else if (c == ',') {
+              arguments.append(builder.toString())
+              builder.clear()
+            } else if (!c.isSpaceChar) builder.append(c)
+
+          case _ =>
+        }
+      }
+      InvocationInstr(kindStr, typeStr, nameStr, retStr, arguments.toList)
+    }
+
+  }
+
+  case class InvocationInstr(invocationType: String,
+                             declaredTypeFqn: String,
+                             methodName: String,
+                             returnType: String,
+                             params: Seq[String]){
+    lazy val isStatic: Boolean = invocationType.equalsIgnoreCase("INVOKESTATIC")
+    lazy val isVirtual: Boolean = invocationType.equalsIgnoreCase("INVOKEVIRTUAL")
+    lazy val isSpecial: Boolean = invocationType.equalsIgnoreCase("INVOKESPECIAL")
+    lazy val isInterface: Boolean = invocationType.equalsIgnoreCase("INVOKEINTERFACE")
+  }
+
+  class TypeNode(fqn: String, jc: JavaClass, methods: Set[MethodRepr], subNodes: Set[TypeNode] = Set.empty, superNode: Option[TypeNode] = None){ //TODO: Interfaces
+
+    val typeFqn: String = fqn
+    val typeDeclaration: JavaClass = jc
+    val allMethods: Set[MethodRepr] = methods
+
+    lazy val methodLookup: Map[String, Set[MethodRepr]] =
+      methods
+        .map(_.identifier.mName)
+        .map { name =>
+          (name, methods.filter(m => m.identifier.mName.equalsIgnoreCase(name)))
+        }
+        .toMap
+
+
+    private val children = mutable.Set[TypeNode](subNodes.toList :_*)
+    private var parent = superNode
+
+    def superType: Option[TypeNode] = parent
+    def subTypes: Set[TypeNode] = children.toSet
+
+    def addSubType(child: TypeNode): Unit = children.add(child)
+    def setSuperType(p: TypeNode): Unit = {
+      parent = Some(p)
+      p.addSubType(this)
+    }
+
+    def allSubTypes: Set[TypeNode] = {
+      subTypes ++ subTypes.flatMap(_.allSubTypes)
+    }
+
+  }
+
 
   class StitchedCallGraph(rootGav: String, dependencyGavs: Set[String]){
 
     private val partialCgs = new mutable.HashMap[String, PartialCallGraph]()
 
-    private val typesLookup = new mutable.HashMap[String, JavaClass]()
+    private val rawTypesLookup = new mutable.HashMap[String, JavaClass]()
+    private val rawMethodByTypeLookup = new mutable.HashMap[String, mutable.Set[MethodRepr]]
+
+    private var typesLookup = Map.empty[String, TypeNode]
 
     def addPartialInfo(gav: String, partialCallGraph: PartialCallGraph, types: Seq[JavaClass]): Unit = {
       partialCgs.put(gav, partialCallGraph)
-      types.foreach{ t => typesLookup.put(t.thisType, t) }
+      partialCallGraph.methodLookup.values.foreach(r => {
+        val tFqn = r.identifier.mDeclaringTypeFqn
+        if(!rawMethodByTypeLookup.contains(tFqn)) rawMethodByTypeLookup.put(tFqn, mutable.Set.empty)
+        rawMethodByTypeLookup(tFqn).add(r)
+      })
+      types.foreach { t => rawTypesLookup.put(t.thisType.replace("/", "."), t) }
     }
 
     def resolveAll(): Unit = {
-      val reachableRoot = partialCgs(rootGav).methodLookup.size
-      val totalMethodCnt = partialCgs.values.map(_.methodLookup.size).sum
-      val allCallSitesCnt = partialCgs.values.map(_.methodLookup.values.map(_.callSites.size).sum).sum
-      val incompleteCallSitesCnt = partialCgs.values.map(_.methodLookup.values.map(_.callSites.count(_.isIncomplete)).sum).sum
-      logger.info(s"Got ${typesLookup.size} types for stitched callgraph")
-      logger.info(s"Got ${partialCgs.size} partial CGs  with $totalMethodCnt total methods, $allCallSitesCnt Callsites and $incompleteCallSitesCnt incomplete Callsites for stitched callgraphs")
-      logger.info(s"Got $reachableRoot reachable root methods")
+      val timeHierarchyOp = timedExec { () =>
+        typesLookup = rawTypesLookup.keys.map{ fqn =>
+          val methods = rawMethodByTypeLookup.get(fqn).map(_.toSet).getOrElse(Set.empty)
+          val classRepr = rawTypesLookup(fqn)
+          (fqn, new TypeNode(fqn, classRepr, methods))
+        }.toMap
+        typesLookup.values.foreach { typeNode =>
+          rawTypesLookup(typeNode.typeFqn).superType.flatMap(typesLookup.get(_)).foreach(p => typeNode.setSuperType(p))
+        }
+      }
+
+      logger.info(s"Build type hierarchy in ${timeHierarchyOp.getDurationMillis}ms")
+
+
+
+      var start = System.currentTimeMillis()
+      val reachableMethods: mutable.Set[MethodRepr] = mutable.Set(partialCgs(rootGav).methodLookup.values.toSeq :_* )
+
+      val calleesLookup: mutable.Map[MethodRepr, Map[Int, mutable.Set[MethodRepr]]] = mutable.Map(
+        reachableMethods.map { m =>
+          val targetSet = m.callSites.map{ callSite =>
+            (callSite.pc, mutable.Set(callSite.targets.map( mId => partialCgs(rootGav).methodLookup(mId)) :_*))
+          }.toMap
+          (m, targetSet)
+        }.toSeq :_*
+      )
+      val toResolve: mutable.Set[MethodRepr] = mutable.Set(reachableMethods.filter(_.hasIncompleteCallSites).toSeq :_*)
+
+      val t1 = System.currentTimeMillis() - start
+      start = System.currentTimeMillis()
+
+      logger.info(s"Preparing data structures took $t1 ms")
+
+      while(toResolve.nonEmpty){
+        val currentMethod = toResolve.head
+        toResolve.remove(currentMethod)
+
+        val currentCallees = calleesLookup(currentMethod)
+
+        currentMethod.incompleteCallSites.foreach { callSite =>
+
+          val currentTargets = currentCallees(callSite.pc)
+
+          if(callSite.instruction.isStatic){
+            logger.info(s"Incomplete static callsite: ${callSite.instrRep}")
+          } else {
+
+            val allTypesCHA = {
+              val targetTypeFqn = callSite.instruction.declaredTypeFqn
+              if(!typesLookup.contains(targetTypeFqn)){
+                typesLookup.values.toSet //TODO: Deal with types we don't know (i.e. JRE types)
+              } else {
+                val targetType = typesLookup(targetTypeFqn)
+                targetType.allSubTypes ++ Set(targetType)
+              }
+            }
+            val methods = allTypesCHA.flatMap{t =>t
+              .methodLookup
+              .getOrElse(callSite.instruction.methodName, Set.empty)
+              .filter(m => m.identifier.mArgumentTypes.equals(callSite.instruction.params))
+            } //TODO: Filter params
+
+            methods.foreach { m =>
+              if(!currentTargets.contains(m)){
+                currentTargets.add(m)
+              }
+
+              if(!calleesLookup.contains(m)){
+                calleesLookup.put(m, m.callSites.map(cs => (cs.pc, mutable.Set.empty[MethodRepr])).toMap) //TODO: List resolved targets in lookup and add to Resolve List!
+              }
+
+              if(reachableMethods.add(m)) {
+                logger.info(s"Found a new target: ${m.fqn}")
+                toResolve.add(m)
+              }
+            }
+
+            logger.info(s"Got ${methods.size} methods for callsite $callSite")
+          }
+        }
+      }
+
+      val t2 = System.currentTimeMillis() - start
+      logger.info(s"Resolver loop took $t2 ms and found ${reachableMethods.size} reachable Methods")
+
       //???
     }
+
+
 
 
 
