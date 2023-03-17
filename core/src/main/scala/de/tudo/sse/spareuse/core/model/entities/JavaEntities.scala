@@ -31,13 +31,13 @@ object JavaEntities {
     jpa
   }
 
-  def buildClass(gav: String, packageName: String, className: String, fqn: String, superTypeFqn: Option[String] = None, repoIdent: String = "mvn", hash: Array[Byte] = Array.empty): JavaClass = {
-    buildClassFor(buildPackage(gav, packageName, repoIdent), className, fqn, superTypeFqn, hash)
+  def buildClass(gav: String, packageName: String, className: String, fqn: String, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, repoIdent: String = "mvn", hash: Array[Byte] = Array.empty): JavaClass = {
+    buildClassFor(buildPackage(gav, packageName, repoIdent), className, fqn, superTypeFqn, interfaceFqns, hash)
   }
 
-  def buildClassFor(jp: JavaPackage, className: String, fqn: String, superTypeFqn: Option[String] = None, hash: Array[Byte] = Array.empty): JavaClass = {
+  def buildClassFor(jp: JavaPackage, className: String, fqn: String, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, hash: Array[Byte] = Array.empty): JavaClass = {
     val ident = jp.uid + "!" + fqn
-    val classObj = new JavaClass(className, fqn, ident, superTypeFqn, jp.repository, hash)
+    val classObj = new JavaClass(className, fqn, ident, superTypeFqn, interfaceFqns, jp.repository, hash)
     classObj.setParent(jp)
     classObj
   }
@@ -92,12 +92,14 @@ object JavaEntities {
                   thisTypeFqn: String,
                   classUid: String,
                   superTypeFqn: Option[String],
+                  interfaceFqns: Set[String],
                   repositoryIdent: String,
                   hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(className, thisTypeFqn, classUid, repositoryIdent, Some(hashedBytes)){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Class
 
     val thisType: String = thisTypeFqn
     val superType: Option[String] = superTypeFqn
+    val interfaceTypes: Set[String]= interfaceFqns
   }
 
   def buildMethodIdent(methodName: String, returnType: String, paramTypes: Seq[String]) =

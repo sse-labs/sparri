@@ -1,5 +1,6 @@
 package de.tudo.sse.spareuse.eval.performance.dependencies
 
+import de.tudo.sse.spareuse.core.utils.http.HttpDownloadException
 import de.tudo.sse.spareuse.eval.performance.{gavToEntityId, getAnalysisResultsForEntity, runFinished, triggerAnalysisRun}
 import org.apache.http.impl.client.HttpClients
 import spray.json._
@@ -59,21 +60,33 @@ class ReuseBasedTransitiveDependencyAnalysis(baseUrl: String) extends Transitive
 
     val expectedIds = expectedGAVs.map(gavToEntityId)
 
+    def startNewRunAndAwaitFinished(): Unit = {
+      triggerAnalysisRun(expectedIds, "mvn-dependencies", "1.0.0", baseUrl, httpClient) match {
+        case Success(runLocation) =>
+          logger.info(s"Successfully triggered analysis run. Waiting for run at $runLocation to complete...")
 
-    triggerAnalysisRun(expectedIds, "mvn-dependencies", "1.0.0", baseUrl, httpClient) match {
-      case Success(runLocation) =>
-        logger.info(s"Successfully triggered analysis run. Waiting for run at $runLocation to complete...")
+          while (!runFinished(runLocation, baseUrl, httpClient).get) {
+            Thread.sleep(500)
+            logger.debug(s"Waiting for run to finish: $runLocation")
+          }
 
-        while(!runFinished(runLocation, baseUrl, httpClient).get) {
-          Thread.sleep(500)
-          logger.debug(s"Waiting for run to finish: $runLocation")
-        }
+          logger.info("All direct dependencies are available.")
 
-        logger.info("All direct dependencies are available.")
-
-      case Failure(ex) =>
-        logger.error("Failed to trigger analysis run for direct dependencies", ex)
+        case Failure(ex) =>
+          logger.error("Failed to trigger analysis run for direct dependencies", ex)
+      }
     }
+
+    // Check whether all required entities have the required results. They may be spread across different analysis runs!
+    val apiIsMissingResults = expectedIds
+      .map(getAnalysisResultsForEntity(_, "mvn-dependencies", "1.0.0", baseUrl, httpClient))
+      .collect {
+        case Failure(HttpDownloadException(404, url, _)) => url
+      }
+      .nonEmpty
+    // If at least one result is missing: Start a new analysis run for all inputs (existing will be filtered out)
+    if(apiIsMissingResults) startNewRunAndAwaitFinished()
+
   }
 
   def close(): Unit = httpClient.close()

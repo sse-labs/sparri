@@ -16,8 +16,8 @@ object PerformanceEvaluationApp {
 
   private val apiBaseUrl = "http://ls5vs029.cs.tu-dortmund.de:9090/api/"
 
-  private val allRegisteredEvaluations: Seq[PerformanceEvaluation]= Seq(//new DependencyPerformanceEvaluation(apiBaseUrl),
-    new CallgraphPerformanceEvaluation(apiBaseUrl))
+  private val allRegisteredEvaluations: Seq[PerformanceEvaluation]= Seq(new DependencyPerformanceEvaluation(apiBaseUrl))
+    //new CallgraphPerformanceEvaluation(apiBaseUrl))
 
 
   private def ensureAllEntitiesPresent(): Try[Unit] = {

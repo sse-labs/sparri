@@ -19,7 +19,9 @@ object JavaConverter {
 
   def toClass(repr: SoftwareEntityRepr, classData: JavaClassRepr): JavaClass = {
     val hashedBytes: Array[Byte] = repr.hexHash.map(fromHex).getOrElse(Array.empty)
-    new JavaClass(repr.name, classData._2, repr.fqn, classData._3, repr.repository, hashedBytes)
+    val interfaces = if(classData._4.isBlank) Set.empty[String]
+      else classData._4.split(";").toSet
+    new JavaClass(repr.name, classData._2, repr.fqn, classData._3, interfaces, repr.repository, hashedBytes)
   }
 
   def toMethod(repr: SoftwareEntityRepr, methodData: JavaMethodRepr): JavaMethod = {

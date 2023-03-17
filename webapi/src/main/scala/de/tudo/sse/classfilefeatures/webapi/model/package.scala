@@ -27,6 +27,7 @@ package object model {
 
     var thisTypeFqnOpt: Option[String] = None
     var superTypeOpt: Option[String] = None
+    var interfaceTypesOpt: Option[Array[String]] = None
     var returnTypeOpt: Option[String] = None
     var paramTypesOpt: Option[Array[String]] = None
 
@@ -35,6 +36,7 @@ package object model {
       case jc: JavaClass =>
         thisTypeFqnOpt = Some(jc.thisType)
         superTypeOpt = jc.superType
+        interfaceTypesOpt = Some(jc.interfaceTypes.toArray)
       case jm: JavaMethod =>
         returnTypeOpt = Some(jm.returnType)
         paramTypesOpt = Some(jm.paramTypes.toArray)
@@ -53,6 +55,7 @@ package object model {
       children,
       thisTypeFqnOpt,
       superTypeOpt,
+      interfaceTypesOpt,
       returnTypeOpt,
       paramTypesOpt
     )
@@ -78,6 +81,6 @@ package object model {
 
   def genericEntityToEntityRepr(entity: GenericEntityData): EntityRepr = {
     EntityRepr(entity.name, entity. uid, entity.kind.toString, entity.language, entity.repository, entity.parentUid,
-      entity.binaryHash.map(toHex), None, None, None, None, None)
+      entity.binaryHash.map(toHex), None, None, None, None, None, None)
   }
 }

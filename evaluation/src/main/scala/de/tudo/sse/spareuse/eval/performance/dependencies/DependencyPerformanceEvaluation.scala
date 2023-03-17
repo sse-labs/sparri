@@ -8,7 +8,15 @@ import scala.collection.mutable
 class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEvaluation {
 
   private val gavToDependenciesMap: Map[String, Set[String]] =
-    Map("org.gwtproject.core:gwt-core:1.0.0-RC1" -> Set("com.google.jsinterop:jsinterop-annotations:1.0.2", "com.google.elemental2:elemental2-core:1.1.0", "com.google.elemental2:elemental2-promise:1.1.0", "com.google.elemental2:elemental2-dom:1.1.0", "com.google.jsinterop:jsinterop-annotations:2.0.0", "com.google.jsinterop:base:1.0.0"))
+    Map(
+      "org.gwtproject.core:gwt-core:1.0.0-RC1" ->
+        Set("com.google.jsinterop:jsinterop-annotations:1.0.2", "com.google.elemental2:elemental2-core:1.1.0",
+        "com.google.elemental2:elemental2-promise:1.1.0", "com.google.elemental2:elemental2-dom:1.1.0", "com.google.jsinterop:jsinterop-annotations:2.0.0", "com.google.jsinterop:base:1.0.0"),
+      "org.springframework:spring-context:5.3.3" ->
+        Set("org.springframework:spring-aop:5.3.3", "org.springframework:spring-beans:5.3.3", "org.springframework:spring-jcl:5.3.3", "org.springframework:spring-core:5.3.3", "org.springframework:spring-expression:5.3.3"),
+      "org.easymock:easymock:4.2" ->
+        Set("org.objenesis:objenesis:3.1")
+    )
 
   private val simpleAnalysis = new SimpleTransitiveDependencyAnalysis
   private val reuseAnalysis = new ReuseBasedTransitiveDependencyAnalysis(apiBaseUrl)
@@ -23,6 +31,7 @@ class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEva
     .map(gavToEntityId)
 
   override def evaluate(): Try[Unit] = Try {
+    /*
     // Prepare all partial results (i.e. direct dependencies for all expected results)
     val preparePartialResultsOp = timedExec(() => Try(reuseAnalysis.ensureAllPartialResultsPresent((gavToDependenciesMap.keys ++ gavToDependenciesMap.values.flatten).toSet)))
 
@@ -32,7 +41,8 @@ class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEva
         compareAnalyses()
       case Failure(ex) =>
         logger.error("Failed to trigger initial calculation of partial dependencies on server side.", ex)
-    }
+    }*/
+    compareAnalyses()
   }
 
 

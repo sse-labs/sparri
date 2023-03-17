@@ -133,7 +133,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   private def toEntityRepr(data: SoftwareEntityData, parentIdOpt: Option[Long]): SoftwareEntityRepr = SoftwareEntityRepr(0, data.name,
     data.uid, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash)
 
-  private def toClassRepr(jc: JavaClass, parentId: Long): JavaClassRepr = (parentId, jc.thisType, jc.superType)
+  private def toClassRepr(jc: JavaClass, parentId: Long): JavaClassRepr = (parentId, jc.thisType, jc.superType, jc.interfaceTypes.mkString(";") )
 
   private def toMethodRepr(jm: JavaMethod, parentId: Long): JavaMethodRepr = (parentId, jm.returnType, jm.paramCount, jm.paramTypes.mkString(","))
 

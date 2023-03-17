@@ -195,6 +195,14 @@ package object performance {
                 case s: JsString => s.value
                 case _ => throw new IllegalStateException("Invalid response format")
               },
+              jo.fields("InterfaceTypeFqns") match {
+                case a: JsArray =>
+                  a.elements.map{
+                    case s: JsString => s.value
+                    case _ => throw new IllegalStateException("Invalid response format")
+                  }.toSet
+                case _ => throw new IllegalStateException("Invalid response format")
+              },
               jo.fields("Repository").asInstanceOf[JsString].value,
               fromHex(jo.fields("Hash").asInstanceOf[JsString].value))
         }
@@ -212,7 +220,7 @@ package object performance {
     val response = httpClient.execute(getRequest)
 
     if (response.getStatusLine.getStatusCode != 200)
-      throw new IllegalStateException("Failed to retrieve results with status code " + response.getStatusLine.getStatusCode)
+      throw HttpDownloadException(response.getStatusLine.getStatusCode, getRequest.getURI.toString, s"Failed to retrieve results for entity $entityId")
 
     val bodyTry = Try(EntityUtils.toString(response.getEntity, StandardCharsets.UTF_8))
 

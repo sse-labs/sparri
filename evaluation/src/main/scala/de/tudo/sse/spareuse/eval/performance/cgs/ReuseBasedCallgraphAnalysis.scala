@@ -1,5 +1,5 @@
 package de.tudo.sse.spareuse.eval.performance.cgs
-import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, buildMethodFor}
+import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaClass
 import de.tudo.sse.spareuse.eval.performance.{gavToEntityId, getAllTypesForProgram, getAnalysisResultsForEntity, runFinished, timedExec, triggerAnalysisRun}
 import org.apache.http.impl.client.HttpClients
 import spray.json.{JsArray, JsNumber, JsObject, JsString}
@@ -22,7 +22,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
     val timedOp = timedExec { () =>
       theCg = Some(new StitchedCallGraph(rootGav, dependencyGavs))
 
-      def toMethodLookup(json: JsArray): Map[Long, MethodRepr] = {
+      def toMethodLookup(json: JsArray, gav: String): Map[Long, MethodRepr] = {
         json.elements.map {
           case jo: JsObject =>
             val mId = jo.fields("mId").asInstanceOf[JsNumber].value.longValue()
@@ -43,7 +43,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
                 throw new IllegalStateException("Invalid format of partial results")
             }.toList
 
-            (mId, MethodRepr(mId, mFqn, callSites))
+            (mId, MethodRepr(mId, gav, mFqn, callSites))
           case _ =>
             throw new IllegalStateException("Invalid format of partial results")
         }.toMap
@@ -54,7 +54,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
       getAnalysisResultsForEntity(gavToEntityId(rootGav), analysisName, analysisVersion, apiBaseUrl, httpClient).get match {
         case ja: JsArray =>
           val types = getAllTypesForProgram(rootGav, apiBaseUrl, httpClient).get
-          val cg = PartialCallGraph(rootGav, toMethodLookup(ja))
+          val cg = PartialCallGraph(rootGav, toMethodLookup(ja, rootGav))
           theCg.get.addPartialInfo(rootGav, cg, types)
         case _ =>
           throw new IllegalStateException("Expected a JSON Array")
@@ -65,7 +65,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
           val entityId = gavToEntityId(gav)
           getAnalysisResultsForEntity(entityId, analysisName, analysisVersion, apiBaseUrl, httpClient).get match {
             case ja: JsArray =>
-              val cg = PartialCallGraph(gav, toMethodLookup(ja))
+              val cg = PartialCallGraph(gav, toMethodLookup(ja, gav))
               val types = getAllTypesForProgram(gav, apiBaseUrl, httpClient).get
               theCg.get.addPartialInfo(gav, cg, types)
             case _ =>
@@ -81,13 +81,13 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
     timedOp.getContent
   }
 
-  override def buildFullCallgraph(): Try[Any] = Try {
+  override def buildFullCallgraph(): Try[StitchedCallGraph] = Try {
     val cg = theCg.get
 
     cg.resolveAll()
 
-
-  }//TODO!
+    cg
+  }
 
 
   def ensureAllPartialResultsPresent(allGavs: Set[String]): Try[Unit] = Try {
@@ -115,7 +115,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
   case class PartialCallGraph(gav: String, methodLookup: Map[Long, MethodRepr])
 
-  case class MethodRepr(id: Long, fqn: String, callSites: List[CallSiteRepr]){
+  case class MethodRepr(id: Long, graphGav: String, fqn: String, callSites: List[CallSiteRepr]){
 
     lazy val identifier: MethodIdentifier = toIdentifier(fqn)
 
@@ -276,7 +276,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
     lazy val isInterface: Boolean = invocationType.equalsIgnoreCase("INVOKEINTERFACE")
   }
 
-  class TypeNode(fqn: String, jc: JavaClass, methods: Set[MethodRepr], subNodes: Set[TypeNode] = Set.empty, superNode: Option[TypeNode] = None){ //TODO: Interfaces
+  class TypeNode(fqn: String, jc: JavaClass, methods: Set[MethodRepr], subNodes: Set[TypeNode] = Set.empty, superNode: Option[TypeNode] = None, interfaces: Set[TypeNode] = Set.empty){
 
     val typeFqn: String = fqn
     val typeDeclaration: JavaClass = jc
@@ -293,14 +293,21 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
     private val children = mutable.Set[TypeNode](subNodes.toList :_*)
     private var parent = superNode
+    private var parentInterfaces = interfaces
 
     def superType: Option[TypeNode] = parent
+    def interfaceTypes: Set[TypeNode]= parentInterfaces
     def subTypes: Set[TypeNode] = children.toSet
 
     def addSubType(child: TypeNode): Unit = children.add(child)
     def setSuperType(p: TypeNode): Unit = {
       parent = Some(p)
       p.addSubType(this)
+    }
+
+    def setInterfaceTypes(i: Set[TypeNode]): Unit = {
+      parentInterfaces = i
+      parentInterfaces.foreach{ _.addSubType(this) }
     }
 
     def allSubTypes: Set[TypeNode] = {
@@ -338,6 +345,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
         }.toMap
         typesLookup.values.foreach { typeNode =>
           rawTypesLookup(typeNode.typeFqn).superType.flatMap(typesLookup.get(_)).foreach(p => typeNode.setSuperType(p))
+          typeNode.setInterfaceTypes(rawTypesLookup(typeNode.typeFqn).interfaceTypes.map(typesLookup(_)))
         }
       }
 
@@ -363,18 +371,62 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
       logger.info(s"Preparing data structures took $t1 ms")
 
+      // MAIN RESOLVER LOOP
       while(toResolve.nonEmpty){
         val currentMethod = toResolve.head
         toResolve.remove(currentMethod)
 
         val currentCallees = calleesLookup(currentMethod)
 
+        // Process all incomplete Callsites for a given method
         currentMethod.incompleteCallSites.foreach { callSite =>
 
+          // Get (mutable) Set of targets so far
           val currentTargets = currentCallees(callSite.pc)
 
           if(callSite.instruction.isStatic){
-            logger.info(s"Incomplete static callsite: ${callSite.instrRep}")
+
+            // For static callsites we just need to located the declared target type
+            val typeFqn = callSite.instruction.declaredTypeFqn
+            if(!typesLookup.contains(typeFqn)){
+              // This is bad, seem to be missing the type for the static invocation
+              logger.warn(s"Unknown type for static invocation: $typeFqn")
+            } else {
+
+              // Get the type node and find the one declared method that has a) the same name and b) the same parameters
+              val typeNode = typesLookup(typeFqn)
+              val targets = typeNode
+                .methodLookup
+                .getOrElse(callSite.instruction.methodName, Set.empty)
+                .filter(m => m.identifier.mArgumentTypes.equals(callSite.instruction.params))
+
+              // There should really only be precisely one matching method for static invocations
+              if(targets.isEmpty) logger.warn(s"No matching methods for static invocation ${callSite.instrRep}")
+              else if(targets.size > 1) logger.warn(s"Too may matching methods (${targets.size}) for static invocation ${callSite.instrRep}")
+              else {
+                val theTarget = targets.head
+
+                // Add this new target method to the set
+                calleesLookup(currentMethod)(callSite.pc).add(theTarget)
+
+                // Add new target method to set of reachable methods. If it was not present before (i.e. 'new'), add it to worklist as well
+                if(reachableMethods.add(theTarget)){
+                  toResolve.add(theTarget)
+                }
+
+                // Make sure the new target method is contained in the callee lookup
+                if(!calleesLookup.contains(theTarget)){
+                  val targetGraphMethods = partialCgs(theTarget.graphGav).methodLookup
+
+                  calleesLookup.put(theTarget, theTarget
+                    .callSites
+                    .map(cs => (cs.pc, mutable.Set(cs.targets.map(tId => targetGraphMethods(tId)) :_*)))
+                    .toMap
+                  )
+
+                }
+              }
+            }
           } else {
 
             val allTypesCHA = {
@@ -390,7 +442,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
               .methodLookup
               .getOrElse(callSite.instruction.methodName, Set.empty)
               .filter(m => m.identifier.mArgumentTypes.equals(callSite.instruction.params))
-            } //TODO: Filter params
+            }
 
             methods.foreach { m =>
               if(!currentTargets.contains(m)){
@@ -398,7 +450,14 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
               }
 
               if(!calleesLookup.contains(m)){
-                calleesLookup.put(m, m.callSites.map(cs => (cs.pc, mutable.Set.empty[MethodRepr])).toMap) //TODO: List resolved targets in lookup and add to Resolve List!
+                val targetMethods = partialCgs(m.graphGav).methodLookup
+
+                calleesLookup.put(m, m
+                  .callSites
+                  .map(cs => (cs.pc, mutable.Set(cs.targets.map(tId => targetMethods(tId)) :_*)))
+                  .toMap
+                )
+
               }
 
               if(reachableMethods.add(m)) {
@@ -415,7 +474,6 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
       val t2 = System.currentTimeMillis() - start
       logger.info(s"Resolver loop took $t2 ms and found ${reachableMethods.size} reachable Methods")
 
-      //???
     }
 
 
