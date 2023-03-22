@@ -31,7 +31,7 @@ class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEva
     .map(gavToEntityId)
 
   override def evaluate(): Try[Unit] = Try {
-    /*
+
     // Prepare all partial results (i.e. direct dependencies for all expected results)
     val preparePartialResultsOp = timedExec(() => Try(reuseAnalysis.ensureAllPartialResultsPresent((gavToDependenciesMap.keys ++ gavToDependenciesMap.values.flatten).toSet)))
 
@@ -41,8 +41,7 @@ class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEva
         compareAnalyses()
       case Failure(ex) =>
         logger.error("Failed to trigger initial calculation of partial dependencies on server side.", ex)
-    }*/
-    compareAnalyses()
+    }
   }
 
 
