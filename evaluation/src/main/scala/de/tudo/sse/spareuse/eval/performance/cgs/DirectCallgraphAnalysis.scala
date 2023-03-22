@@ -4,7 +4,7 @@ import de.tudo.sse.spareuse.core.maven.{MavenIdentifier, MavenJarDownloader}
 import org.opalj.br.BaseConfig
 import org.opalj.br.analyses.Project
 import org.opalj.log.GlobalLogContext
-import org.opalj.tac.cg.XTACallGraphKey
+import org.opalj.tac.cg.{RTACallGraphKey, XTACallGraphKey}
 
 import java.io.{ByteArrayOutputStream, File, InputStream}
 import java.net.URL
@@ -50,13 +50,13 @@ class DirectCallgraphAnalysis extends WholeProgramCgAnalysis {
     val opalProject: Project[URL] = Project(Array(rootJarFile.get), dependencyJarFiles.toArray, logContext = GlobalLogContext, config = BaseConfig.withValue("org.opalj.br.analyses.cg.InitialEntryPointsKey.analysis",
       ConfigValueFactory.fromAnyRef("org.opalj.br.analyses.cg.LibraryEntryPointsFinder")))
 
-    logger.info("Building XTA Callgraph for OPAl project....")
-    val cg = opalProject.get(XTACallGraphKey)
-    logger.info("Done building XTA Callgraph.")
+    logger.info("Building RTA Callgraph for OPAl project....")
+    val cg = opalProject.get(RTACallGraphKey)
+    logger.info("Done building RTA Callgraph.")
 
     logger.info(s"#nodes: ${cg.reachableMethods().size} #edges: ${cg.numEdges}")
 
-    cg //TODO
+    cg
   }
 
   override def cleanup(): Unit = {

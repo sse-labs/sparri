@@ -91,7 +91,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
 
   def ensureAllPartialResultsPresent(allGavs: Set[String]): Try[Unit] = Try {
-    triggerAnalysisRun(allGavs.map(gavToEntityId), analysisName, analysisVersion, apiBaseUrl, httpClient) match {
+    triggerAnalysisRun(allGavs.map(gavToEntityId), analysisName, analysisVersion, apiBaseUrl, httpClient, configuration = "--algorithm rta") match {
       case Success(runLocation) =>
         logger.info(s"Successfully triggered analysis run. Waiting for run at $runLocation to complete...")
 
@@ -318,6 +318,8 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
 
   class StitchedCallGraph(rootGav: String, dependencyGavs: Set[String]){
+
+    //TODO: Add RTA aspects
 
     private val partialCgs = new mutable.HashMap[String, PartialCallGraph]()
 
