@@ -78,8 +78,10 @@ class ReuseBasedTransitiveDependencyAnalysis(baseUrl: String) extends Transitive
     }
 
     // Check whether all required entities have the required results. They may be spread across different analysis runs!
-    val apiIsMissingResults = expectedIds
+    val responses = expectedIds
       .map(getAnalysisResultsForEntity(_, "mvn-dependencies", "1.0.0", baseUrl, httpClient))
+
+    val apiIsMissingResults = responses
       .collect {
         case Failure(HttpDownloadException(404, url, _)) => url
       }

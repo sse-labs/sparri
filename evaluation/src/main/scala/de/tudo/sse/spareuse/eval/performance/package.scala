@@ -234,6 +234,9 @@ package object performance {
           throw new IllegalStateException(s"Content of analysis result missing")
         }
 
+      case Success(JsArray(values)) if values.isEmpty =>
+        throw HttpDownloadException(404, getRequest.getURI.toString, s"No results exist on entity ${entityId} for analysis $analysisName:$analysisVersion")
+
       case Failure(ex) =>
         throw new IllegalStateException(s"Invalid response for result $entityId", ex)
       case _ =>
