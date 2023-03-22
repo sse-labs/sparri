@@ -121,7 +121,7 @@ lazy val evaluation = (project in file("evaluation"))
 	.settings(
 		libraryDependencies ++= Seq(dependencies.logback),
 
-		assembly / mainClass := Some ("de.tudo.sse.spareuse.eval.performance.dependencies.DependencyPerformanceEvaluation"),
+		assembly / mainClass := Some ("de.tudo.sse.spareuse.eval.performance.PerformanceEvaluationApp"),
 		assembly / assemblyJarName := "spar-evaluation.jar",
 		assemblyMergeStrategy := {
 			case x: String if x.toLowerCase.contains("manifest.mf") => MergeStrategy.discard

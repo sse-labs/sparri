@@ -71,7 +71,12 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
         Set.empty
     }
 
-    val allJars = allIdentifiers.flatMap { ident =>
+    val allNewIdentifiers = allIdentifiers.filterNot(i => storageAdapter.hasProgram(i.toString))
+
+    if(allIdentifiers.nonEmpty && allNewIdentifiers.isEmpty)
+      log.info(s"All programs already indexed for message $message")
+
+    val allJars = allNewIdentifiers.flatMap { ident =>
       downloader.downloadJar(ident) match {
         case Success(jarFile) => Some(jarFile)
         case Failure(HttpDownloadException(404, _, _)) =>
