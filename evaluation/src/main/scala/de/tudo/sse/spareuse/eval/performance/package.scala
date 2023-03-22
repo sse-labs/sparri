@@ -224,6 +224,8 @@ package object performance {
 
     val bodyTry = Try(EntityUtils.toString(response.getEntity, StandardCharsets.UTF_8))
 
+    response.close()
+
     bodyTry.flatMap(b => Try(b.parseJson)) match {
       case Success(JsArray(values)) if values.nonEmpty && values.head.isInstanceOf[JsObject] =>
         val theResult = values.head.asInstanceOf[JsObject]

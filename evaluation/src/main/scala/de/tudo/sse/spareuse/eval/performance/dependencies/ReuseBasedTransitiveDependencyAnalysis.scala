@@ -61,7 +61,7 @@ class ReuseBasedTransitiveDependencyAnalysis(baseUrl: String) extends Transitive
     val expectedIds = expectedGAVs.map(gavToEntityId)
 
     def startNewRunAndAwaitFinished(): Unit = {
-      triggerAnalysisRun(expectedIds, "mvn-dependencies", "1.0.0", baseUrl, httpClient) match {
+      triggerAnalysisRun(expectedIds, "mvn-dependencies", "1.0.0", baseUrl, httpClient, configuration = "-use-jeka") match {
         case Success(runLocation) =>
           logger.info(s"Successfully triggered analysis run. Waiting for run at $runLocation to complete...")
 

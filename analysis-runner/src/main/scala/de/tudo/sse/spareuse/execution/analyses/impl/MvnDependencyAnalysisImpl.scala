@@ -50,10 +50,11 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
         val gav = MavenIdentifier.fromGAV(jp.name)
           .getOrElse(throw new IllegalArgumentException("Java Program name is not a GAV triple"))
 
-        val dependenciesTry = if(theConfig.disableTransitive)
-          resolver.resolveDependencies(gav)
-        else
+        val dependenciesTry = if(theConfig.enableTransitive)
           resolver.resolveAllDependencies(gav)._1
+        else
+          resolver.resolveDependencies(gav)
+
 
         dependenciesTry match {
           case Success(dependencies) =>
@@ -77,7 +78,7 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
 
       opts.map(_.toLowerCase).map {
         case "-use-jeka" => true
-        case "-no-transitive" => true
+        case "-transitive" => true
         case _ => false
       }.forall(valid => valid)
     }
@@ -88,12 +89,12 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
     val opts = configRaw.split(" ").map(_.toLowerCase.trim)
 
     val useJeka = opts.exists(_.equals("-use-jeka"))
-    val disableTransitive = opts.exists(_.equals("-no-transitive"))
+    val enableTransitive = opts.exists(_.equals("-transitive"))
 
-    DependencyAnalysisConfig(useJeka, disableTransitive)
+    DependencyAnalysisConfig(useJeka, enableTransitive)
   }
 
-  private case class DependencyAnalysisConfig(useJeka: Boolean, disableTransitive: Boolean)
+  private case class DependencyAnalysisConfig(useJeka: Boolean, enableTransitive: Boolean)
 
 
 }
