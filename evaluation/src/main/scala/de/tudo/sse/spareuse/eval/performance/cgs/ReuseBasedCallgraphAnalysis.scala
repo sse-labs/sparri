@@ -276,11 +276,12 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
     lazy val isInterface: Boolean = invocationType.equalsIgnoreCase("INVOKEINTERFACE")
   }
 
-  class TypeNode(fqn: String, jc: JavaClass, methods: Set[MethodRepr], subNodes: Set[TypeNode] = Set.empty, superNode: Option[TypeNode] = None, interfaces: Set[TypeNode] = Set.empty){
+  class TypeNode(fqn: String, jc: JavaClass, methods: Set[MethodRepr], instantiated: Boolean, subNodes: Set[TypeNode] = Set.empty, superNode: Option[TypeNode] = None, interfaces: Set[TypeNode] = Set.empty){
 
     val typeFqn: String = fqn
     val typeDeclaration: JavaClass = jc
     val allMethods: Set[MethodRepr] = methods
+    val isInstantiated: Boolean = instantiated
 
     lazy val methodLookup: Map[String, Set[MethodRepr]] =
       methods
@@ -319,8 +320,6 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
   class StitchedCallGraph(rootGav: String, dependencyGavs: Set[String]){
 
-    //TODO: Add RTA aspects
-
     private val partialCgs = new mutable.HashMap[String, PartialCallGraph]()
 
     private val rawTypesLookup = new mutable.HashMap[String, JavaClass]()
@@ -339,11 +338,29 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
     }
 
     def resolveAll(): Unit = {
+
+      // Collect all instantiated types, this will parse all instructions!
+      val timeInstantiatedTypesOp = timedExec { () =>
+        rawMethodByTypeLookup
+          .values
+          .flatten
+          .flatMap(_.callSites)
+          .filter(_.instruction.isSpecial)
+          .map(_.instruction.declaredTypeFqn)
+          .toSet
+      }
+
+      val instantiatedTypes = timeInstantiatedTypesOp.getContent
+
+      logger.info(s"Collecting instantiated types took ${timeInstantiatedTypesOp.getDurationMillis}ms")
+
+      // Build full type hierarchy
       val timeHierarchyOp = timedExec { () =>
         typesLookup = rawTypesLookup.keys.map{ fqn =>
           val methods = rawMethodByTypeLookup.get(fqn).map(_.toSet).getOrElse(Set.empty)
           val classRepr = rawTypesLookup(fqn)
-          (fqn, new TypeNode(fqn, classRepr, methods))
+          val isInstantiated = instantiatedTypes.contains(fqn)
+          (fqn, new TypeNode(fqn, classRepr, methods, isInstantiated))
         }.toMap
         typesLookup.values.foreach { typeNode =>
           rawTypesLookup(typeNode.typeFqn).superType.flatMap(typesLookup.get(_)).foreach(p => typeNode.setSuperType(p))
@@ -351,9 +368,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
         }
       }
 
-      logger.info(s"Build type hierarchy in ${timeHierarchyOp.getDurationMillis}ms")
-
-
+      logger.info(s"Building type hierarchy in ${timeHierarchyOp.getDurationMillis}ms")
 
       var start = System.currentTimeMillis()
       val reachableMethods: mutable.Set[MethodRepr] = mutable.Set(partialCgs(rootGav).methodLookup.values.toSeq :_* )
@@ -434,17 +449,20 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
             val allTypesCHA = {
               val targetTypeFqn = callSite.instruction.declaredTypeFqn
               if(!typesLookup.contains(targetTypeFqn)){
+                logger.warn(s"Unknown declared type for non-static invocation: $targetTypeFqn")
                 typesLookup.values.toSet //TODO: Deal with types we don't know (i.e. JRE types)
               } else {
                 val targetType = typesLookup(targetTypeFqn)
                 targetType.allSubTypes ++ Set(targetType)
               }
             }
-            val methods = allTypesCHA.flatMap{t =>t
-              .methodLookup
-              .getOrElse(callSite.instruction.methodName, Set.empty)
-              .filter(m => m.identifier.mArgumentTypes.equals(callSite.instruction.params))
-            }
+            val methods = allTypesCHA
+              .filter(_.isInstantiated) // This is RTA :-)
+              .flatMap{t => t
+                .methodLookup
+                .getOrElse(callSite.instruction.methodName, Set.empty)
+                .filter(m => m.identifier.mArgumentTypes.equals(callSite.instruction.params))
+              }
 
             methods.foreach { m =>
               if(!currentTargets.contains(m)){
