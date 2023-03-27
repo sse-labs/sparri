@@ -544,8 +544,6 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
                   toResolve.add(m)
                 }
               }
-
-              logger.info(s"Got ${methods.size} methods for callsite $callSite")
             }
           }
         }

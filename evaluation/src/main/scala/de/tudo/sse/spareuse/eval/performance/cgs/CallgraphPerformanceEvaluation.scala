@@ -92,10 +92,17 @@ class CallgraphPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEval
           val d3 = allSimple.intersect(allReuse)
 
           logger.info(s"Simple: [Total: ${allSimple.size}, Unique: ${d1.size}], Reuse: [Total: ${allReuse.size}, Unique: ${d2.size}], Common: ${d3.size}")
-          logger.info("Unique Simple:")
-          d1.foreach(s => logger.info(s"\t - $s"))
-          logger.info("Unique Reuse:")
-          d2.foreach(s => logger.info(s"\t - $s"))
+
+          if(d1.size > 50){
+            logger.info("Unique Simple:")
+            d1.foreach(s => logger.info(s"\t - $s"))
+          }
+
+          if(d2.size > 50){
+            logger.info("Unique Reuse:")
+            d2.foreach(s => logger.info(s"\t - $s"))
+          }
+
           reuseRuntimes.append(timedReuseResults.getDurationMillis)
         }
 
