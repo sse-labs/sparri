@@ -60,17 +60,34 @@ class CallgraphPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEval
         }
       })
 
-      if (timedSimpleResults.getContent.isFailure) //TODO: Check content semantics!
+      var allSimple: Set[String] = Set.empty
+
+      if (timedSimpleResults.getContent.isFailure)
         logger.error("Invalid results for simple dependency analysis")
       else {
         val result: CallGraph = timedSimpleResults.getContent.get
+        allSimple = result.reachableMethods()
+          .filterNot(_.declaringClassType.fqn.startsWith("java/lang/"))
+          .filterNot(_.declaringClassType.fqn.startsWith("java/util/"))
+          .map(m => s"${m.declaringClassType.fqn.replace("/", ".")} ${m.name} ${m.descriptor.parameterTypes.map(_.toJava).mkString(",")}").toSet
         directRuntimes.append(timedSimpleResults.getDurationMillis)
       }
 
-      if (timedReuseResults.getContent.isFailure) //TODO: Check content semantics
+      if (timedReuseResults.getContent.isFailure)
         logger.error("Invalid results for reuse dependency analysis", timedReuseResults.getContent.failed.get)
       else {
         val result: reuseAnalysis.StitchedCallGraph = timedReuseResults.getContent.get
+        val allReuse = result.reachableMethods().map(m => s"${m.identifier.mDeclaringTypeFqn} ${m.identifier.mName} ${m.identifier.mArgumentTypes.mkString(",")}")
+
+        val d1 = allSimple.diff(allReuse)
+        val d2 = allReuse.diff(allSimple)
+        val d3 = allSimple.intersect(allReuse)
+
+        logger.info(s"Simple: [Total: ${allSimple.size}, Unique: ${d1.size}], Reuse: [Total: ${allReuse.size}, Unique: ${d2.size}], Common: ${d3.size}")
+        logger.info("Unique Simple:")
+        d1.foreach(s => logger.info(s"\t - $s"))
+        logger.info("Unique Reuse:")
+        d2.foreach(s => logger.info(s"\t - $s"))
         reuseRuntimes.append(timedReuseResults.getDurationMillis)
       }
 

@@ -27,6 +27,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
           case jo: JsObject =>
             val mId = jo.fields("mId").asInstanceOf[JsNumber].value.longValue()
             val mFqn = jo.fields("mFqn").asInstanceOf[JsString].value
+            val reachable = jo.fields("reachable").asInstanceOf[JsNumber].value > 0
 
             val callSites = jo.fields("css").asInstanceOf[JsArray].elements.map {
               case siteObj: JsObject =>
@@ -43,7 +44,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
                 throw new IllegalStateException("Invalid format of partial results")
             }.toList
 
-            (mId, MethodRepr(mId, gav, mFqn, callSites))
+            (mId, MethodRepr(mId, gav, mFqn, reachable, callSites))
           case _ =>
             throw new IllegalStateException("Invalid format of partial results")
         }.toMap
@@ -117,13 +118,15 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
   case class PartialCallGraph(gav: String, methodLookup: Map[Long, MethodRepr])
 
-  case class MethodRepr(id: Long, graphGav: String, fqn: String, callSites: List[CallSiteRepr]){
+  case class MethodRepr(id: Long, graphGav: String, fqn: String, reachable: Boolean, callSites: List[CallSiteRepr]){
 
     lazy val identifier: MethodIdentifier = toIdentifier(fqn)
 
     lazy val incompleteCallSites: Seq[CallSiteRepr] = callSites.filter(_.isIncomplete)
 
     lazy val hasIncompleteCallSites: Boolean = incompleteCallSites.nonEmpty
+
+    val isReachable: Boolean = reachable
 
     private def toIdentifier(methodIdent: String): MethodIdentifier = {
 
@@ -317,6 +320,12 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
       subTypes ++ subTypes.flatMap(_.allSubTypes)
     }
 
+    def allParents: Set[TypeNode] = {
+      val directParents = if(parent.isDefined) Set(parent.get) ++ parentInterfaces
+        else parentInterfaces
+
+      directParents ++ directParents.flatMap(_.allParents)
+    }
   }
 
 
@@ -344,7 +353,9 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
       partialCallGraph.methodLookup.values.foreach(r => {
         val tFqn = r.identifier.mDeclaringTypeFqn
         if(!rawMethodByTypeLookup.contains(tFqn)) rawMethodByTypeLookup.put(tFqn, mutable.Set.empty)
-        rawMethodByTypeLookup(tFqn).add(r)
+        val currMethods = rawMethodByTypeLookup(tFqn)
+        if(!currMethods.exists(m => m.fqn.equals(r.fqn)))
+          rawMethodByTypeLookup(tFqn).add(r)
       })
       types.foreach { t => rawTypesLookup.put(t.thisType.replace("/", "."), t) }
     }
@@ -376,14 +387,15 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
         }.toMap
         typesLookup.values.foreach { typeNode =>
           rawTypesLookup(typeNode.typeFqn).superType.flatMap(typesLookup.get(_)).foreach(p => typeNode.setSuperType(p))
-          typeNode.setInterfaceTypes(rawTypesLookup(typeNode.typeFqn).interfaceTypes.filter(typesLookup.contains).map(typesLookup(_)))
+
+          typeNode.setInterfaceTypes(rawTypesLookup(typeNode.typeFqn).interfaceTypes.map(_.replace("/", ".")).filter(typesLookup.contains).map(typesLookup(_)))
         }
       }
 
       logger.info(s"Building type hierarchy in ${timeHierarchyOp.getDurationMillis}ms")
 
       var start = System.currentTimeMillis()
-      val reachableMethods: mutable.Set[MethodRepr] = mutable.Set(partialCgs(rootGav).methodLookup.values.toSeq :_* )
+      val reachableMethods: mutable.Set[MethodRepr] = mutable.Set(partialCgs(rootGav).methodLookup.values.filter(_.isReachable).toSeq :_* )
 
       val calleesLookup: mutable.Map[MethodRepr, Map[Int, mutable.Set[MethodRepr]]] = mutable.Map(
         reachableMethods.map { m =>
@@ -471,7 +483,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
                   targetType.allSubTypes ++ Set(targetType)
                 }
               }
-              val methods = allTypesCHA
+              var methods = allTypesCHA
                 .filter(_.isInstantiated) // This is RTA :-)
                 .flatMap { t =>
                   t
@@ -479,6 +491,18 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
                     .getOrElse(callSite.instruction.methodName, Set.empty)
                     .filter(m => m.identifier.mArgumentTypes.equals(callSite.instruction.params))
                 }
+
+
+              if(methods.isEmpty && typesLookup.contains(callSite.instruction.declaredTypeFqn)){
+                methods = typesLookup(callSite.instruction.declaredTypeFqn)
+                  .allParents
+                  .flatMap { t =>
+                    t
+                      .methodLookup
+                      .getOrElse(callSite.instruction.methodName, Set.empty)
+                      .filter(m => m.identifier.mArgumentTypes.equals(callSite.instruction.params))
+                  }
+              }
 
               methods.foreach { m =>
                 if (!currentTargets.contains(m)) {
