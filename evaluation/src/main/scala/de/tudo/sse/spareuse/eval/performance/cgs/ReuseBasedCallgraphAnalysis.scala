@@ -376,7 +376,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
         }.toMap
         typesLookup.values.foreach { typeNode =>
           rawTypesLookup(typeNode.typeFqn).superType.flatMap(typesLookup.get(_)).foreach(p => typeNode.setSuperType(p))
-          typeNode.setInterfaceTypes(rawTypesLookup(typeNode.typeFqn).interfaceTypes.map(typesLookup(_)))
+          typeNode.setInterfaceTypes(rawTypesLookup(typeNode.typeFqn).interfaceTypes.filter(typesLookup.contains).map(typesLookup(_)))
         }
       }
 
