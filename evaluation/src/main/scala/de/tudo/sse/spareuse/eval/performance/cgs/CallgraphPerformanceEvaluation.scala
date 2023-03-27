@@ -9,10 +9,12 @@ import scala.util.{Failure, Success, Try}
 class CallgraphPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEvaluation {
 
   val depMaps: Map[String, Set[String]] = Map(
-    "org.gwtproject.core:gwt-core:1.0.0-RC1" ->
-      Set("com.google.jsinterop:jsinterop-annotations:1.0.2", "com.google.elemental2:elemental2-core:1.1.0", "com.google.elemental2:elemental2-promise:1.1.0", "com.google.elemental2:elemental2-dom:1.1.0", "com.google.jsinterop:jsinterop-annotations:2.0.0", "com.google.jsinterop:base:1.0.0"),
+    //"org.gwtproject.core:gwt-core:1.0.0-RC1" ->
+    //  Set("com.google.jsinterop:jsinterop-annotations:1.0.2", "com.google.elemental2:elemental2-core:1.1.0", "com.google.elemental2:elemental2-promise:1.1.0", "com.google.elemental2:elemental2-dom:1.1.0", "com.google.jsinterop:jsinterop-annotations:2.0.0", "com.google.jsinterop:base:1.0.0"),
     "org.springframework:spring-context:5.3.3" ->
       Set("org.springframework:spring-aop:5.3.3", "org.springframework:spring-beans:5.3.3", "org.springframework:spring-jcl:5.3.3", "org.springframework:spring-core:5.3.3", "org.springframework:spring-expression:5.3.3"),
+    //"org.easymock:easymock:4.2" ->
+    //  Set("org.objenesis:objenesis:3.1")
   )
 
 
@@ -93,12 +95,12 @@ class CallgraphPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEval
 
           logger.info(s"Simple: [Total: ${allSimple.size}, Unique: ${d1.size}], Reuse: [Total: ${allReuse.size}, Unique: ${d2.size}], Common: ${d3.size}")
 
-          if(d1.size > 50){
+          if(d1.size < 50){
             logger.info("Unique Simple:")
             d1.foreach(s => logger.info(s"\t - $s"))
           }
 
-          if(d2.size > 50){
+          if(d2.size < 50){
             logger.info("Unique Reuse:")
             d2.foreach(s => logger.info(s"\t - $s"))
           }
