@@ -137,6 +137,7 @@ package object performance {
 
   def getAllTypesForProgram(gav: String, baseUrl: String, httpClient: CloseableHttpClient): Try[Seq[JavaClass]] = Try {
     val packagesRequest = new HttpGet(baseUrl + "entities/" + gavToEntityId(gav) + "/children")
+    packagesRequest.setHeader("limit", "1000")
     val response = httpClient.execute(packagesRequest)
 
     if(response.getStatusLine.getStatusCode != 200) {
@@ -173,6 +174,7 @@ package object performance {
     val encodedPackageIdent = packageIdent.replace("/", "%2F").replace("!", "%21").replace(":","%3A")
 
     val typesRequest = new HttpGet(baseUrl + "entities/" + encodedPackageIdent + "/children")
+    typesRequest.setHeader("limit", "1000")
     val response = httpClient.execute(typesRequest)
 
     if (response.getStatusLine.getStatusCode != 200) {

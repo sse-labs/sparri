@@ -1,5 +1,6 @@
 package de.tudo.sse.spareuse.eval.performance.cgs
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaClass
+import de.tudo.sse.spareuse.core.utils.http.HttpDownloadException
 import de.tudo.sse.spareuse.eval.performance.{gavToEntityId, getAllTypesForProgram, getAnalysisResultsForEntity, runFinished, timedExec, triggerAnalysisRun}
 import org.apache.http.impl.client.HttpClients
 import spray.json.{JsArray, JsNumber, JsObject, JsString}
@@ -94,19 +95,38 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
 
   def ensureAllPartialResultsPresent(allGavs: Set[String]): Try[Unit] = Try {
-    triggerAnalysisRun(allGavs.map(gavToEntityId), analysisName, analysisVersion, apiBaseUrl, httpClient, configuration = "--algorithm rta") match {
-      case Success(runLocation) =>
-        logger.info(s"Successfully triggered analysis run. Waiting for run at $runLocation to complete...")
 
-        while(!runFinished(runLocation, apiBaseUrl, httpClient).get){
-          Thread.sleep(1000)
-          logger.debug(s"Waiting for run to finish: $runLocation ...")
-        }
+    val expectedIds = allGavs.map(gavToEntityId)
 
-        logger.info("All partial callgraphs are available.")
-      case Failure(ex) =>
-        logger.error("Failed to trigger analysis run for partial callgraphs", ex)
+    def startNewRunAndAwaitFinished(): Unit = {
+      triggerAnalysisRun(allGavs.map(gavToEntityId), analysisName, analysisVersion, apiBaseUrl, httpClient, configuration = "--algorithm rta") match {
+        case Success(runLocation) =>
+          logger.info(s"Successfully triggered analysis run. Waiting for run at $runLocation to complete...")
+
+          while (!runFinished(runLocation, apiBaseUrl, httpClient).get) {
+            Thread.sleep(1000)
+            logger.debug(s"Waiting for run to finish: $runLocation ...")
+          }
+
+          logger.info("All partial callgraphs are available.")
+        case Failure(ex) =>
+          logger.error("Failed to trigger analysis run for partial callgraphs", ex)
+      }
     }
+
+    // Check whether all required entities have the required results. They may be spread across different analysis runs!
+    val responses = expectedIds
+      .map(getAnalysisResultsForEntity(_, analysisName, analysisVersion, apiBaseUrl, httpClient))
+
+    val apiIsMissingResults = responses
+      .collect {
+        case Failure(HttpDownloadException(404, url, _)) => url
+      }
+      .nonEmpty
+    // If at least one result is missing: Start a new analysis run for all inputs (existing will be filtered out)
+    if (apiIsMissingResults) startNewRunAndAwaitFinished()
+
+
   }
 
   def close(): Unit = httpClient.close()
@@ -422,7 +442,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
         // Process all incomplete Callsites for a given method
         currentMethod.incompleteCallSites.foreach { callSite =>
 
-          if(!callSite.instruction.declaredTypeFqn.startsWith("java.lang")){ //Not resolving calls to JRE in both analyses
+          if(!callSite.instruction.declaredTypeFqn.startsWith("java.") ){ //Not resolving calls to JRE in both analyses
             // Get (mutable) Set of targets so far
             val currentTargets = currentCallees(callSite.pc)
 
@@ -521,7 +541,6 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
                 }
 
                 if (reachableMethods.add(m)) {
-                  logger.info(s"Found a new target: ${m.fqn}")
                   toResolve.add(m)
                 }
               }
