@@ -15,6 +15,8 @@ import org.opalj.br.{DeclaredMethod, Method}
 import org.opalj.tac.cg.{CHACallGraphKey, CTACallGraphKey, RTACallGraphKey, XTACallGraphKey}
 
 import java.util.concurrent.atomic.AtomicInteger
+import scala.collection.mutable
+import scala.collection.mutable.ListBuffer
 import scala.util.{Failure, Success, Try}
 
 class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
@@ -23,6 +25,7 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
     ObjectResultFormat(Set(
       NamedPropertyFormat("mId", formats.NumberFormat, "The unique id assigned to this method"),
       NamedPropertyFormat("mFqn", formats.StringFormat, "The fully qualified name of this method"),
+      NamedPropertyFormat("reachable", formats.NumberFormat, "Indicates whether this method was reachable in the partial callgraph"),
       NamedPropertyFormat("css", ListResultFormat(ObjectResultFormat(Set(
         NamedPropertyFormat("csPc", formats.NumberFormat, "PC of this callsite inside the enclosing method body"),
         NamedPropertyFormat("targets", ListResultFormat(formats.NumberFormat), "List of method ids that have been resolved as targets for this callsite"),
@@ -88,8 +91,8 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
 
           // Build Internal representations without callsites (to assign ids)
-          def toMethodObj(definedMethod: Method): InternalMethod = {
-            new InternalMethod(methodIdCnt.getAndIncrement(), definedMethod.toJava, List.empty)
+          def toMethodObj(definedMethod: Method, reachable: Boolean = true): InternalMethod = {
+            new InternalMethod(methodIdCnt.getAndIncrement(), definedMethod.toJava, reachable, List.empty)
           }
 
           val methodObjLookup: Map[DeclaredMethod, Seq[InternalMethod]] = cg
@@ -102,11 +105,11 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
                 (declMethod, declMethod
                   .asMultipleDefinedMethods
                   .definedMethods
-                  .map(toMethodObj))
+                  .map(m => toMethodObj(m)))
               } else if(declMethod.hasSingleDefinedMethod){
                 (declMethod, Seq(toMethodObj(declMethod.asDefinedMethod.definedMethod)))
               } else {
-                (declMethod, Seq(new InternalMethod(methodIdCnt.getAndIncrement(), declMethod.toJava, List.empty)))
+                (declMethod, Seq(new InternalMethod(methodIdCnt.getAndIncrement(), declMethod.toJava, isReachable = true, List.empty)))
               }
             }.toMap
 
@@ -147,9 +150,33 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
             }
             .toList
 
+          val reachableMethodSignatures = cg.reachableMethods().filter(m => project.isProjectType(m.declaringClassType)).map(_.toJava).toSet
+          val extraMethods = project
+            .allMethods
+            .filterNot( method => reachableMethodSignatures.contains(method.toJava))
+            .map { method =>
+              val id = methodIdCnt.getAndIncrement()
+              val fqn = method.toJava
+
+              val callsites = method.body.map{ body =>
+                val instrs = new ListBuffer[InternalCallSite]()
+                for(pc <- body.programCounters){
+                  val instr = body.instructions(pc)
+                  if(instr != null && instr.isInvocationInstruction){
+                    new InternalCallSite(pc, List.empty, true, instr.toString(pc))
+                  }
+                }
+                instrs.toList
+              }.getOrElse(List.empty)
+
+              new InternalMethod(id, fqn, isReachable = false, callsites)
+            }
+
+
+
           log.info(s"Done building partial callgraph representation for ${program.name}")
 
-          Some(Result(allMethodDataWithCallSites, Set(program)))
+          Some(Result(allMethodDataWithCallSites ++ extraMethods, Set(program)))
 
         case Failure(HttpDownloadException(status, _, _)) if status == 404 =>
           log.warn(s"No JAR file available for ${program.identifier}")
@@ -190,13 +217,14 @@ object MvnPartialCallgraphAnalysisImpl {
     PartialCallgraphAnalysisConfig(algo, includeJre, appMode)
   }
 
-  class InternalMethod(id: Int, fqn: String, callSites: List[InternalCallSite]){
+  class InternalMethod(id: Int, fqn: String, isReachable: Boolean, callSites: List[InternalCallSite]){
 
     def withCallSiteInfo(info: List[InternalCallSite]) =
-      new InternalMethod(id, fqn, info)
+      new InternalMethod(id, fqn, isReachable, info)
 
     val mId: Int = id
     val mFqn: String = fqn
+    val reachable: Int = if(isReachable) 1 else 0
     val css: List[InternalCallSite] = callSites
   }
 

@@ -410,95 +410,100 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
         // Process all incomplete Callsites for a given method
         currentMethod.incompleteCallSites.foreach { callSite =>
 
-          // Get (mutable) Set of targets so far
-          val currentTargets = currentCallees(callSite.pc)
+          if(!callSite.instruction.declaredTypeFqn.startsWith("java.lang")){ //Not resolving calls to JRE in both analyses
+            // Get (mutable) Set of targets so far
+            val currentTargets = currentCallees(callSite.pc)
 
-          if(callSite.instruction.isStatic){
+            if (callSite.instruction.isStatic || callSite.instruction.isSpecial) {
 
-            // For static callsites we just need to located the declared target type
-            val typeFqn = callSite.instruction.declaredTypeFqn
-            if(!typesLookup.contains(typeFqn)){
-              // This is bad, seem to be missing the type for the static invocation
-              logger.warn(s"Unknown type for static invocation: $typeFqn")
+              val logStr = if(callSite.instruction.isStatic) "static" else "special"
+
+              // For static or special callsites we just need to locate the declared target type
+              val typeFqn = callSite.instruction.declaredTypeFqn
+              if (!typesLookup.contains(typeFqn)) {
+                // This is bad, seem to be missing the type for the static invocation
+                logger.warn(s"Unknown type for $logStr invocation: $typeFqn")
+              } else {
+
+                // Get the type node and find the one declared method that has a) the same name and b) the same parameters
+                val typeNode = typesLookup(typeFqn)
+                val targets = typeNode
+                  .methodLookup
+                  .getOrElse(callSite.instruction.methodName, Set.empty)
+                  .filter(m => m.identifier.mArgumentTypes.equals(callSite.instruction.params))
+
+                // There should really only be precisely one matching method for static invocations
+                if (targets.isEmpty) logger.warn(s"No matching methods for $logStr invocation ${callSite.instrRep}")
+                else if (targets.size > 1) logger.warn(s"Too may matching methods (${targets.size}) for $logStr invocation ${callSite.instrRep}")
+                else {
+                  val theTarget = targets.head
+
+                  // Add this new target method to the set
+                  calleesLookup(currentMethod)(callSite.pc).add(theTarget)
+
+                  // Add new target method to set of reachable methods. If it was not present before (i.e. 'new'), add it to worklist as well
+                  if (reachableMethods.add(theTarget)) {
+                    toResolve.add(theTarget)
+                  }
+
+                  // Make sure the new target method is contained in the callee lookup
+                  if (!calleesLookup.contains(theTarget)) {
+                    val targetGraphMethods = partialCgs(theTarget.graphGav).methodLookup
+
+                    calleesLookup.put(theTarget, theTarget
+                      .callSites
+                      .map(cs => (cs.pc, mutable.Set(cs.targets.map(tId => targetGraphMethods(tId)): _*)))
+                      .toMap
+                    )
+
+                  }
+                }
+              }
             } else {
 
-              // Get the type node and find the one declared method that has a) the same name and b) the same parameters
-              val typeNode = typesLookup(typeFqn)
-              val targets = typeNode
-                .methodLookup
-                .getOrElse(callSite.instruction.methodName, Set.empty)
-                .filter(m => m.identifier.mArgumentTypes.equals(callSite.instruction.params))
-
-              // There should really only be precisely one matching method for static invocations
-              if(targets.isEmpty) logger.warn(s"No matching methods for static invocation ${callSite.instrRep}")
-              else if(targets.size > 1) logger.warn(s"Too may matching methods (${targets.size}) for static invocation ${callSite.instrRep}")
-              else {
-                val theTarget = targets.head
-
-                // Add this new target method to the set
-                calleesLookup(currentMethod)(callSite.pc).add(theTarget)
-
-                // Add new target method to set of reachable methods. If it was not present before (i.e. 'new'), add it to worklist as well
-                if(reachableMethods.add(theTarget)){
-                  toResolve.add(theTarget)
+              val allTypesCHA = {
+                val targetTypeFqn = callSite.instruction.declaredTypeFqn
+                if (!typesLookup.contains(targetTypeFqn)) {
+                  logger.warn(s"Unknown declared type for non-static invocation: $targetTypeFqn")
+                  typesLookup.values.toSet //TODO: Deal with types we don't know (i.e. JRE types)
+                } else {
+                  val targetType = typesLookup(targetTypeFqn)
+                  targetType.allSubTypes ++ Set(targetType)
+                }
+              }
+              val methods = allTypesCHA
+                .filter(_.isInstantiated) // This is RTA :-)
+                .flatMap { t =>
+                  t
+                    .methodLookup
+                    .getOrElse(callSite.instruction.methodName, Set.empty)
+                    .filter(m => m.identifier.mArgumentTypes.equals(callSite.instruction.params))
                 }
 
-                // Make sure the new target method is contained in the callee lookup
-                if(!calleesLookup.contains(theTarget)){
-                  val targetGraphMethods = partialCgs(theTarget.graphGav).methodLookup
+              methods.foreach { m =>
+                if (!currentTargets.contains(m)) {
+                  currentTargets.add(m)
+                }
 
-                  calleesLookup.put(theTarget, theTarget
+                if (!calleesLookup.contains(m)) {
+                  val targetMethods = partialCgs(m.graphGav).methodLookup
+
+                  calleesLookup.put(m, m
                     .callSites
-                    .map(cs => (cs.pc, mutable.Set(cs.targets.map(tId => targetGraphMethods(tId)) :_*)))
+                    .map(cs => (cs.pc, mutable.Set(cs.targets.map(tId => targetMethods(tId)): _*)))
                     .toMap
                   )
 
                 }
+
+                if (reachableMethods.add(m)) {
+                  logger.info(s"Found a new target: ${m.fqn}")
+                  toResolve.add(m)
+                }
               }
+
+              logger.info(s"Got ${methods.size} methods for callsite $callSite")
             }
-          } else {
-
-            val allTypesCHA = {
-              val targetTypeFqn = callSite.instruction.declaredTypeFqn
-              if(!typesLookup.contains(targetTypeFqn)){
-                logger.warn(s"Unknown declared type for non-static invocation: $targetTypeFqn")
-                typesLookup.values.toSet //TODO: Deal with types we don't know (i.e. JRE types)
-              } else {
-                val targetType = typesLookup(targetTypeFqn)
-                targetType.allSubTypes ++ Set(targetType)
-              }
-            }
-            val methods = allTypesCHA
-              .filter(_.isInstantiated) // This is RTA :-)
-              .flatMap{t => t
-                .methodLookup
-                .getOrElse(callSite.instruction.methodName, Set.empty)
-                .filter(m => m.identifier.mArgumentTypes.equals(callSite.instruction.params))
-              }
-
-            methods.foreach { m =>
-              if(!currentTargets.contains(m)){
-                currentTargets.add(m)
-              }
-
-              if(!calleesLookup.contains(m)){
-                val targetMethods = partialCgs(m.graphGav).methodLookup
-
-                calleesLookup.put(m, m
-                  .callSites
-                  .map(cs => (cs.pc, mutable.Set(cs.targets.map(tId => targetMethods(tId)) :_*)))
-                  .toMap
-                )
-
-              }
-
-              if(reachableMethods.add(m)) {
-                logger.info(s"Found a new target: ${m.fqn}")
-                toResolve.add(m)
-              }
-            }
-
-            logger.info(s"Got ${methods.size} methods for callsite $callSite")
           }
         }
       }

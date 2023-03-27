@@ -54,7 +54,15 @@ class DirectCallgraphAnalysis extends WholeProgramCgAnalysis {
     val cg = opalProject.get(RTACallGraphKey)
     logger.info("Done building RTA Callgraph.")
 
-    logger.info(s"#nodes: ${cg.reachableMethods().size} #edges: ${cg.numEdges}")
+    val reachableNonJavaMethods = cg.reachableMethods().count{ m =>
+      opalProject.isProjectType(m.declaringClassType) || opalProject.isLibraryType(m.declaringClassType)
+    }
+
+    val edges = cg.reachableMethods().map{ m =>
+      cg.calleesOf(m).map(_._2.size).sum
+    }.sum
+
+    logger.info(s"#nodes: $reachableNonJavaMethods #edges: $edges")
 
     cg
   }
