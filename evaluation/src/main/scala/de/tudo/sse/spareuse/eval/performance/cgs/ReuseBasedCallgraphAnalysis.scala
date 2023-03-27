@@ -86,6 +86,8 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
     cg.resolveAll()
 
+    logger.info(s"Got a stitched callgraph with ${cg.reachableMethods().size} reachable methods and ${cg.numEdges()} edges")
+
     cg
   }
 
@@ -327,6 +329,16 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
     private var typesLookup = Map.empty[String, TypeNode]
 
+    private var allReachableMethods: Set[MethodRepr] = Set.empty
+    private var allCallees: Map[MethodRepr, Map[Int, Set[MethodRepr]]] = Map.empty
+
+    def reachableMethods(): Set[MethodRepr] = allReachableMethods
+
+    def callSitesOf(m: MethodRepr): Map[Int, Set[MethodRepr]] = allCallees(m)
+    def allCalleesOf(m: MethodRepr): Set[MethodRepr] = allCallees(m).flatMap(_._2).toSet
+
+    def numEdges(): Int = allCallees.values.flatMap(v => v.values.map(_.size)).sum
+
     def addPartialInfo(gav: String, partialCallGraph: PartialCallGraph, types: Seq[JavaClass]): Unit = {
       partialCgs.put(gav, partialCallGraph)
       partialCallGraph.methodLookup.values.foreach(r => {
@@ -494,6 +506,8 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
       val t2 = System.currentTimeMillis() - start
       logger.info(s"Resolver loop took $t2 ms and found ${reachableMethods.size} reachable Methods")
 
+      allReachableMethods = reachableMethods.toSet
+      allCallees = calleesLookup.mapValues(v => v.mapValues(_.toSet)).toMap
     }
 
 

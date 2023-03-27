@@ -4,7 +4,7 @@ import de.tudo.sse.spareuse.core.maven.{MavenIdentifier, MavenJarDownloader}
 import org.opalj.br.BaseConfig
 import org.opalj.br.analyses.Project
 import org.opalj.log.GlobalLogContext
-import org.opalj.tac.cg.{RTACallGraphKey, XTACallGraphKey}
+import org.opalj.tac.cg.{CallGraph, RTACallGraphKey, XTACallGraphKey}
 
 import java.io.{ByteArrayOutputStream, File, InputStream}
 import java.net.URL
@@ -45,7 +45,7 @@ class DirectCallgraphAnalysis extends WholeProgramCgAnalysis {
 
   }
 
-  override def buildFullCallgraph(): Try[Any] = Try {
+  override def buildFullCallgraph(): Try[CallGraph] = Try {
     logger.info("Building OPAL project...")
     val opalProject: Project[URL] = Project(Array(rootJarFile.get), dependencyJarFiles.toArray, logContext = GlobalLogContext, config = BaseConfig.withValue("org.opalj.br.analyses.cg.InitialEntryPointsKey.analysis",
       ConfigValueFactory.fromAnyRef("org.opalj.br.analyses.cg.LibraryEntryPointsFinder")))

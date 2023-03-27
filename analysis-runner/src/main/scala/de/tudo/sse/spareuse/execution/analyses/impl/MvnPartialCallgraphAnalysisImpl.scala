@@ -44,10 +44,15 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
     val parts = rawConfig.trim.split(" ")
 
-    for(i <- Range(0, parts.length)){
+    var i = 0
+
+    while(i < parts.length){
       if(parts(i).toLowerCase.equals("--algorithm")){
         if( i >= parts.length - 1 || !validCallgraphAlgorithms.exists( algo => algo.toLowerCase.equals(parts(i + 1)))) return false
+        else i += 1 // Skip next entry, already was verified!
       } else if(!parts(i).toLowerCase.equals("--use-jre") && !parts(i).equals("--application-mode")) return false
+
+      i += 1
     }
 
     inputs.forall( sed => sed.isInstanceOf[JavaProgram])
@@ -161,7 +166,7 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
 object MvnPartialCallgraphAnalysisImpl {
 
-  def validCallgraphAlgorithms: Set[String] = Set("cha", "rta", "cta", "xta")
+  val validCallgraphAlgorithms: Set[String] = Set("cha", "rta", "cta", "xta")
 
   case class PartialCallgraphAnalysisConfig(algorithm: String, includeJre: Boolean, applicationMode: Boolean)
 

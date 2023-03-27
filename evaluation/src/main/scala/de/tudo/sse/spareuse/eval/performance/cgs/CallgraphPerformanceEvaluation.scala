@@ -1,6 +1,7 @@
 package de.tudo.sse.spareuse.eval.performance.cgs
 
 import de.tudo.sse.spareuse.eval.performance.{PerformanceEvaluation, gavToEntityId, timedExec}
+import org.opalj.tac.cg.CallGraph
 
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
@@ -61,13 +62,17 @@ class CallgraphPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEval
 
       if (timedSimpleResults.getContent.isFailure) //TODO: Check content semantics!
         logger.error("Invalid results for simple dependency analysis")
-      else
+      else {
+        val result: CallGraph = timedSimpleResults.getContent.get
         directRuntimes.append(timedSimpleResults.getDurationMillis)
+      }
 
       if (timedReuseResults.getContent.isFailure) //TODO: Check content semantics
         logger.error("Invalid results for reuse dependency analysis", timedReuseResults.getContent.failed.get)
-      else
+      else {
+        val result: reuseAnalysis.StitchedCallGraph = timedReuseResults.getContent.get
         reuseRuntimes.append(timedReuseResults.getDurationMillis)
+      }
 
       directAnalysis.cleanup()
       reuseAnalysis.cleanup()
