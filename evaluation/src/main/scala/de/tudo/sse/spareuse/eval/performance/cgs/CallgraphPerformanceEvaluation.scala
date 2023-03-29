@@ -1,6 +1,7 @@
 package de.tudo.sse.spareuse.eval.performance.cgs
 
-import de.tudo.sse.spareuse.eval.performance.{PerformanceEvaluation, gavToEntityId, timedExec}
+import de.tudo.sse.spareuse.eval.performance.PerformanceEvaluation
+import de.tudo.sse.spareuse.eval.{gavToEntityId, timedExec}
 import org.opalj.tac.cg.CallGraph
 
 import scala.collection.mutable

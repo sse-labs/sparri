@@ -1,6 +1,7 @@
 package de.tudo.sse.spareuse.eval.performance.dependencies
 
-import de.tudo.sse.spareuse.eval.performance.{PerformanceEvaluation, gavToEntityId, timedExec}
+import de.tudo.sse.spareuse.eval.performance.PerformanceEvaluation
+import de.tudo.sse.spareuse.eval.{gavToEntityId, timedExec}
 
 import scala.util.{Failure, Success, Try}
 import scala.collection.mutable
