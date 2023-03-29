@@ -25,41 +25,26 @@ trait BasicRouteDefinition extends JsonSupport {
   //  ------------------------------
   //  |    404 UTILITIES           |
   //  ------------------------------
-  protected def ensurePackagePresent(packageName: String)(implicit route: Route):  Route = {
-    if(requestHandler.hasLibrary(packageName)) {
-      route
-    } else if(requestHandler.configuration.enqueuePackageIdentifiersOnNotFound){
-
-      log.info(s"Enqueueing package identifier '$packageName' following a 404 response.")
-
-      val enqueueSuccess = requestHandler.processEnqueueLibraryRequest(packageName)
-      if(enqueueSuccess) complete(Accepted, s"Package '$packageName' was not found in database, but has been scheduled for processing.")
-      else complete(NotFound, s"Package '$packageName' was not found in database, appending to queue failed.")
-    } else {
-      complete(NotFound, s"Package '$packageName' was not found in database")
-    }
-
-  }
-
-  protected def ensureArtifactPresent(packageName: String, version: String)(implicit route: Route): Route = {
-    if(requestHandler.hasRelease(packageName, version)) route
-    else complete(NotFound, s"Version '$version' not found for package '$packageName'")
-  }
-
-  protected def ensureArtifactClassPresent(packageName: String, version: String, className: String)(implicit route: Route): Route = {
-    if(requestHandler.hasReleaseClass(packageName, version, className)) route
-    else complete(NotFound, s"Class '$className' not found for version '$version' of package '$packageName'")
-  }
-
-  protected def ensurePackageClassPresent(packageName: String, className: String)(implicit route: Route): Route = {
-    if(requestHandler.hasLibraryClass(packageName, className)) route
-    else complete(NotFound, s"Class $className not found for package $packageName")
+  protected def ensureEntityPresent(entityName: String)(implicit route: Route): Route = {
+    if(requestHandler.hasEntity(entityName)) route
+    else complete(NotFound, s"Entity $entityName was not found in database")
   }
 
   protected def ensureAnalysisPresent(analysisName: String)(implicit route: Route): Route = {
-    if(true) route //TODO: Actual implementation
+    if (requestHandler.hasAnalysis(analysisName)) route
     else complete(NotFound, s"Analysis $analysisName was not found in database")
   }
+
+  protected def ensureAnalysisPresent(analysisName: String, version: String)(implicit route: Route): Route = {
+    if(requestHandler.hasAnalysis(analysisName, Some(version))) route
+    else complete(NotFound, s"Version $version not found for analysis $analysisName")
+  }
+
+  protected def ensureAnalysisRunPresent(analysisName: String, analysisVersion: String, runId: String)(implicit route: Route): Route = {
+    if(requestHandler.hasAnalysisRun(analysisName, analysisVersion, runId)) route
+    else complete(NotFound, s"Run with id $runId not found for analysis $analysisName:$analysisVersion")
+  }
+
 
 
   //  ------------------------------
@@ -104,8 +89,7 @@ trait BasicRouteDefinition extends JsonSupport {
     }
   }
 
-  protected def __TODO__completeNotImplemented(implicit request: HttpRequest): Route = {
-    log.warn(s"Route not implemented for ${request.uri.toString()}")
+  protected implicit def __TODO__completeNotImplemented: Unit => Route = { _ =>
     complete(NotImplemented)
   }
 

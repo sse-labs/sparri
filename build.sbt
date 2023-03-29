@@ -4,49 +4,89 @@ ThisBuild / organization := "de.tudo"
 ThisBuild / version      := "0.1.0-SNAPSHOT"
 ThisBuild / scalaVersion := "2.12.15"
 
-lazy val root = (project in file("."))
-	.aggregate(common, extractor, webapi)
+lazy val dockerSettings = docker / dockerfile := {
 
-lazy val common = (project in file("common"))
+	val artifact: File = assembly.value
+	val artifactTargetPath = s"/app/${artifact.name}"
+
+	new Dockerfile {
+		from("openjdk:16-jdk")
+		add(artifact, artifactTargetPath)
+		entryPoint("java", "-jar", "-Xmx8G", "-Xss128m", artifactTargetPath)
+	}
+}
+
+lazy val mergeStrategySettings = assemblyMergeStrategy := {
+	case x: String if x.toLowerCase.contains("manifest.mf") => MergeStrategy.discard
+	case x: String if x.toLowerCase.endsWith(".conf") => MergeStrategy.concat
+	case x => MergeStrategy.first
+}
+
+lazy val root = (project in file("."))
+	.aggregate(core, `maven-entity-name-publisher`, `maven-entity-miner`, webapi, `analysis-runner`, evaluation)
+
+lazy val core = (project in file("core"))
 	.settings(
 		libraryDependencies ++= dependencies.opal,
-		libraryDependencies ++= Seq(dependencies.logback, dependencies.rabbitMQ, dependencies.jeka, dependencies.mvnarcheologist,
-			dependencies.scalaTest, dependencies.akkaStreams, dependencies.apacheHttp)
+		libraryDependencies ++= dependencies.slick,
+		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.akkaStreams,
+			dependencies.apacheHttp, dependencies.postgresql, dependencies.jeka, dependencies.mvnarcheologist,
+			dependencies.sprayJson)
 	)
 
-lazy val extractor = (project in file("classfile-feature-extractor"))
-	.dependsOn(common)
+lazy val `maven-entity-name-publisher` = (project in file("maven-entity-name-publisher"))
+	.dependsOn(core)
 	.enablePlugins(DockerPlugin)
 	.settings(
-		libraryDependencies ++= Seq(dependencies.jeka, dependencies.elastic, dependencies.logback, dependencies.rabbitMQ,
-			dependencies.scalaTest, dependencies.mvnarcheologist, dependencies.postgresql),
-		libraryDependencies ++= dependencies.opal,
+		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.akkaHttp, dependencies.logback,
+			dependencies.mvnIndexer),
 
-		assembly / mainClass := Some("de.tudo.sse.classfilefeatures.extractor.Application"),
-		assembly / assemblyJarName := "cf-feature-extractor.jar",
-		assemblyMergeStrategy := {
-			case x: String if x.toLowerCase.contains("manifest.mf") => MergeStrategy.discard
-			case x: String if x.toLowerCase.endsWith(".conf") => MergeStrategy.concat
-			case x => MergeStrategy.first
-		},
+		assembly / mainClass := Some("de.tudo.sse.spareuse.mvnpub.Application"),
+		assembly / assemblyJarName := "maven-entity-name-publisher.jar",
 
-		docker / dockerfile := {
+		mergeStrategySettings,
+		dockerSettings,
 
-			val artifact: File = assembly.value
-			val artifactTargetPath = s"/app/${artifact.name}"
-
-			new Dockerfile {
-				from("openjdk:16-jdk")
-				add(artifact, artifactTargetPath)
-				entryPoint("java", "-jar", "-Xmx8G", "-Xss128m", artifactTargetPath)
-			}
-		},
-
-		docker / imageNames := Seq(ImageName(s"cf-feature-extractor:latest"))
+		docker / imageNames := Seq(ImageName(s"maven-entity-name-publisher:latest"))
 	)
 
+lazy val `maven-entity-miner` = (project in file("maven-entity-miner"))
+	.dependsOn(core)
+	.enablePlugins(DockerPlugin)
+	.settings(
+		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.logback, dependencies.typesafeConfig),
+
+		assembly / mainClass := Some("de.tudo.sse.spareuse.mvnem.Application"),
+		assembly / assemblyJarName := "maven-entity-miner.jar",
+
+		mergeStrategySettings,
+		dockerSettings,
+
+		docker / imageNames := Seq(ImageName(s"maven-entity-miner:latest"))
+	)
+
+lazy val `analysis-runner` = (project in file("analysis-runner"))
+	.dependsOn(core)
+	.enablePlugins(DockerPlugin)
+	.settings(
+		libraryDependencies ++= dependencies.opal,
+		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.logback, dependencies.typesafeConfig),
+
+		assembly / mainClass := Some("de.tudo.sse.spareuse.execution.Application"),
+		assembly / assemblyJarName := "analysis-runner.jar",
+
+		mergeStrategySettings,
+		dockerSettings,
+
+		docker / imageNames := Seq(ImageName(s"analysis-runner:latest"))
+	)
+
+lazy val playground = (project in file("playground"))
+	.dependsOn(core)
+	.settings(libraryDependencies ++= Seq(dependencies.logback))
+
 lazy val webapi = (project in file("webapi"))
-	.dependsOn(common)
+	.dependsOn(core)
 	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= Seq(dependencies.akkaStreams, dependencies.akkaHttp, dependencies.akkaActors, dependencies.akkaSprayJson,
@@ -74,10 +114,42 @@ lazy val webapi = (project in file("webapi"))
 
 		docker / imageNames := Seq(ImageName(s"cf-webapi:latest"))
 	)
+
+lazy val evaluation = (project in file("evaluation"))
+	.dependsOn(core)
+	.enablePlugins(DockerPlugin)
+	.settings(
+		libraryDependencies ++= Seq(dependencies.logback),
+
+		assembly / mainClass := Some ("de.tudo.sse.spareuse.eval.performance.PerformanceEvaluationApp"),
+		assembly / assemblyJarName := "spar-evaluation.jar",
+		assemblyMergeStrategy := {
+			case x: String if x.toLowerCase.contains("manifest.mf") => MergeStrategy.discard
+			case x: String if x.toLowerCase.endsWith(".conf") => MergeStrategy.concat
+			case x => MergeStrategy.first
+		},
+
+		docker / dockerfile := {
+
+			val artifact: File = assembly.value
+			val artifactTargetPath = s"/app/${artifact.name}"
+
+			new Dockerfile {
+				from("openjdk:16-jdk")
+				add(artifact, artifactTargetPath)
+				entryPoint("java", "-jar", "-Xmx8G", "-Xss128m", artifactTargetPath)
+			}
+		},
+
+		docker / imageNames := Seq(ImageName(s"spar-evaluation:latest"))
+
+	)
 	
 lazy val dependencies = new {
 
 	val opalVersion = "4.0.0"
+	val slickVersion = "3.4.1"
+
 	val opal = Seq(
 	  "de.opal-project" % "common_2.12" % opalVersion,
 	  "de.opal-project" % "framework_2.12" % opalVersion,
@@ -85,6 +157,8 @@ lazy val dependencies = new {
 	
 	val jeka = "dev.jeka" % "jeka-core" % "0.9.15.RELEASE"
 	val mvnarcheologist = "com.squareup.tools.build" % "maven-archeologist" % "0.0.10"
+
+	val mvnIndexer = "org.apache.maven.indexer" % "indexer-reader" % "6.2.2"
 	
 	val elasticVersion = "7.14.1"
 	val elastic = "com.sksamuel.elastic4s" %% "elastic4s-client-esjava" % elasticVersion
@@ -98,7 +172,14 @@ lazy val dependencies = new {
 	val apacheHttp = "org.apache.httpcomponents" % "httpclient" % "4.5.13"
 
 	val postgresql = "org.postgresql" % "postgresql" % "42.3.3"
+	val slick = Seq(
+		"com.typesafe.slick" %% "slick" % slickVersion,
+		"com.typesafe.slick" %% "slick-hikaricp" % slickVersion
+	)
 
+	val typesafeConfig = "com.typesafe" % "config" % "1.4.2"
+
+	val sprayJson = "io.spray" %% "spray-json" % "1.3.6"
 
 	val akkaVersion = "2.6.18"
 	val akkaHttpVersion = "10.2.9"

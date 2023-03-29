@@ -1,159 +1,157 @@
 package de.tudo.sse.classfilefeatures.webapi.core
 
-import akka.NotUsed
-import akka.stream.scaladsl.Source
-import de.tudo.sse.classfilefeatures.common.model.ClassFileRepresentation
-import de.tudo.sse.classfilefeatures.common.model.conversion.ClassfileCreators
-import de.tudo.sse.classfilefeatures.common.rabbitmq.MqMessageWriter
-import de.tudo.sse.classfilefeatures.webapi.Configuration
-import de.tudo.sse.classfilefeatures.webapi.model.{ConcreteClassInformation, ConcreteClassInformationBuilder, ConditionallyActiveElementEntry, LibraryClassActivationInformation, LibraryClassInformation, LibraryInformation, ReleaseInformation}
-import de.tudo.sse.classfilefeatures.webapi.storage.ClassfileDataAccessor
-import org.opalj.bc.Assembler
+import de.tudo.sse.classfilefeatures.webapi.WebapiConfig
+import de.tudo.sse.classfilefeatures.webapi.model.requests.ExecuteAnalysisRequest
+import de.tudo.sse.classfilefeatures.webapi.model.{AnalysisInformationRepr, AnalysisResultRepr, AnalysisRunRepr, EntityRepr, genericEntityToEntityRepr, toAnalysisRepr, toEntityRepr, toResultRepr, toRunRepr}
+import de.tudo.sse.spareuse.core.utils.rabbitmq.MqMessageWriter
+import de.tudo.sse.spareuse.core.model.{RunState, SoftwareEntityKind}
+import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
+import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, RunnerCommandJsonSupport}
+import de.tudo.sse.spareuse.core.model.entities.{MinerCommand, MinerCommandJsonSupport}
+import de.tudo.sse.spareuse.core.storage.DataAccessor
 import org.slf4j.{Logger, LoggerFactory}
+import spray.json.{JsonWriter, enrichAny}
 
-import java.io.ByteArrayOutputStream
-import java.util.jar.{JarEntry, JarOutputStream}
 import scala.util.{Failure, Success, Try}
 
-class RequestHandler(val configuration: Configuration, dataAccessor: ClassfileDataAccessor){
+class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor) extends RunnerCommandJsonSupport with MinerCommandJsonSupport {
 
   private val log: Logger = LoggerFactory.getLogger(getClass)
 
   private val existingResourcesCache: SimpleValueCache[Boolean] = new SimpleValueCache[Boolean]()
-  private val classFileCache: ObjectCache[ClassFileRepresentation] = new ObjectCache[ClassFileRepresentation](5000)
 
-  def getLibraries(offset: Int = 0, count: Int = 100): Array[String] =
-    dataAccessor.getLibraryNames(offset, count)
+  private val existingEntitiesCache: SimpleValueCache[Boolean] = new SimpleValueCache[Boolean]()
+  private val existingAnalysesCache: SimpleValueCache[Boolean] = new SimpleValueCache[Boolean]()
+
 
   def hasLibrary(libraryName: String): Boolean = {
-    existingResourcesCache.getWithCache(libraryName, () => dataAccessor.hasLibrary(libraryName))
+    existingResourcesCache.getWithCache(libraryName, () => dataAccessor.hasEntity(libraryName, SoftwareEntityKind.Library))
   }
 
-  def hasRelease(libraryName: String, version: String): Boolean = {
-    existingResourcesCache.getWithCache(libraryName + ":" + version, () => dataAccessor.hasRelease(libraryName, version))
+  def hasEntity(entityName: String): Boolean = {
+    existingEntitiesCache.getWithCache(entityName, () => dataAccessor.hasEntity(entityName))
   }
 
-  def hasLibraryClass(libraryName: String, className: String): Boolean = {
-    existingResourcesCache.getWithCache(libraryName + "/" + className, () => dataAccessor.hasLibraryClass(libraryName, className))
+  def getAnalyses(limit: Int, skip: Int): Try[Set[AnalysisInformationRepr]] = {
+    dataAccessor
+      .getAnalyses(includeRuns = true, skip, limit)
+      .map(allAnalyses => allAnalyses.map(toAnalysisRepr))
   }
 
-  def hasReleaseClass(libraryName: String, releaseName: String, className: String): Boolean = {
-    val ident = libraryName + ":" + releaseName + "/" + className
-    existingResourcesCache.getWithCache(ident, () => dataAccessor.hasReleaseClass(libraryName, releaseName, className))
+  def hasAnalysis(analysisName: String, version: Option[String] = None): Boolean = {
+    val key = if(version.isDefined) s"$analysisName:${version.get}" else analysisName
+
+    existingAnalysesCache.getWithCache(key, () => {
+      if(version.isDefined) dataAccessor.hasAnalysis(analysisName, version.get)
+      else dataAccessor.hasAnalysis(analysisName)
+    })
   }
 
-  def getLibraryInfo(libraryName: String): LibraryInformation = {
-    LibraryInformation(libraryName,
-      dataAccessor.getReleaseNames(libraryName),
-      dataAccessor.getLibraryClassActivationInformation(libraryName).map(_._1))
+  def hasAnalysisRun(analysisName: String, version: String, runUid: String): Boolean = {
+    val key = s"$analysisName:$version:$runUid"
+
+    existingAnalysesCache.getWithCache(key, () => dataAccessor.hasAnalysisRun(analysisName, version, runUid))
   }
 
-  def getLibraryClassActivationInformation(libraryName: String): Array[LibraryClassActivationInformation] = {
-    val totalReleaseCountForLibrary = dataAccessor.getReleaseNames(libraryName).length
+  def getAllEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Try[Seq[EntityRepr]] = {
+    dataAccessor.getEntities(limit, skip, kindFilter, parentFilter) match {
+      case Success(entityDataList) =>
+        Success(entityDataList.map(genericEntityToEntityRepr))
+      case Failure(ex) =>
+        log.error("Database connection error while retrieving entities", ex)
+        Failure(ex)
+    }
+  }
+
+  def getEntity(entityName: String): Try[EntityRepr] = {
+    dataAccessor.getEntity(entityName).map(toEntityRepr)
+  }
+
+  def getEntityChildren(entityName: String, skip: Int, limit: Int): Try[Seq[EntityRepr]] = Try {
+    dataAccessor.getEntityChildren(entityName, skip, limit).get.map(toEntityRepr)
+  }
+
+  def getAllResultsFor(entityName: String, analysisFilter: Option[String], limit: Int, skip: Int): Try[Set[AnalysisResultRepr]] = {
+    val analysisNameAndVersionOpt = analysisFilter.map( s => {
+      val parts = s.split(":")
+      (parts(0).trim, parts(1).trim)
+    })
 
     dataAccessor
-      .getLibraryClassActivationInformation(libraryName)
-      .map{ tuple =>
-        val alwaysActive = tuple._2.size == totalReleaseCountForLibrary
-
-        LibraryClassActivationInformation(tuple._1, if(alwaysActive) Array.empty[String] else tuple._2.toArray, alwaysActive)
-      }
+      .getJSONResultsFor(entityName, analysisNameAndVersionOpt, limit, skip)
+      .map(results => results.map(toResultRepr))
   }
 
-  def getLibraryClassInformation(libraryName: String, className: String): LibraryClassInformation = {
-    val infoObj = dataAccessor.getLibraryClassInformation(libraryName, className)
+  def getRun(analysisName: String, analysisVersion: String, runId: String): Try[AnalysisRunRepr] = {
+    dataAccessor
+      .getAnalysisRun(analysisName, analysisVersion, runId, includeResults = false)
+      .map(toRunRepr)
+  }
 
-    def toConditionallyActiveEntryObj(a: Array[String]): ConditionallyActiveElementEntry ={
-      val alwaysActive = a.length == infoObj.activeIn.length
-      ConditionallyActiveElementEntry( if(alwaysActive) Array.empty[String] else a, alwaysActive)
+  def getRunIdIfPresent(analysisName: String, analysisVersion: String, request: ExecuteAnalysisRequest): Try[Option[String]] = {
+    dataAccessor.getAnalysisRuns(analysisName, analysisVersion) match {
+      case Success(runs) =>
+        val requestInputs = request.Inputs.toSet
+        Success(
+          runs.find{ r =>
+
+            val runInputs = r.inputs.map(_.uid)
+
+            r.configuration.equals(request.Configuration) &&
+            runInputs.equals(requestInputs) &&
+            r.state.equals(RunState.Finished)
+          }.map(_.uid)
+        )
+      case Failure(ex) =>
+        log.error(s"Failed to retrieve runs from DB for $analysisName:$analysisVersion", ex)
+        Failure(ex)
     }
+  }
 
-    LibraryClassInformation(infoObj.className,
-      infoObj.activeIn,
-      infoObj.supertypes.mapValues( toConditionallyActiveEntryObj ),
-      infoObj.flags.map(t => (String.valueOf(t._1), toConditionallyActiveEntryObj(t._2))),
-      infoObj.methodNames.mapValues( toConditionallyActiveEntryObj ))
+  def triggerNewAnalysisRun(analysisName: String, analysisVersion: String, request: ExecuteAnalysisRequest): Try[String] = Try {
+
+    // Create new empty record for analysis run
+    val newId = dataAccessor.storeEmptyAnalysisRun(analysisName, analysisVersion, request.Configuration).get
+
+    // Queue run execution
+    val name = s"$analysisName:$analysisVersion"
+    val command = RunnerCommand(name, newId, request.User.getOrElse("Anonymous"), request.Inputs.toSet, request.Configuration)
+    val commandJson = command.toJson.compactPrint
+
+    log.info(s"Publishing a new Runner Command for analysis $name : $commandJson")
+
+    val writer = new MqMessageWriter(configuration.asAnalysisQueuePublishConfig)
+    writer.initialize()
+    writer.appendToQueue(commandJson)
+    writer.shutdown()
+
+    newId
 
   }
 
-  def getReleaseInfo(libraryName: String, releaseName: String): ReleaseInformation = {
-    ReleaseInformation(libraryName,
-      releaseName,
-      dataAccessor.getReleaseClassNames(libraryName, releaseName))
-  }
-
-  def getClassInfo(libraryName: String, releaseName: String, className: String): ConcreteClassInformation = {
-    ConcreteClassInformationBuilder.fromRepresentation(
-      libraryName,
-      releaseName,
-      dataAccessor.getClassRepresentation(libraryName, releaseName, className)
-    )
-  }
-
-  def getSingleClassFile(libraryName: String, releaseName: String, className: String): Source[Byte, NotUsed] = {
-    val classRep = classFileCache.getWithCache( libraryName + releaseName + className,
-      () => dataAccessor.getClassRepresentation(libraryName, releaseName, className))
-
-    val dummyClassFile = ClassfileCreators.buildSimpleCreator(Seq(classRep)).toDummyClassFile(classRep)
-
-    val classBytes = Assembler(org.opalj.ba.toDA(dummyClassFile))
-
-    Source.fromIterator(() => classBytes.iterator)
-  }
-
-  def getJar(libraryName: String, releaseName: String): Source[Byte, NotUsed] = {
-
-    log.info(s"Starting to build dummy JAR for $libraryName:$releaseName. Retrieving data...")
-
-    val allClassReps = getReleaseInfo(libraryName, releaseName)
-      .classNames
-      .map(className => classFileCache.getWithCache( libraryName + releaseName + className,
-        () => dataAccessor.getClassRepresentation(libraryName, releaseName, className)))
-
-    log.info("Done retrieving data. Building JAR ...")
-    val classFileCreator = ClassfileCreators.buildCreatorWithAiSupport(allClassReps)
-
-    val byteStream = new ByteArrayOutputStream()
-    val jarStream = new JarOutputStream(byteStream)
-
-    allClassReps.foreach { cfr =>
-
-      val brClassObj = classFileCreator.toDummyClassFile(cfr)
-      val classBytes = Assembler(org.opalj.ba.toDA(brClassObj))
-
-      val entryName = brClassObj.thisType.packageName + "/" + brClassObj.thisType.simpleName + ".class"
-      val jarEntry = new JarEntry(entryName)
-      jarEntry.setTime( System.currentTimeMillis / 1000)
-
-      jarStream.putNextEntry(jarEntry)
-      jarStream.write(classBytes)
-      jarStream.closeEntry()
-
+  def getRunResults(runId: String, limit: Int, skip: Int): Try[Set[AnalysisResultRepr]] = {
+    dataAccessor.getRunResultsAsJSON(runId, skip, limit).map { allResults =>
+      allResults.map(result => toResultRepr(result))
     }
-
-    jarStream.close()
-    val jarBytes = byteStream.toByteArray
-
-    log.info("Done building JAR.")
-
-    //TODO: Cache calculates JARs!
-
-    Source.fromIterator(() => jarBytes.iterator)
   }
 
-  def processEnqueueLibraryRequest(libraryName: String): Boolean = {
+  def triggerEntityMining(entityIdent: String): Boolean = {
 
     Try {
-      val writer = new MqMessageWriter(configuration)
+      val writer = new MqMessageWriter(configuration.asMinerQueuePublishConfig)
       writer.initialize()
 
-      writer.appendToQueue(libraryName)
+      val msg = MinerCommand(Set(entityIdent), None).toJson.compactPrint
+
+      log.info(s"Publishing a new Miner Command for entity $entityIdent : $msg")
+
+      writer.appendToQueue(msg, Some(3))
 
       writer.shutdown()
     } match {
       case Success(_) => true
       case Failure(ex) =>
-        log.error(s"Failed to enqueue library $libraryName", ex)
+        log.error(s"Failed to enqueue entity id $entityIdent", ex)
         false
     }
 

@@ -4,7 +4,7 @@ import akka.http.scaladsl.server.Directives.{_enhanceRouteWithConcatenation, ext
 import akka.http.scaladsl.server.Route
 import ch.megard.akka.http.cors.scaladsl.CorsDirectives.cors
 
-trait ApiRouteDefinitions extends PackageRouteDefinitions
+trait ApiRouteDefinitions extends EntityRouteDefinitions
   with ProcessingRouteDefinitions
   with AnalysisRouteDefinitions {
 
@@ -12,7 +12,7 @@ trait ApiRouteDefinitions extends PackageRouteDefinitions
   protected lazy val allApiRoutes: Route = cors(){
     pathPrefix("api") {
       extractRequest { implicit request =>
-        processingRoutes ~ packageRoutes ~ analysisRoutes
+        processingRoutes ~ entityRoutes ~ analysisRoutes
       }
     }
   }
