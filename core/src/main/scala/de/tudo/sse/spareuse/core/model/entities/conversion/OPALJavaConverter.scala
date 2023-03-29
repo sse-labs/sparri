@@ -51,7 +51,8 @@ object OPALJavaConverter {
 
   def addMethod(m: Method, c: JavaClass): JavaMethod = {
 
-    val methodRep = JavaEntities.buildMethodFor(c, m.name, m.returnType.toJVMTypeName, m.parameterTypes.map(_.toJVMTypeName))
+    val methodRep = JavaEntities.buildMethodFor(c, m.name, m.returnType.toJVMTypeName, m.parameterTypes.map(_.toJVMTypeName),
+      m.isFinal, m.isStatic, m.isAbstract, m.visibilityModifier.map(_.javaName.get).getOrElse("default"))
 
     m.body.foreach { code =>
 

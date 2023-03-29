@@ -30,7 +30,7 @@ object JavaConverter {
     if (paramTypeNames.length != methodData._3)
       throw new IllegalStateException("Corrupt database, parameter count does not match actual parameters")
 
-    new JavaMethod(repr.name, methodData._2, paramTypeNames.toSeq, repr.fqn, repr.repository)
+    new JavaMethod(repr.name, methodData._2, paramTypeNames.toSeq, repr.fqn, methodData._5, methodData._6, methodData._7, methodData._8, repr.repository)
   }
 
   def toInvocation(repr: SoftwareEntityRepr, invokeData: JavaInvocationRepr): JavaInvokeStatement = {

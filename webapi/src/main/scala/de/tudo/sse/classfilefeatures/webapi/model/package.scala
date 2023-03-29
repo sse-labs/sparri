@@ -31,6 +31,10 @@ package object model {
     var returnTypeOpt: Option[String] = None
     var paramTypesOpt: Option[Array[String]] = None
     var isInterfaceTypeOpt: Option[Boolean] = None
+    var isFinalOpt: Option[Boolean] = None
+    var isStaticOpt: Option[Boolean] = None
+    var isAbstractOpt: Option[Boolean] = None
+    var visibilityOpt: Option[String] = None
 
     //TODO: Extend so that special info for instructions is also serialized!
     entity match {
@@ -42,12 +46,17 @@ package object model {
       case jm: JavaMethod =>
         returnTypeOpt = Some(jm.returnType)
         paramTypesOpt = Some(jm.paramTypes.toArray)
+        isFinalOpt = Some(jm.isFinal)
+        isStaticOpt = Some(jm.isStatic)
+        isAbstractOpt = Some(jm.isAbstract)
+        visibilityOpt = Some(jm.visibility)
       case _ =>
     }
 
     val children = if(entity.getChildren.isEmpty) None else Some(entity.getChildren.map(toEntityRepr).toArray)
 
-    EntityRepr(entity.name,
+    EntityRepr(
+      entity.name,
       entity.uid,
       entity.kind.toString,
       entity.language,
@@ -59,6 +68,10 @@ package object model {
       superTypeOpt,
       interfaceTypesOpt,
       isInterfaceTypeOpt,
+      isFinalOpt,
+      isStaticOpt,
+      isAbstractOpt,
+      visibilityOpt,
       returnTypeOpt,
       paramTypesOpt
     )
@@ -84,6 +97,6 @@ package object model {
 
   def genericEntityToEntityRepr(entity: GenericEntityData): EntityRepr = {
     EntityRepr(entity.name, entity. uid, entity.kind.toString, entity.language, entity.repository, entity.parentUid,
-      entity.binaryHash.map(toHex), None, None, None, None, None, None, None)
+      entity.binaryHash.map(toHex), None, None, None, None, None, None, None, None, None, None, None)
   }
 }
