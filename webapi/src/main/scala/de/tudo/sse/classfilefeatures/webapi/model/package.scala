@@ -30,6 +30,7 @@ package object model {
     var interfaceTypesOpt: Option[Array[String]] = None
     var returnTypeOpt: Option[String] = None
     var paramTypesOpt: Option[Array[String]] = None
+    var isInterfaceTypeOpt: Option[Boolean] = None
 
     //TODO: Extend so that special info for instructions is also serialized!
     entity match {
@@ -37,6 +38,7 @@ package object model {
         thisTypeFqnOpt = Some(jc.thisType)
         superTypeOpt = jc.superType
         interfaceTypesOpt = Some(jc.interfaceTypes.toArray)
+        isInterfaceTypeOpt = Some(jc.isInterface)
       case jm: JavaMethod =>
         returnTypeOpt = Some(jm.returnType)
         paramTypesOpt = Some(jm.paramTypes.toArray)
@@ -56,6 +58,7 @@ package object model {
       thisTypeFqnOpt,
       superTypeOpt,
       interfaceTypesOpt,
+      isInterfaceTypeOpt,
       returnTypeOpt,
       paramTypesOpt
     )
@@ -81,6 +84,6 @@ package object model {
 
   def genericEntityToEntityRepr(entity: GenericEntityData): EntityRepr = {
     EntityRepr(entity.name, entity. uid, entity.kind.toString, entity.language, entity.repository, entity.parentUid,
-      entity.binaryHash.map(toHex), None, None, None, None, None, None)
+      entity.binaryHash.map(toHex), None, None, None, None, None, None, None)
   }
 }

@@ -9,7 +9,7 @@ import org.apache.http.entity.StringEntity
 import org.apache.http.impl.client.CloseableHttpClient
 import org.apache.http.protocol.HTTP
 import org.apache.http.util.EntityUtils
-import spray.json.{JsArray, JsObject, JsString, JsValue, enrichString}
+import spray.json.{JsArray, JsBoolean, JsObject, JsString, JsValue, enrichString}
 
 import java.net.{URL, URLEncoder}
 import java.nio.charset.StandardCharsets
@@ -205,6 +205,7 @@ package object performance {
                   }.toSet
                 case _ => throw new IllegalStateException("Invalid response format")
               },
+              jo.fields("IsInterface").asInstanceOf[JsBoolean].value,
               jo.fields("Repository").asInstanceOf[JsString].value,
               fromHex(jo.fields("Hash").asInstanceOf[JsString].value))
         }
