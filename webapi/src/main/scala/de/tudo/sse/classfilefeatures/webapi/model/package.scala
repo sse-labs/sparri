@@ -43,6 +43,8 @@ package object model {
         superTypeOpt = jc.superType
         interfaceTypesOpt = Some(jc.interfaceTypes.toArray)
         isInterfaceTypeOpt = Some(jc.isInterface)
+        isFinalOpt = Some(jc.isFinal)
+        isAbstractOpt = Some(jc.isAbstract)
       case jm: JavaMethod =>
         returnTypeOpt = Some(jm.returnType)
         paramTypesOpt = Some(jm.paramTypes.toArray)

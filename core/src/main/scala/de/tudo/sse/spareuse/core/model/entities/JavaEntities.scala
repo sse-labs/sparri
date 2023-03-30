@@ -31,13 +31,13 @@ object JavaEntities {
     jpa
   }
 
-  def buildClass(gav: String, packageName: String, className: String, fqn: String, isInterface:Boolean, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, repoIdent: String = "mvn", hash: Array[Byte] = Array.empty): JavaClass = {
-    buildClassFor(buildPackage(gav, packageName, repoIdent), className, fqn, isInterface, superTypeFqn, interfaceFqns, hash)
+  def buildClass(gav: String, packageName: String, className: String, fqn: String, isInterface:Boolean, isFinal:Boolean, isAbstract:Boolean, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, repoIdent: String = "mvn", hash: Array[Byte] = Array.empty): JavaClass = {
+    buildClassFor(buildPackage(gav, packageName, repoIdent), className, fqn, isInterface, isFinal, isAbstract, superTypeFqn, interfaceFqns, hash)
   }
 
-  def buildClassFor(jp: JavaPackage, className: String, fqn: String, isInterface: Boolean, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, hash: Array[Byte] = Array.empty): JavaClass = {
+  def buildClassFor(jp: JavaPackage, className: String, fqn: String, isInterface: Boolean, isFinal: Boolean, isAbstract: Boolean, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, hash: Array[Byte] = Array.empty): JavaClass = {
     val ident = jp.uid + "!" + fqn
-    val classObj = new JavaClass(className, fqn, ident, superTypeFqn, interfaceFqns, isInterface, jp.repository, hash)
+    val classObj = new JavaClass(className, fqn, ident, superTypeFqn, interfaceFqns, isInterface, isFinal, isAbstract, jp.repository, hash)
     classObj.setParent(jp)
     classObj
   }
@@ -92,6 +92,8 @@ object JavaEntities {
                   superTypeFqn: Option[String],
                   interfaceFqns: Set[String],
                   interfaceType: Boolean,
+                  finalType: Boolean,
+                  abstractType: Boolean,
                   repositoryIdent: String,
                   hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(className, thisTypeFqn, classUid, repositoryIdent, Some(hashedBytes)){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Class
@@ -100,6 +102,8 @@ object JavaEntities {
     val superType: Option[String] = superTypeFqn
     val interfaceTypes: Set[String]= interfaceFqns
     val isInterface: Boolean = interfaceType
+    val isFinal: Boolean = finalType
+    val isAbstract: Boolean = abstractType
   }
 
   def buildMethodIdent(methodName: String, returnType: String, paramTypes: Seq[String]) =

@@ -11,7 +11,6 @@ import scala.util.Try
 
 class BreakingChangeAnalysis {
 
-  private val logger: Logger = LoggerFactory.getLogger(getClass)
   private val apiBaseUrl = "http://ls5vs029.cs.tu-dortmund.de:9090/api/"
 
   def calculateChanges(oldReleaseGav: String, newReleaseGav: String): Try[BreakingChangeReport] = Try {
@@ -42,7 +41,7 @@ class BreakingChangeAnalysis {
 
     val classesRemoved = allOldTypes.filterNot(_.isInterface).toSet.diff(allNewTypes.filterNot(_.isInterface).toSet).size
     val interfacesRemoved = allOldTypes.filter(_.isInterface).toSet.diff(allNewTypes.filter(_.isInterface).toSet).size
-    val methodsRemoved = oldMethodLookup.keys.toSet.diff(newMethodLookup.keys.toSet).size //TODO: Parameter types changed?
+    val methodsRemoved = oldMethodLookup.keys.toSet.diff(newMethodLookup.keys.toSet).size
 
     val returnTypesChanged = oldMethodLookup.count{ t =>
       val oldIdent = t._1
@@ -64,22 +63,102 @@ class BreakingChangeAnalysis {
         }
       }
 
+    val removedFromSuperclasses = allOldTypes.count{ oldType =>
+      val oldSupertypes = oldType.superType.map(Set(_)).getOrElse(Set.empty) ++ oldType.interfaceTypes
+
+      if(newTypesLookup.contains(oldType.thisType)) {
+        val newSupertypes = newTypesLookup(oldType.thisType).superType.map(Set(_)).getOrElse(Set.empty) ++ newTypesLookup(oldType.thisType).interfaceTypes
+
+        oldSupertypes.diff(newSupertypes).nonEmpty
+      } else false
+    }
+
+    val methodNowFinal = oldMethodLookup.filterNot(_._2.isFinal).count{ t =>
+      newMethodLookup.contains(t._1) && newMethodLookup(t._1).isFinal
+    }
+
+    // Count those new, abstract methods for which a) the type existed in the old release and b) it did not contain that abstract method (or it was not abstract)
+    val abstractMethodAdded = newMethodLookup.filter(_._2.isAbstract).count{ t =>
+      oldTypesLookup.contains(t._1.declaredTypeFqn) && (!oldMethodLookup.contains(t._1) || !oldMethodLookup(t._1).isAbstract)
+    }
+
+    val methodAccessibilityDecreased = oldMethodLookup.count { t =>
+      if(newMethodLookup.contains(t._1)){
+        val oV = t._2.visibility
+        val nV = newMethodLookup(t._1).visibility
+
+        oV match {
+          case "public" => !nV.equals("public")
+          case "protected" => nV.equals("default") || nV.equals("private")
+          case "default" => nV.equals("private")
+          case "private" => false
+        }
+
+      } else false
+    }
+
+    val addedFinalModifier = allOldTypes.filterNot(_.isFinal).filter(t => newTypesLookup.contains(t.thisType)).count{ t =>
+      newTypesLookup(t.thisType).isFinal
+    }
+
+    val addedAbstractModifier = allOldTypes.filterNot(_.isAbstract).filter(t => newTypesLookup.contains(t.thisType)).count { t =>
+      newTypesLookup(t.thisType).isAbstract
+    }
+
+    val paramTypesChanged = allOldTypes.filter(t => newTypesLookup.contains(t.thisType)).map { oT =>
+      val oldMethods = oT.getChildren.map(_.asInstanceOf[JavaMethod])
+      val newMethods = newTypesLookup(oT.thisType).getChildren.map(_.asInstanceOf[JavaMethod])
+
+      val oldLookup = oldMethods.map(m => (MethodIdentifier(oT.thisType, m), m)).toMap
+      val newLookup = newMethods.map(m => (MethodIdentifier(oT.thisType, m), m)).toMap
+
+      val oldIdent = oldLookup.keys.toSet
+      val newIdent = newLookup.keys.toSet
+
+      val uniqueOldMethods = oldIdent.diff(newIdent)
+      val uniqueNewMethods = newIdent.diff(oldIdent)
+
+      uniqueOldMethods.count{ uom =>
+        val oldRetType = oldLookup(uom).returnType
+        uniqueNewMethods.exists( unm => unm.methodName.equals(uom.methodName) && unm.parameterTypes.size == uom.parameterTypes.size && oldRetType.equals(newLookup(unm).returnType))
+      }
+    }.sum
+
+    val numberOfArgsChanged = allOldTypes.filter(t => newTypesLookup.contains(t.thisType)).map { oT =>
+      val oldMethods = oT.getChildren.map(_.asInstanceOf[JavaMethod])
+      val newMethods = newTypesLookup(oT.thisType).getChildren.map(_.asInstanceOf[JavaMethod])
+
+      val oldLookup = oldMethods.map(m => (MethodIdentifier(oT.thisType, m), m)).toMap
+      val newLookup = newMethods.map(m => (MethodIdentifier(oT.thisType, m), m)).toMap
+
+      val oldIdent = oldLookup.keys.toSet
+      val newIdent = newLookup.keys.toSet
+
+      val uniqueOldMethods = oldIdent.diff(newIdent)
+      val uniqueNewMethods = newIdent.diff(oldIdent)
+
+      uniqueOldMethods.count { uom =>
+        val oldRetType = oldLookup(uom).returnType
+        uniqueNewMethods.exists(unm => unm.methodName.equals(uom.methodName) && unm.parameterTypes.size != uom.parameterTypes.size && oldRetType.equals(newLookup(unm).returnType))
+      }
+    }.sum
+
     //TODO: Calculate all values
 
     BreakingChangeReport(
       methodsRemoved,
       classesRemoved,
-      paramTypesChanged = ???,
+      paramTypesChanged,
       returnTypesChanged,
       interfacesRemoved,
-      numberOfArgsChanged = ???,
+      numberOfArgsChanged,
       methodsAddedToInterface,
-      removedFromSuperclasses = ???,
-      methodAccessibilityDecreased = ???,
-      methodNowFinal = ???,
-      abstractMethodAdded = ???,
-      addedFinalModifier = ???,
-      addedAbstractModifier = ???
+      removedFromSuperclasses,
+      methodAccessibilityDecreased,
+      methodNowFinal,
+      abstractMethodAdded,
+      addedFinalModifier,
+      addedAbstractModifier
     )
   }
 

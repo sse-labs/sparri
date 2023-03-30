@@ -206,6 +206,8 @@ package object eval {
                 case _ => throw new IllegalStateException("Invalid response format")
               },
               jo.fields("IsInterface").asInstanceOf[JsBoolean].value,
+              jo.fields("IsFinal").asInstanceOf[JsBoolean].value,
+              jo.fields("IsAbstract").asInstanceOf[JsBoolean].value,
               jo.fields("Repository").asInstanceOf[JsString].value,
               fromHex(jo.fields("Hash").asInstanceOf[JsString].value))
         }

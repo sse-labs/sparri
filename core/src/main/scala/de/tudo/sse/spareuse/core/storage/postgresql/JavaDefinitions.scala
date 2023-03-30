@@ -5,7 +5,7 @@ import slick.jdbc.PostgresProfile.api._
 
 object JavaDefinitions {
 
-  type JavaClassRepr = (Long, String, Option[String], String, Boolean)
+  type JavaClassRepr = (Long, String, Option[String], String, Boolean, Boolean, Boolean)
 
   class JavaClasses(tag: Tag) extends Table[JavaClassRepr](tag, "javaclasses"){
 
@@ -19,7 +19,11 @@ object JavaDefinitions {
 
     def isInterface: Rep[Boolean] = column[Boolean]("IS_INTERFACE")
 
-    override def * : ProvenShape[JavaClassRepr] = (id, thisType, superType, interfaceTypes, isInterface)
+    def isFinal: Rep[Boolean] = column[Boolean]("IS_FINAL")
+
+    def isAbstract: Rep[Boolean] = column[Boolean]("IS_ABSTRACT")
+
+    override def * : ProvenShape[JavaClassRepr] = (id, thisType, superType, interfaceTypes, isInterface, isFinal, isAbstract)
 
     def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
       foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
