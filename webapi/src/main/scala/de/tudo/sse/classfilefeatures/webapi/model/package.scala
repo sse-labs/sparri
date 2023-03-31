@@ -1,6 +1,6 @@
 package de.tudo.sse.classfilefeatures.webapi
 
-import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaMethod}
+import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod}
 import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData}
 import de.tudo.sse.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
 import de.tudo.sse.spareuse.core.utils.toHex
@@ -35,8 +35,8 @@ package object model {
     var isStaticOpt: Option[Boolean] = None
     var isAbstractOpt: Option[Boolean] = None
     var visibilityOpt: Option[String] = None
+    var targetTypeOpt: Option[String] = None
 
-    //TODO: Extend so that special info for instructions is also serialized!
     entity match {
       case jc: JavaClass =>
         thisTypeFqnOpt = Some(jc.thisType)
@@ -52,6 +52,14 @@ package object model {
         isStaticOpt = Some(jm.isStatic)
         isAbstractOpt = Some(jm.isAbstract)
         visibilityOpt = Some(jm.visibility)
+      case jis: JavaInvokeStatement =>
+        targetTypeOpt = Some(jis.targetTypeName)
+        returnTypeOpt = Some(jis.returnTypeName)
+        isStaticOpt = Some(jis.isStaticMethod)
+        //TODO: Method Name, Parameter Count, Invocation Types
+      case jfas: JavaFieldAccessStatement =>
+        targetTypeOpt = Some(jfas.targetTypeName)
+        //TODO: Field Type, Field Name, Access Type
       case _ =>
     }
 
@@ -75,7 +83,8 @@ package object model {
       isAbstractOpt,
       visibilityOpt,
       returnTypeOpt,
-      paramTypesOpt
+      paramTypesOpt,
+      targetTypeOpt
     )
   }
 
@@ -93,12 +102,12 @@ package object model {
       data.uid,
       data.isRevoked,
       data.content.asInstanceOf[String],
-      data.affectedEntities.map(_.uid) // This only works for fully-built entity trees or generic entities!
+      data.affectedEntities.map(_.uid)
     )
   }
 
   def genericEntityToEntityRepr(entity: GenericEntityData): EntityRepr = {
     EntityRepr(entity.name, entity. uid, entity.kind.toString, entity.language, entity.repository, entity.parentUid,
-      entity.binaryHash.map(toHex), None, None, None, None, None, None, None, None, None, None, None)
+      entity.binaryHash.map(toHex), None, None, None, None, None, None, None, None, None, None, None, None)
   }
 }

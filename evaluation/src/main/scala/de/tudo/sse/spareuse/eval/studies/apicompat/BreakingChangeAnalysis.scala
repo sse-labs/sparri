@@ -5,7 +5,6 @@ import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import de.tudo.sse.spareuse.eval
 import de.tudo.sse.spareuse.eval.getAllMethodsForClass
 import org.apache.http.impl.client.{CloseableHttpClient, HttpClients}
-import org.slf4j.{Logger, LoggerFactory}
 
 import scala.util.Try
 
@@ -143,8 +142,6 @@ class BreakingChangeAnalysis {
       }
     }.sum
 
-    //TODO: Calculate all values
-
     BreakingChangeReport(
       methodsRemoved,
       classesRemoved,
@@ -172,5 +169,4 @@ class BreakingChangeAnalysis {
         jc
       }
   }
-
 }

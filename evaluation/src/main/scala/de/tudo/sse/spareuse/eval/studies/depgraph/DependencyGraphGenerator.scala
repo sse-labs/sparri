@@ -46,7 +46,6 @@ class DependencyGraphGenerator(dbUri: String, dbUser: String, dbPass: String) {
     }
   }
 
-
   private def handleBatch(batchNumber: Int): Int = {
 
     val httpClient: CloseableHttpClient = HttpClients.createDefault()
@@ -86,8 +85,6 @@ class DependencyGraphGenerator(dbUri: String, dbUser: String, dbPass: String) {
         logger.error(s"Unexpected exception handling batch #$batchNumber", ex)
         1 // Return a number > 0 so this does not lead to graph generation being aborted
     }
-
-
   }
 
   private def storeBatch(data: Seq[ProgramWithDependencies]): Unit = {
@@ -122,7 +119,7 @@ class DependencyGraphGenerator(dbUri: String, dbUser: String, dbPass: String) {
   }
 
   private def getGAVBatch(n: Int, httpClient: CloseableHttpClient): List[String] = {
-    val request = new HttpGet(apiBaseUrl + "entities?kind=Program")
+    val request = new HttpGet(apiBaseUrl + "entities?kind=Program&language=Java")
     request.setHeader("limit", String.valueOf(batchSize))
     request.setHeader("skip", String.valueOf(n * batchSize))
 
@@ -171,5 +168,4 @@ class DependencyGraphGenerator(dbUri: String, dbUser: String, dbPass: String) {
         throw new IllegalStateException("Invalid result format")
     }
   }
-
 }

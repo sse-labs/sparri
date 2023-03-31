@@ -157,7 +157,9 @@ package object eval {
                 jo.fields("Identifier").asInstanceOf[JsString].value,
                 jo.fields("Repository").asInstanceOf[JsString].value)
           }.flatMap { p =>
-          getAllTypesForPackage(p.uid, baseUrl, httpClient).get
+          val allTypes = getAllTypesForPackage(p.uid, baseUrl, httpClient).get
+          allTypes.foreach(_.setParent(p))
+          allTypes
         }
       case Failure(ex) =>
         throw new IllegalStateException(s"Failed to retrieve packages for program $gav", ex)
@@ -234,7 +236,20 @@ package object eval {
 
     contentT match {
       case Success(JsArray(values)) =>
-        ???
+        values.collect {
+          case jo: JsObject =>
+            new JavaMethod(
+              jo.fields("Name").asInstanceOf[JsString].value,
+              jo.fields("ReturnType").asInstanceOf[JsString].value,
+              jo.fields("ParameterTypes").asInstanceOf[JsArray].elements.collect{ case s: JsString => s.value },
+              jo.fields("Identifier").asInstanceOf[JsString].value,
+              jo.fields("IsFinal").asInstanceOf[JsBoolean].value,
+              jo.fields("IsStatic").asInstanceOf[JsBoolean].value,
+              jo.fields("IsAbstract").asInstanceOf[JsBoolean].value,
+              jo.fields("Visibility").asInstanceOf[JsString].value,
+              jo.fields("Repository").asInstanceOf[JsString].value
+            )
+        }
       case Failure(ex) =>
         throw new IllegalStateException(s"Failed to retrieve methods for class $classUid", ex)
       case _ =>
