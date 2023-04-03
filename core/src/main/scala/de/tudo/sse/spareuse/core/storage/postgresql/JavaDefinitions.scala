@@ -5,7 +5,7 @@ import slick.jdbc.PostgresProfile.api._
 
 object JavaDefinitions {
 
-  type JavaClassRepr = (Long, String, Option[String], String)
+  type JavaClassRepr = (Long, String, Option[String], String, Boolean, Boolean, Boolean)
 
   class JavaClasses(tag: Tag) extends Table[JavaClassRepr](tag, "javaclasses"){
 
@@ -17,13 +17,19 @@ object JavaDefinitions {
 
     def interfaceTypes: Rep[String] = column[String]("INTERFACES")
 
-    override def * : ProvenShape[JavaClassRepr] = (id, thisType, superType, interfaceTypes)
+    def isInterface: Rep[Boolean] = column[Boolean]("IS_INTERFACE")
+
+    def isFinal: Rep[Boolean] = column[Boolean]("IS_FINAL")
+
+    def isAbstract: Rep[Boolean] = column[Boolean]("IS_ABSTRACT")
+
+    override def * : ProvenShape[JavaClassRepr] = (id, thisType, superType, interfaceTypes, isInterface, isFinal, isAbstract)
 
     def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
       foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
   }
 
-  type JavaMethodRepr = (Long, String, Int, String)
+  type JavaMethodRepr = (Long, String, Int, String, Boolean, Boolean, Boolean, String)
 
   class JavaMethods(tag: Tag) extends Table[JavaMethodRepr](tag, "javamethods"){
 
@@ -35,7 +41,16 @@ object JavaDefinitions {
 
     def paramTypes: Rep[String] = column[String]("PARAMETER_TYPES")
 
-    override def * : ProvenShape[JavaMethodRepr] = (id, returnType, paramCount, paramTypes)
+    def isFinal: Rep[Boolean] = column[Boolean]("IS_FINAL")
+
+    def isStatic: Rep[Boolean] = column[Boolean]("IS_STATIC")
+
+    def isAbstract: Rep[Boolean] = column[Boolean]("IS_ABSTRACT")
+
+    def visibility: Rep[String] = column[String]("VISIBILITY")
+
+
+    override def * : ProvenShape[JavaMethodRepr] = (id, returnType, paramCount, paramTypes, isFinal, isStatic, isAbstract, visibility)
 
     def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
       foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)

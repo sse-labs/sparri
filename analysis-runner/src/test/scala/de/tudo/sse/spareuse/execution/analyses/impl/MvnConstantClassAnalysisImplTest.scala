@@ -54,9 +54,9 @@ class MvnConstantClassAnalysisImplTest extends AnyFlatSpec with must.Matchers {
     val samplePackage3 = buildPackageFor(prog3, "test1")
 
     // Same class in three releases. Two different hashes expected
-    buildClassFor(samplePackage1, "test", "test1/test", hash = Array(3.byteValue(), 4.byteValue()))
-    buildClassFor(samplePackage2, "test", "test1/test", hash = Array(3.byteValue(), 4.byteValue()))
-    buildClassFor(samplePackage3, "test", "test1/test", hash = Array(2.byteValue(), 4.byteValue()))
+    buildClassFor(samplePackage1, "test", "test1/test", isInterface = false, isFinal = false, isAbstract = false, hash = Array(3.byteValue(), 4.byteValue()))
+    buildClassFor(samplePackage2, "test", "test1/test", isInterface = false, isFinal = false, isAbstract = false, hash = Array(3.byteValue(), 4.byteValue()))
+    buildClassFor(samplePackage3, "test", "test1/test", isInterface = false, isFinal = false, isAbstract = false, hash = Array(2.byteValue(), 4.byteValue()))
 
 
     assert(analysis.executionPossible(Seq(lib), ""))

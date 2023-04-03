@@ -1,25 +1,24 @@
-package de.tudo.sse.spareuse.eval
+package de.tudo.sse.spareuse
 
-import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaPackage}
+import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaMethod, JavaPackage}
 import de.tudo.sse.spareuse.core.utils.fromHex
 import de.tudo.sse.spareuse.core.utils.http.HttpDownloadException
-import org.apache.http.client.HttpClient
 import org.apache.http.client.methods.{CloseableHttpResponse, HttpGet, HttpPost}
 import org.apache.http.entity.StringEntity
 import org.apache.http.impl.client.CloseableHttpClient
 import org.apache.http.protocol.HTTP
 import org.apache.http.util.EntityUtils
-import spray.json.{JsArray, JsObject, JsString, JsValue, enrichString}
+import spray.json.{JsArray, JsBoolean, JsObject, JsString, JsValue, enrichString}
 
-import java.net.{URL, URLEncoder}
 import java.nio.charset.StandardCharsets
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
-package object performance {
+package object eval {
 
   class TimedResult[T](content: T, durationMs: Long) {
     def getDurationMillis: Long = durationMs
+
     def getContent: T = content
   }
 
@@ -34,7 +33,7 @@ package object performance {
   }
 
   def gavToEntityId(gav: String): String = {
-    if(gav.split(":").length != 3) throw new IllegalArgumentException("GAV must be separated by colons")
+    if (gav.split(":").length != 3) throw new IllegalArgumentException("GAV must be separated by colons")
     val parts = gav.split(":")
     parts(0) + ":" + parts(1) + "!" + gav
   }
@@ -78,7 +77,7 @@ package object performance {
                          baseUrl: String,
                          httpClient: CloseableHttpClient,
                          configuration: String = "",
-                         user: String = "test-runner"): Try[String]= {
+                         user: String = "test-runner"): Try[String] = {
 
     val uri = baseUrl + s"analyses/$analysisName/$analysisVersion/runs"
     val execRequest: HttpPost = new HttpPost(uri)
@@ -140,7 +139,7 @@ package object performance {
     packagesRequest.setHeader("limit", "1000")
     val response = httpClient.execute(packagesRequest)
 
-    if(response.getStatusLine.getStatusCode != 200) {
+    if (response.getStatusLine.getStatusCode != 200) {
       response.close()
       throw new IllegalStateException(s"Failed to retrieve packages for program $gav (Status code ${response.getStatusLine.getStatusCode}) ")
     }
@@ -157,9 +156,11 @@ package object performance {
                 jo.fields("Name").asInstanceOf[JsString].value,
                 jo.fields("Identifier").asInstanceOf[JsString].value,
                 jo.fields("Repository").asInstanceOf[JsString].value)
-          }.flatMap{ p =>
-            getAllTypesForPackage(p.uid, baseUrl, httpClient).get
-          }
+          }.flatMap { p =>
+          val allTypes = getAllTypesForPackage(p.uid, baseUrl, httpClient).get
+          allTypes.foreach(_.setParent(p))
+          allTypes
+        }
       case Failure(ex) =>
         throw new IllegalStateException(s"Failed to retrieve packages for program $gav", ex)
       case _ =>
@@ -168,10 +169,11 @@ package object performance {
 
   }
 
+  def encodeString(s: String): String = s.replace("/", "%2F").replace("!", "%21").replace(":", "%3A")
+
   def getAllTypesForPackage(packageIdent: String, baseUrl: String, httpClient: CloseableHttpClient): Try[Seq[JavaClass]] = Try {
 
-    //TODO: Proper encoding
-    val encodedPackageIdent = packageIdent.replace("/", "%2F").replace("!", "%21").replace(":","%3A")
+    val encodedPackageIdent = encodeString(packageIdent)
 
     val typesRequest = new HttpGet(baseUrl + "entities/" + encodedPackageIdent + "/children")
     typesRequest.setHeader("limit", "1000")
@@ -199,12 +201,15 @@ package object performance {
               },
               jo.fields("InterfaceTypeFqns") match {
                 case a: JsArray =>
-                  a.elements.map{
+                  a.elements.map {
                     case s: JsString => s.value
                     case _ => throw new IllegalStateException("Invalid response format")
                   }.toSet
                 case _ => throw new IllegalStateException("Invalid response format")
               },
+              jo.fields("IsInterface").asInstanceOf[JsBoolean].value,
+              jo.fields("IsFinal").asInstanceOf[JsBoolean].value,
+              jo.fields("IsAbstract").asInstanceOf[JsBoolean].value,
               jo.fields("Repository").asInstanceOf[JsString].value,
               fromHex(jo.fields("Hash").asInstanceOf[JsString].value))
         }
@@ -215,8 +220,45 @@ package object performance {
     }
   }
 
+  def getAllMethodsForClass(classUid: String, baseUrl: String, httpClient: CloseableHttpClient): Try[Seq[JavaMethod]] = Try {
+    val getRequest = new HttpGet(baseUrl + "/entities/" + encodeString(classUid) + "/children")
+
+    getRequest.setHeader("limit", "1000")
+    val response = httpClient.execute(getRequest)
+
+    if (response.getStatusLine.getStatusCode != 200) {
+      response.close()
+      throw new IllegalStateException(s"Failed to retrieve methods for class $classUid (Status code ${response.getStatusLine.getStatusCode}) ")
+    }
+
+    val contentT = Try(EntityUtils.toString(response.getEntity, StandardCharsets.UTF_8).parseJson)
+    response.close()
+
+    contentT match {
+      case Success(JsArray(values)) =>
+        values.collect {
+          case jo: JsObject =>
+            new JavaMethod(
+              jo.fields("Name").asInstanceOf[JsString].value,
+              jo.fields("ReturnType").asInstanceOf[JsString].value,
+              jo.fields("ParameterTypes").asInstanceOf[JsArray].elements.collect{ case s: JsString => s.value },
+              jo.fields("Identifier").asInstanceOf[JsString].value,
+              jo.fields("IsFinal").asInstanceOf[JsBoolean].value,
+              jo.fields("IsStatic").asInstanceOf[JsBoolean].value,
+              jo.fields("IsAbstract").asInstanceOf[JsBoolean].value,
+              jo.fields("Visibility").asInstanceOf[JsString].value,
+              jo.fields("Repository").asInstanceOf[JsString].value
+            )
+        }
+      case Failure(ex) =>
+        throw new IllegalStateException(s"Failed to retrieve methods for class $classUid", ex)
+      case _ =>
+        throw new IllegalStateException("Invalid response formats")
+    }
+  }
+
   def getAnalysisResultsForEntity(entityId: String, analysisName: String, analysisVersion: String,
-                                  baseUrl: String, httpClient:CloseableHttpClient): Try[JsValue] = Try {
+                                  baseUrl: String, httpClient: CloseableHttpClient): Try[JsValue] = Try {
 
     val getRequest = new HttpGet(baseUrl + "/entities/" + entityId + "/results?analysis=" + analysisName + ":" + analysisVersion)
     val response = httpClient.execute(getRequest)

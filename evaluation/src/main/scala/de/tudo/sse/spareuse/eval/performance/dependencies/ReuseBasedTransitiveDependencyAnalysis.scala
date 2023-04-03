@@ -1,7 +1,7 @@
 package de.tudo.sse.spareuse.eval.performance.dependencies
 
 import de.tudo.sse.spareuse.core.utils.http.HttpDownloadException
-import de.tudo.sse.spareuse.eval.performance.{gavToEntityId, getAnalysisResultsForEntity, runFinished, triggerAnalysisRun}
+import de.tudo.sse.spareuse.eval.{gavToEntityId, getAnalysisResultsForEntity, runFinished, triggerAnalysisRun}
 import org.apache.http.impl.client.HttpClients
 import spray.json._
 

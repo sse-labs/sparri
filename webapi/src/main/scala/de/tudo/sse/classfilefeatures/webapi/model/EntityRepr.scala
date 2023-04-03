@@ -14,9 +14,15 @@ final case class EntityRepr (Name: String,
                              ThisTypeFqn: Option[String],
                              SuperTypeFqn: Option[String],
                              InterfaceTypeFqns: Option[Array[String]],
+                             IsInterface: Option[Boolean],
+                             IsFinal: Option[Boolean],
+                             IsStatic: Option[Boolean],
+                             IsAbstract: Option[Boolean],
+                             Visibility: Option[String],
                              ReturnType: Option[String],
-                             ParameterTypes: Option[Array[String]])
+                             ParameterTypes: Option[Array[String]],
+                             TargetType: Option[String])
 
 trait EntityReprJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit lazy val entityReprJsonFormat: JsonFormat[EntityRepr] = lazyFormat(jsonFormat13(EntityRepr))
+  implicit lazy val entityReprJsonFormat: JsonFormat[EntityRepr] = lazyFormat(jsonFormat19(EntityRepr))
 }

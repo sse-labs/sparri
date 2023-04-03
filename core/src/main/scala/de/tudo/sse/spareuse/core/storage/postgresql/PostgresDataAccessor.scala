@@ -463,7 +463,7 @@ class PostgresDataAccessor extends DataAccessor {
 
   override def getAnalyses(includeRuns: Boolean = false, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisData]] = Try {
 
-    val queryF = db.run(analysesTable.drop(skip).take(limit).result)
+    val queryF = db.run(analysesTable.sortBy(_.id).drop(skip).take(limit).result)
 
     Await
       .result(queryF, simpleQueryTimeout)
@@ -589,7 +589,7 @@ class PostgresDataAccessor extends DataAccessor {
   override def getRunResultsAsJSON(runUid: String, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]] = Try {
     val runRepr: SoftwareAnalysisRunRepr = getRunRepr(runUid)
 
-    val resQuery = db.run(analysisResultsTable.filter(r => r.runID === runRepr.id).drop(skip).take(limit).result)
+    val resQuery = db.run(analysisResultsTable.filter(r => r.runID === runRepr.id).sortBy(_.id).drop(skip).take(limit).result)
     val allResults = Await.result(resQuery, longActionTimeout)
 
 
@@ -661,7 +661,7 @@ class PostgresDataAccessor extends DataAccessor {
     val entityResultsF = db.run{
       val join = for { (_, result) <- resultValiditiesTable.filter(v => v.entityId === eid) join analysisResultsTable on (_.resultId === _.id)}
         yield result
-      join.drop(skip).take(limit).result
+      join.sortBy(_.id).drop(skip).take(limit).result
     }
 
     var allEntityResults = Await.result(entityResultsF, longActionTimeout)
@@ -702,7 +702,7 @@ class PostgresDataAccessor extends DataAccessor {
   override def getEntityChildren(uid: String, skip: Int, limit:Int): Try[Seq[SoftwareEntityData]] = Try {
     val parentEntityId = getEntityId(uid)
 
-    val queryF = db.run(entitiesTable.filter(swe => swe.parentID === parentEntityId).drop(skip).take(limit).result)
+    val queryF = db.run(entitiesTable.filter(swe => swe.parentID === parentEntityId).sortBy(_.id).drop(skip).take(limit).result)
 
     val entityRepResult = Await.result(queryF, longActionTimeout)
 
@@ -735,8 +735,8 @@ class PostgresDataAccessor extends DataAccessor {
   override def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Try[Seq[GenericEntityData]] = Try {
 
     val queryF = if(parentFilter.isDefined) buildEntityQueryWithParentFilter(limit, skip, parentFilter.get, kindFilter)
-      else if(kindFilter.isDefined) db.run(entitiesTable.filter(e => e.kind === kindFilter.get.id).drop(skip).take(limit).result)
-      else db.run(entitiesTable.drop(skip).take(limit).result)
+      else if(kindFilter.isDefined) db.run(entitiesTable.filter(e => e.kind === kindFilter.get.id).sortBy(_.id).drop(skip).take(limit).result)
+      else db.run(entitiesTable.sortBy(_.id).drop(skip).take(limit).result)
 
     Await.result(queryF, longActionTimeout).map(toGenericEntityData)
 
@@ -760,7 +760,7 @@ class PostgresDataAccessor extends DataAccessor {
     }
 
 
-    db.run(joinQuery.drop(skip).take(limit).result)
+    db.run(joinQuery.sortBy(_.id).drop(skip).take(limit).result)
   }
 
 

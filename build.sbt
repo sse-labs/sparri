@@ -119,7 +119,7 @@ lazy val evaluation = (project in file("evaluation"))
 	.dependsOn(core)
 	.enablePlugins(DockerPlugin)
 	.settings(
-		libraryDependencies ++= Seq(dependencies.logback),
+		libraryDependencies ++= Seq(dependencies.logback, dependencies.neo4jDriver),
 
 		assembly / mainClass := Some ("de.tudo.sse.spareuse.eval.performance.PerformanceEvaluationApp"),
 		assembly / assemblyJarName := "spar-evaluation.jar",
@@ -189,4 +189,6 @@ lazy val dependencies = new {
 	val akkaSprayJson = "com.typesafe.akka" %% "akka-http-spray-json" % akkaHttpVersion
 
 	val akkaHttpCors = "ch.megard" %% "akka-http-cors" % "1.1.3"
+
+	val neo4jDriver = "org.neo4j.driver" % "neo4j-java-driver" % "4.3.8"
 }

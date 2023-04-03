@@ -31,25 +31,23 @@ object JavaEntities {
     jpa
   }
 
-  def buildClass(gav: String, packageName: String, className: String, fqn: String, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, repoIdent: String = "mvn", hash: Array[Byte] = Array.empty): JavaClass = {
-    buildClassFor(buildPackage(gav, packageName, repoIdent), className, fqn, superTypeFqn, interfaceFqns, hash)
+  def buildClass(gav: String, packageName: String, className: String, fqn: String, isInterface:Boolean, isFinal:Boolean, isAbstract:Boolean, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, repoIdent: String = "mvn", hash: Array[Byte] = Array.empty): JavaClass = {
+    buildClassFor(buildPackage(gav, packageName, repoIdent), className, fqn, isInterface, isFinal, isAbstract, superTypeFqn, interfaceFqns, hash)
   }
 
-  def buildClassFor(jp: JavaPackage, className: String, fqn: String, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, hash: Array[Byte] = Array.empty): JavaClass = {
+  def buildClassFor(jp: JavaPackage, className: String, fqn: String, isInterface: Boolean, isFinal: Boolean, isAbstract: Boolean, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, hash: Array[Byte] = Array.empty): JavaClass = {
     val ident = jp.uid + "!" + fqn
-    val classObj = new JavaClass(className, fqn, ident, superTypeFqn, interfaceFqns, jp.repository, hash)
+    val classObj = new JavaClass(className, fqn, ident, superTypeFqn, interfaceFqns, isInterface, isFinal, isAbstract, jp.repository, hash)
     classObj.setParent(jp)
     classObj
   }
 
-  def buildMethodFor(jc: JavaClass, methodName: String, returnTypeName: String, paramTypeNames: Seq[String]): JavaMethod = {
+  def buildMethodFor(jc: JavaClass, methodName: String, returnTypeName: String, paramTypeNames: Seq[String], isFinal: Boolean, isStatic: Boolean, isAbstract: Boolean, visibility: String): JavaMethod = {
     val ident = jc.uid + "!" + buildMethodIdent(methodName, returnTypeName, paramTypeNames)
-    val methodObj = new JavaMethod(methodName, returnTypeName, paramTypeNames, ident, jc.repository)
+    val methodObj = new JavaMethod(methodName, returnTypeName, paramTypeNames, ident, isFinal, isStatic, isAbstract, visibility, jc.repository)
     methodObj.setParent(jc)
     methodObj
   }
-
-  //TODO: Helper Functions for Method and Instruction
 
   abstract class PathIdentifiableJavaEntity private[entities] (entityName: String,
                                                      entityIdent: String,
@@ -93,6 +91,9 @@ object JavaEntities {
                   classUid: String,
                   superTypeFqn: Option[String],
                   interfaceFqns: Set[String],
+                  interfaceType: Boolean,
+                  finalType: Boolean,
+                  abstractType: Boolean,
                   repositoryIdent: String,
                   hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(className, thisTypeFqn, classUid, repositoryIdent, Some(hashedBytes)){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Class
@@ -100,6 +101,9 @@ object JavaEntities {
     val thisType: String = thisTypeFqn
     val superType: Option[String] = superTypeFqn
     val interfaceTypes: Set[String]= interfaceFqns
+    val isInterface: Boolean = interfaceType
+    val isFinal: Boolean = finalType
+    val isAbstract: Boolean = abstractType
   }
 
   def buildMethodIdent(methodName: String, returnType: String, paramTypes: Seq[String]) =
@@ -109,6 +113,10 @@ object JavaEntities {
                    returnTypeFqn: String,
                    paramTypeNames: Seq[String],
                    methodUid: String,
+                   finalMethod: Boolean,
+                   staticMethod: Boolean,
+                   abstractMethod: Boolean,
+                   methodVisibility: String,
                    repositoryIdent: String) extends PathIdentifiableJavaEntity(methodName, buildMethodIdent(methodName, returnTypeFqn, paramTypeNames), methodUid, repositoryIdent, None){
 
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Method
@@ -116,6 +124,10 @@ object JavaEntities {
     val returnType: String = returnTypeFqn
     val paramCount: Int = paramTypeNames.size
     val paramTypes: Seq[String] = paramTypeNames
+    val isFinal: Boolean = finalMethod
+    val isStatic: Boolean = staticMethod
+    val isAbstract: Boolean = abstractMethod
+    val visibility: String = methodVisibility
   }
 
   abstract class JavaStatement(name: String, pc: Int, stmtUid: String, repositoryIdent: String)

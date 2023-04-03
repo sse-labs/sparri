@@ -42,7 +42,7 @@ object OPALJavaConverter {
   }
 
   def addClass(cf: ClassFile, p: JavaPackage, classHash: Array[Byte]): JavaClass = {
-    val classRep = JavaEntities.buildClassFor(p, cf.thisType.simpleName, cf.thisType.fqn, cf.superclassType.map(_.fqn), cf.interfaceTypes.map(_.fqn).toSet, classHash)
+    val classRep = JavaEntities.buildClassFor(p, cf.thisType.simpleName, cf.thisType.fqn, cf.isInterfaceDeclaration, cf.isFinal, cf.isAbstract, cf.superclassType.map(_.fqn), cf.interfaceTypes.map(_.fqn).toSet, classHash)
 
     cf.methods.foreach(addMethod(_, classRep))
 
@@ -51,7 +51,8 @@ object OPALJavaConverter {
 
   def addMethod(m: Method, c: JavaClass): JavaMethod = {
 
-    val methodRep = JavaEntities.buildMethodFor(c, m.name, m.returnType.toJVMTypeName, m.parameterTypes.map(_.toJVMTypeName))
+    val methodRep = JavaEntities.buildMethodFor(c, m.name, m.returnType.toJVMTypeName, m.parameterTypes.map(_.toJVMTypeName),
+      m.isFinal, m.isStatic, m.isAbstract, m.visibilityModifier.map(_.javaName.get).getOrElse("default"))
 
     m.body.foreach { code =>
 
