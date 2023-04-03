@@ -47,7 +47,7 @@ lazy val `maven-entity-name-publisher` = (project in file("maven-entity-name-pub
 		mergeStrategySettings,
 		dockerSettings,
 
-		docker / imageNames := Seq(ImageName(s"maven-entity-name-publisher:latest"))
+		docker / imageNames := Seq(ImageName(s"spar-maven-name-publisher:latest"))
 	)
 
 lazy val `maven-entity-miner` = (project in file("maven-entity-miner"))
@@ -62,7 +62,7 @@ lazy val `maven-entity-miner` = (project in file("maven-entity-miner"))
 		mergeStrategySettings,
 		dockerSettings,
 
-		docker / imageNames := Seq(ImageName(s"maven-entity-miner:latest"))
+		docker / imageNames := Seq(ImageName(s"spar-maven-entity-miner:latest"))
 	)
 
 lazy val `analysis-runner` = (project in file("analysis-runner"))
@@ -78,7 +78,7 @@ lazy val `analysis-runner` = (project in file("analysis-runner"))
 		mergeStrategySettings,
 		dockerSettings,
 
-		docker / imageNames := Seq(ImageName(s"analysis-runner:latest"))
+		docker / imageNames := Seq(ImageName(s"spar-analysis-runner:latest"))
 	)
 
 lazy val playground = (project in file("playground"))
@@ -112,7 +112,7 @@ lazy val webapi = (project in file("webapi"))
 			}
 		},
 
-		docker / imageNames := Seq(ImageName(s"cf-webapi:latest"))
+		docker / imageNames := Seq(ImageName(s"spar-webapi:latest"))
 	)
 
 lazy val evaluation = (project in file("evaluation"))
