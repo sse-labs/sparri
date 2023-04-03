@@ -1,12 +1,10 @@
 package de.tudo.sse.spareuse.core.formats.json
 
 import de.tudo.sse.spareuse.core.formats
-import de.tudo.sse.spareuse.core.formats.{AnyValueFormat, BaseValueFormat, ListResultFormat, ObjectResultFormat}
+import de.tudo.sse.spareuse.core.formats.{AnyValueFormat, BaseValueFormat, ListResultFormat}
 import de.tudo.sse.spareuse.core.model.analysis.GraphResult
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import spray.json.{DeserializationException, JsArray, JsBoolean, JsNumber, JsObject, JsString, JsValue, JsonWriter, enrichAny}
-
-import scala.reflect.runtime.universe.{MethodSymbol, TermSymbol}
 
 class CustomObjectWriter(format: AnyValueFormat) extends JsonWriter[Object] {
 

@@ -1,5 +1,6 @@
 package de.tudo.sse.classfilefeatures.webapi
 
+import de.tudo.sse.spareuse.core.formats.json.CustomFormatWriter
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod}
 import de.tudo.sse.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData}
 import de.tudo.sse.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
@@ -11,7 +12,8 @@ package object model {
 
 
   def toAnalysisRepr(data: AnalysisData): AnalysisInformationRepr = {
-    AnalysisInformationRepr(data.name,
+    AnalysisInformationRepr(
+      data.name,
       data.description,
       data.version,
       data.isRevoked,
@@ -19,7 +21,7 @@ package object model {
       data.inputLanguages.toArray,
       if(data.builtOn.isBlank) None else Some(data.builtOn),
       data.registeredBy,
-      "", //TODO: serialize formats
+      CustomFormatWriter.write(data.resultFormat).compactPrint,
       data.executions.map(_.uid).toArray)
   }
 
