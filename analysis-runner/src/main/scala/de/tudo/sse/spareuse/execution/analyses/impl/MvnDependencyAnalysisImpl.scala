@@ -14,7 +14,16 @@ import scala.util.{Failure, Success, Try}
 
 class MvnDependencyAnalysisImpl extends AnalysisImplementation{
 
-  private val resultFormat = ListResultFormat(ObjectResultFormat(Set(NamedPropertyFormat("identifier", ObjectResultFormat(Set(NamedPropertyFormat("groupId", formats.StringFormat), NamedPropertyFormat("artifactId", formats.StringFormat), NamedPropertyFormat("version", formats.StringFormat)))), NamedPropertyFormat("scope", formats.StringFormat))))
+  private val resultFormat = ListResultFormat(
+    ObjectResultFormat(Set(
+      NamedPropertyFormat("identifier", ObjectResultFormat(Set(
+        NamedPropertyFormat("groupId", formats.StringFormat),
+        NamedPropertyFormat("artifactId", formats.StringFormat),
+        NamedPropertyFormat("version", formats.StringFormat)
+      )), "The GAV-Triple identifying a dependency, i.e. a required Maven library."),
+      NamedPropertyFormat("scope", formats.StringFormat, "The Maven scope of this dependency")
+    )), "List of dependencies (GAV-Triple) for this program."
+  )
 
 
   override val analysisData: AnalysisData = AnalysisData("mvn-dependencies", "1.0.0", "TBD", "built-in", "system",

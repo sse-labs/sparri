@@ -31,7 +31,7 @@ object CustomFormatWriter extends JsonWriter[AnyValueFormat] {
           ("NodeProperties", JsArray(nodeProperties.map(write).toVector)), ("EdgeProperties", JsArray(edgeProperties.map(write).toVector)))
 
       case formats.ObjectResultFormat(properties) =>
-        val allProps = List(("Type", JsString("ObjectResultFormat"))) ++ properties.map(p => (p.propertyName, write(p.propertyFormat))).toList
+        val allProps = List(("Type", JsString("ObjectResultFormat"))) ++ properties.flatMap(p => Seq((p.propertyName, write(p.propertyFormat)), (p.propertyName + "Description", JsString(p.explanation)))).toList
         JsObject(allProps :_*)
     }
   }

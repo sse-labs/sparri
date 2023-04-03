@@ -15,7 +15,6 @@ import org.opalj.br.{DeclaredMethod, Method}
 import org.opalj.tac.cg.{CHACallGraphKey, CTACallGraphKey, RTACallGraphKey, XTACallGraphKey}
 
 import java.util.concurrent.atomic.AtomicInteger
-import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.util.{Failure, Success, Try}
 
@@ -35,7 +34,13 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
     ))
   , "List of Method definitions with callsite information")
 
-  override val analysisData: AnalysisData = AnalysisData.systemAnalysis("mvn-partial-callgraphs", "1.0.0", "TBD", "OPAL", Set("java", "scala"),
+  override val analysisData: AnalysisData = AnalysisData.systemAnalysis(
+    "mvn-partial-callgraphs",
+    "1.0.0",
+    "This analysis uses OPAL to calculate a partial callgraph for a given Maven program (GAV-Triple). The graph is returned as a list of methods with unique ids and references to callees. " +
+      "Multiple construction algorithms are supported (use '--algorithm cha|rta|xta|cta'), default is RTA. Use '--use-jre' to include JRE implementations in callgraph.",
+    "OPAL",
+    Set("java", "scala"),
     resultFormat, SoftwareEntityKind.Program)
 
 
@@ -71,10 +76,9 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
       case "rta" => RTACallGraphKey
       case "xta" => XTACallGraphKey
       case "cta" => CTACallGraphKey
-      case a@_ => {
+      case a@_ =>
         log.warn(s"Invalid CG key after validation: $a")
         XTACallGraphKey
-      }
     }
 
 
