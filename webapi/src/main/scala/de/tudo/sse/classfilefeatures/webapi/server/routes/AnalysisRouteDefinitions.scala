@@ -34,7 +34,8 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
     pathPrefix(Segment){ analysisVersion =>
       ensureAnalysisPresent(analysisName, analysisVersion){
         pathEnd { get { singleAnalysisVersionRouteImpl(analysisName, analysisVersion) } } ~
-        pathPrefix("runs") { analysisRunRelatedRoutes(analysisName, analysisVersion) }
+        pathPrefix("runs") { analysisRunRelatedRoutes(analysisName, analysisVersion) } ~
+        path("result-format") { get { analysisResultFormatRouteImpl(analysisName, analysisVersion) } }
       }
     }
   }
@@ -66,6 +67,16 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
         complete(analyses.toJson)
       case Failure(ex) =>
         log.error("Failed to return list of analyses", ex)
+        complete(InternalServerError)
+    }
+  }
+
+  private def analysisResultFormatRouteImpl(analysisName: String, analysisVersion: String): Route = {
+    requestHandler.getAnalysisResultFormat(analysisName, analysisVersion) match {
+      case Success(resultFormat) =>
+        complete(resultFormat.toJson)
+      case Failure(ex) =>
+        log.error(s"Failed to retrieve analysis result format for $analysisName:$analysisVersion", ex)
         complete(InternalServerError)
     }
   }

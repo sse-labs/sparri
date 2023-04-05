@@ -10,6 +10,9 @@ import java.time.format.DateTimeFormatter
 
 package object model {
 
+  def toAnalysisFormatRepr(data: AnalysisData): AnalysisResultFormatRepr = {
+    AnalysisResultFormatRepr(data.resultFormat.formatDescription(), CustomFormatWriter.write(data.resultFormat).compactPrint)
+  }
 
   def toAnalysisRepr(data: AnalysisData): AnalysisInformationRepr = {
     AnalysisInformationRepr(

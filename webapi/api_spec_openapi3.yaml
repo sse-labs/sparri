@@ -278,6 +278,33 @@ paths:
         '404':
           description: "If the analysis is not found, 404 is returned."
   
+  /analyses/{analysisName}/{analysisVersion}/result-format:
+    get:
+      tags: ["Analysis Related Information"]
+      description: "Returns information on the result format for the specified version of the analysis with the given name"
+      parameters:
+        - name: analysisName
+          description: "Unique name of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: analysisVersion
+          description: "Unique version of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: "Result format information for the specified analysis"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisFormatInformation"
+        '404':
+          description: "If the analysis is not found, 404 is returned."
+  
   /analyses/{analysisName}/{analysisVersion}/runs:
     post:
       tags: ["Analysis Related Information", "Processing Related Endpoints"]
@@ -529,6 +556,15 @@ components:
           type: string
         'RunIds':
           $ref: '#/components/schemas/StringList'
+    
+    AnalysisFormatInformation:
+      type: object
+      required: ['Description', "FormatDefinition"]
+      properties:
+        'Description':
+          type: string
+        'FormatDefinition':
+          type: string
     
     AnalysisRunInformation:
       type: object
