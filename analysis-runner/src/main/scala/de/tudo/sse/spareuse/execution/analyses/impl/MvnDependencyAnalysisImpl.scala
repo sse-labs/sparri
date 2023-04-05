@@ -22,7 +22,7 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
         NamedPropertyFormat("version", formats.StringFormat)
       )), "The GAV-Triple identifying a dependency, i.e. a required Maven library."),
       NamedPropertyFormat("scope", formats.StringFormat, "The Maven scope of this dependency")
-    )), "List of dependencies (GAV-Triple) for this program."
+    )), "Dependencies (GAV-Triple) for this program"
   )
 
 

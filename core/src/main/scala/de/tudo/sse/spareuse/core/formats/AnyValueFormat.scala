@@ -20,7 +20,10 @@ case class NamedPropertyFormat(propertyName: String,
     case _ => true
   }
 
-  override def formatDescription(): String = s"A property with name $propertyName, that contains $explanation. The property is formatted as: \n\t${propertyFormat.formatDescription()}"
+  override def formatDescription(): String = {
+    val extra = if(explanation.nonEmpty && !explanation.isBlank) s", that contains $explanation." else "."
+    s"A property with name $propertyName$extra. The property is formatted as: \n\t${propertyFormat.formatDescription()}"
+  }
 
 }
 
