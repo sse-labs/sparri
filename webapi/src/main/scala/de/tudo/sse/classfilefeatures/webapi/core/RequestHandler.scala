@@ -4,13 +4,13 @@ import de.tudo.sse.classfilefeatures.webapi.WebapiConfig
 import de.tudo.sse.classfilefeatures.webapi.model.requests.ExecuteAnalysisRequest
 import de.tudo.sse.classfilefeatures.webapi.model.{AnalysisInformationRepr, AnalysisResultFormatRepr, AnalysisResultRepr, AnalysisRunRepr, EntityRepr, genericEntityToEntityRepr, toAnalysisFormatRepr, toAnalysisRepr, toEntityRepr, toResultRepr, toRunRepr}
 import de.tudo.sse.spareuse.core.utils.rabbitmq.MqMessageWriter
-import de.tudo.sse.spareuse.core.model.{RunState, SoftwareEntityKind}
+import de.tudo.sse.spareuse.core.model.RunState
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.analysis.{RunnerCommand, RunnerCommandJsonSupport}
 import de.tudo.sse.spareuse.core.model.entities.{MinerCommand, MinerCommandJsonSupport}
 import de.tudo.sse.spareuse.core.storage.DataAccessor
 import org.slf4j.{Logger, LoggerFactory}
-import spray.json.{JsonWriter, enrichAny}
+import spray.json.enrichAny
 
 import scala.util.{Failure, Success, Try}
 
@@ -18,15 +18,8 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
 
   private val log: Logger = LoggerFactory.getLogger(getClass)
 
-  private val existingResourcesCache: SimpleValueCache[Boolean] = new SimpleValueCache[Boolean]()
-
   private val existingEntitiesCache: SimpleValueCache[Boolean] = new SimpleValueCache[Boolean]()
   private val existingAnalysesCache: SimpleValueCache[Boolean] = new SimpleValueCache[Boolean]()
-
-
-  def hasLibrary(libraryName: String): Boolean = {
-    existingResourcesCache.getWithCache(libraryName, () => dataAccessor.hasEntity(libraryName, SoftwareEntityKind.Library))
-  }
 
   def hasEntity(entityName: String): Boolean = {
     existingEntitiesCache.getWithCache(entityName, () => dataAccessor.hasEntity(entityName))
@@ -38,10 +31,34 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
       .map(allAnalyses => allAnalyses.map(toAnalysisRepr))
   }
 
+  def getAnalyses(analysisName: String): Try[Set[AnalysisInformationRepr]] = {
+    dataAccessor
+      .getAnalysesFor(analysisName, includeRuns = true)
+      .map(allAnalyses => allAnalyses.map(toAnalysisRepr))
+  }
+
+  def getAnalysis(analysisName: String, analysisVersion: String): Try[AnalysisInformationRepr] = {
+    dataAccessor
+      .getAnalysisData(analysisName, analysisVersion, includeRuns = true)
+      .map(toAnalysisRepr)
+  }
+
   def getAnalysisResultFormat(analysisName: String, analysisVersion: String): Try[AnalysisResultFormatRepr] = {
     dataAccessor
       .getAnalysisData(analysisName, analysisVersion)
       .map(toAnalysisFormatRepr)
+  }
+
+  def getAnalysisRuns(analysisName: String, analysisVersion: String, limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
+    dataAccessor
+      .getAnalysisRuns(analysisName, analysisVersion, includeResults = false, skip, limit)
+      .map(allRuns => allRuns.map(toRunRepr))
+  }
+
+  def getAnalysisRunsForEntity(entityName: String, limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
+    dataAccessor
+      .getAnalysisRunsForEntity(entityName, skip, limit)
+      .map(allRuns => allRuns.map(toRunRepr))
   }
 
   def hasAnalysis(analysisName: String, version: Option[String] = None): Boolean = {
@@ -90,7 +107,7 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
 
   def getRun(analysisName: String, analysisVersion: String, runId: String): Try[AnalysisRunRepr] = {
     dataAccessor
-      .getAnalysisRun(analysisName, analysisVersion, runId, includeResults = false)
+      .getAnalysisRun(analysisName, analysisVersion, runId)
       .map(toRunRepr)
   }
 

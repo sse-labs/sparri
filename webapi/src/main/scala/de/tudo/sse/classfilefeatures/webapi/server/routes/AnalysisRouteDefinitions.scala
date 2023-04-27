@@ -52,7 +52,7 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
       ensureAnalysisRunPresent(analysisName, analysisVersion, runId){
         pathEnd { get { singleAnalysisRunRouteImpl(analysisName, analysisVersion, runId) } }~
         path("inputs"){
-          get { extractPaginationHeaders(request){ (limit, skip) => allRunInputsRouteImpl(analysisName, analysisVersion, runId, limit, skip) } }
+          get { allRunInputsRouteImpl(analysisName, analysisVersion, runId) }
         } ~
         path("results"){
           get { extractPaginationHeaders(request){ (limit, skip) => allRunResultsRouteImpl(runId, limit, skip) } }
@@ -82,15 +82,33 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
   }
 
   private def singleAnalysisRouteImpl(analysisName: String)(implicit request:HttpRequest): Route = {
-
+    requestHandler.getAnalyses(analysisName) match {
+      case Success(analyses) =>
+        complete(analyses.toJson)
+      case Failure(ex) =>
+        log.error(s"Failed to get list of analyses for $analysisName", ex)
+        complete(InternalServerError)
+    }
   }
 
   private def singleAnalysisVersionRouteImpl(analysisName: String, analysisVersion: String)(implicit request:HttpRequest): Route = {
-
+    requestHandler.getAnalysis(analysisName, analysisVersion) match {
+      case Success(analysisData) =>
+        complete(analysisData.toJson)
+      case Failure(ex) =>
+        log.error(s"Failed to retrieve analysis information for $analysisName:$analysisVersion", ex)
+        complete(InternalServerError)
+    }
   }
 
   private def allAnalysisRunsRouteImpl(analysisName: String, analysisVersion: String, limit: Int, skip: Int)(implicit request:HttpRequest): Route = {
-
+    requestHandler.getAnalysisRuns(analysisName, analysisVersion, limit, skip) match {
+      case Success(runData) =>
+        complete(runData.toJson)
+      case Failure(ex) =>
+        log.error(s"Failed to retrieve analysis runs for $analysisName:$analysisVersion", ex)
+        complete(InternalServerError)
+    }
   }
 
   private def newAnalysisRunRouteImpl(analysisName: String, analysisVersion: String)(implicit request: HttpRequest): Route = {
@@ -150,8 +168,13 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
     }
   }
 
-  private def allRunInputsRouteImpl(analysisName: String, analysisVersion: String, runId: String, limit: Int, skip: Int)(implicit request:HttpRequest): Route = {
-
+  private def allRunInputsRouteImpl(analysisName: String, analysisVersion: String, runId: String)(implicit request:HttpRequest): Route = {
+    requestHandler.getRun(analysisName, analysisVersion, runId).map(_.inputs) match {
+      case Success(runInputs) => complete(runInputs.toJson)
+      case Failure(ex) =>
+        log.error(s"Failed to retrieve inputs for analysis run $runId", ex)
+        complete(InternalServerError)
+    }
   }
 
 }

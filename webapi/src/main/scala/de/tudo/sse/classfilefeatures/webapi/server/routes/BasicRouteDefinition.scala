@@ -89,10 +89,6 @@ trait BasicRouteDefinition extends JsonSupport {
     }
   }
 
-  protected implicit def __TODO__completeNotImplemented: Unit => Route = { _ =>
-    complete(NotImplemented)
-  }
-
 
 
 }

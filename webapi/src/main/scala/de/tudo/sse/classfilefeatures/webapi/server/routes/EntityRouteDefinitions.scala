@@ -103,7 +103,12 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
   }
 
   private def allAnalysisRunsForEntityRouteImpl(entityName: String, limit: Int, skip: Int)(implicit request: HttpRequest): Route = {
-
+    requestHandler.getAnalysisRunsForEntity(entityName, limit, skip) match {
+      case Success(runs) => complete(runs.toJson)
+      case Failure(ex) =>
+        log.error(s"Failed to retrieve analysis runs for entity $entityName", ex)
+        complete(InternalServerError)
+    }
   }
 
   private def allResultsForEntityRouteImpl(entityName: String, limit: Int, skip: Int, queriedAnalysis: Option[String])(implicit request: HttpRequest): Route = {

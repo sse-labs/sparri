@@ -449,7 +449,7 @@ class PostgresDataAccessor extends DataAccessor {
 
     val repr = getAnalysisRepr(analysisName, analysisVersion)
 
-    val analysisRuns = if (includeRuns) getAnalysisRuns(repr.id, analysisName, analysisVersion, includeResults = false)
+    val analysisRuns = if (includeRuns) getAnalysisRuns(repr.id, analysisName, analysisVersion, includeResults = false, skip = 0, limit = 500)
     else Set.empty[AnalysisRunData]
 
     getResultFormat(repr.formatId) match {
@@ -468,8 +468,26 @@ class PostgresDataAccessor extends DataAccessor {
     Await
       .result(queryF, simpleQueryTimeout)
       .map{ analysisRepr =>
-        val analysisRuns = if (includeRuns) getAnalysisRuns(analysisRepr.id, analysisRepr.name, analysisRepr.version, includeResults = false)
+        val analysisRuns = if (includeRuns) getAnalysisRuns(analysisRepr.id, analysisRepr.name, analysisRepr.version, includeResults = false, skip = 0, limit = 500)
           else Set.empty[AnalysisRunData]
+
+        getResultFormat(analysisRepr.formatId) match {
+          case f: AnalysisResultFormat =>
+            analysisRepr.toAnalysisData(f, analysisRuns)
+          case _ =>
+            throw new IllegalStateException("Corrupt format definition: Analysis result format must not be base value")
+        }
+      }.toSet
+  }
+
+  override def getAnalysesFor(analysisName: String, includeRuns: Boolean = false): Try[Set[AnalysisData]] = Try {
+    val queryF = db.run(analysesTable.filter(_.name === analysisName).result)
+
+    Await
+      .result(queryF, simpleQueryTimeout)
+      .map { analysisRepr =>
+        val analysisRuns = if (includeRuns) getAnalysisRuns(analysisRepr.id, analysisRepr.name, analysisRepr.version, includeResults = false, skip = 0, limit = 500)
+        else Set.empty[AnalysisRunData]
 
         getResultFormat(analysisRepr.formatId) match {
           case f: AnalysisResultFormat =>
@@ -491,10 +509,10 @@ class PostgresDataAccessor extends DataAccessor {
     Await.result(queryF, longActionTimeout).toSet
   }
 
-  private def getAnalysisRuns(analysisId: Long, analysisName: String, analysisVersion: String, includeResults: Boolean): Set[AnalysisRunData] = {
+  private def getAnalysisRuns(analysisId: Long, analysisName: String, analysisVersion: String, includeResults: Boolean, skip: Int, limit: Int): Set[AnalysisRunData] = {
 
     val queryF = db
-      .run(analysisRunsTable.filter(r => r.parentID === analysisId).result)
+      .run(analysisRunsTable.filter(r => r.parentID === analysisId).sortBy(_.id).drop(skip).take(limit).result)
       .map { allRuns =>
         allRuns.map { run =>
           val results = if (includeResults) {
@@ -508,10 +526,27 @@ class PostgresDataAccessor extends DataAccessor {
     Await.result(queryF, longActionTimeout).toSet
   }
 
-  override def getAnalysisRuns(analysisName: String, analysisVersion: String, includeResults: Boolean): Try[Set[AnalysisRunData]] = Try {
+  override def getAnalysisRuns(analysisName: String, analysisVersion: String, includeResults: Boolean, skip:Int = 0, limit:Int = 100): Try[Set[AnalysisRunData]] = Try {
     val analysisId = getAnalysisRepr(analysisName, analysisVersion).id
 
-    getAnalysisRuns(analysisId, analysisName, analysisVersion, includeResults)
+    getAnalysisRuns(analysisId, analysisName, analysisVersion, includeResults, skip, limit)
+  }
+
+  override def getAnalysisRunsForEntity(entityName: String, skip: Int, limit: Int): Try[Set[AnalysisRunData]] = Try {
+    val entityId = getEntityId(entityName)
+    val runIdsQuery = analysisRunInputsTable.filter(_.inputEntityID === entityId).map(_.analysisRunID).result
+    val runIds = Await.result(db.run(runIdsQuery), simpleQueryTimeout).distinct.sorted.slice(skip, skip + limit).toSet
+
+    val resultF = db.run((analysisRunsTable.filter(_.id inSet runIds ) join analysesTable on (_.parentID === _.id)).result)
+      .map { allResults =>
+        allResults.map {
+          case (run, analysis) =>
+            run.toAnalysisRunData(analysis.name, analysis.version, getInputsForRun(run.id), Set.empty[AnalysisResultData])
+        }.toSet
+      }(db.ioExecutionContext)
+
+
+     Await.result(resultF, longActionTimeout)
   }
 
   override def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false): Try[AnalysisRunData] = Try {

@@ -13,12 +13,13 @@ trait AnalysisAccessor {
 
   def getAnalyses(includeRuns: Boolean = false, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisData]]
 
+  def getAnalysesFor(analysisName: String, includeRuns: Boolean = false): Try[Set[AnalysisData]]
+
   def getAnalysisData(analysisName: String, analysisVersion: String, includeRuns: Boolean = false): Try[AnalysisData]
 
-  def getAnalysisRunsFor(analysis: AnalysisData, includeResults: Boolean = false): Try[Set[AnalysisRunData]] =
-    getAnalysisRuns(analysis.name, analysis.version, includeResults)
+  def getAnalysisRuns(analysisName: String, analysisVersion: String, includeResults: Boolean = false, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisRunData]]
 
-  def getAnalysisRuns(analysisName: String, analysisVersion: String, includeResults: Boolean = false): Try[Set[AnalysisRunData]]
+  def getAnalysisRunsForEntity(entityName: String, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisRunData]]
 
   def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false): Try[AnalysisRunData]
 

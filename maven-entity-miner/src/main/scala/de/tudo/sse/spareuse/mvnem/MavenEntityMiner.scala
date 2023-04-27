@@ -59,7 +59,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
     val command = Try(message.parseJson.convertTo[MinerCommand]) match {
       case Success(mc) => mc
-      case Failure(_) => MinerCommand(Set(message), None) //TODO: This is convenience to support old queue format
+      case Failure(_) => MinerCommand(Set(message), None) //This is convenience to support old queue format
     }
 
     val allIdentifiers = command.entityReferences.map(ref => (ref, messageToIdentifiers(ref))).flatMap {
