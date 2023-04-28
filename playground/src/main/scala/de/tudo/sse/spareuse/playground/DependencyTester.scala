@@ -6,7 +6,7 @@ import scala.util.{Failure, Success}
 
 object DependencyTester extends App {
 
-  val gav = "org.springframework.boot:spring-boot-starter-web:3.0.6"
+  val gav = "org.springframework.boot:spring-boot-starter-web:2.4.0"
 
   val analysis = new SimpleTransitiveDependencyAnalysis
 
