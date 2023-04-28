@@ -1,12 +1,19 @@
 package de.tudo.sse.spareuse.eval.performance.dependencies
 
 import de.tudo.sse.spareuse.eval.performance.PerformanceEvaluation
-import de.tudo.sse.spareuse.eval.{gavToEntityId, timedExec}
+import de.tudo.sse.spareuse.eval.{TimedResult, gavToEntityId, timedExec}
 
+import java.nio.file.{Files, Path}
 import scala.util.{Failure, Success, Try}
 import scala.collection.mutable
+import scala.jdk.CollectionConverters.asScalaBufferConverter
 
 class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEvaluation {
+
+  private val springBootDeps: Set[String] = {
+    val uri = getClass.getResource("/dependencies_springboot.txt").toURI
+    Files.readAllLines(Path.of(uri)).asScala.toSet
+  }
 
   private val gavToDependenciesMap: Map[String, Set[String]] =
     Map(
@@ -16,7 +23,8 @@ class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEva
       "org.springframework:spring-context:5.3.3" ->
         Set("org.springframework:spring-aop:5.3.3", "org.springframework:spring-beans:5.3.3", "org.springframework:spring-jcl:5.3.3", "org.springframework:spring-core:5.3.3", "org.springframework:spring-expression:5.3.3"),
       "org.easymock:easymock:4.2" ->
-        Set("org.objenesis:objenesis:3.1")
+        Set("org.objenesis:objenesis:3.1"),
+      "org.springframework.boot:spring-boot-starter-web:3.0.6" -> springBootDeps
     )
 
   private val simpleAnalysis = new SimpleTransitiveDependencyAnalysis
@@ -24,7 +32,7 @@ class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEva
 
 
   override val name: String = "TransitiveDependencies"
-  override val numberOfRepetitions = 10
+  override val numberOfRepetitions = 2
 
 
   override def requiredEntityIds: Set[String] = (gavToDependenciesMap.keys ++ gavToDependenciesMap.values.flatten)

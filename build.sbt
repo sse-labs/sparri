@@ -82,7 +82,7 @@ lazy val `analysis-runner` = (project in file("analysis-runner"))
 	)
 
 lazy val playground = (project in file("playground"))
-	.dependsOn(core)
+	.dependsOn(core, evaluation)
 	.settings(libraryDependencies ++= Seq(dependencies.logback))
 
 lazy val webapi = (project in file("webapi"))
