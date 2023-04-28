@@ -138,6 +138,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
               isValidName
             }
+            println("Checked entitiesToQueue")
 
             if (entityNamesToQueue.nonEmpty) {
               val deferredAnalysisCommand = if(!theAnalysisImpl.inputBatchProcessing || namesToProcess.diff(entityNamesNotIndexed).isEmpty) command// If no current run is executed, we do not need to generate a second run UID
@@ -158,6 +159,8 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
               }
             }
 
+            println("Requeued entities")
+
 
             namesToProcess = namesToProcess.diff(entityNamesNotIndexed)
 
@@ -171,13 +174,13 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
               return None
             }
-
+            println("Start downloading entity information")
             // Download entity information for the analysis from the DB
             Try(namesToProcess.map(name => dataAccessor.getEntity(name, theAnalysisImpl.inputEntityKind, theAnalysisImpl.requiredInputResolutionLevel).get)) match {
               case Success(entities) =>
                 // Finally check that the analysis can in fact be executed with those parameters
                 if (theAnalysisImpl.executionPossible(entities.toSeq, command.configurationRaw)) {
-                  log.debug(s"Command successfully validated, analysis $analysisName:$analysisVersion will be started shortly.")
+                  log.info(s"Command successfully validated, analysis $analysisName:$analysisVersion will be started shortly.")
                   ValidStartRunCommand(command, entities, theAnalysisImpl)
                 } else throw AnalysisRunNotPossibleException("Given configuration not executable")
               case Failure(ex) =>
