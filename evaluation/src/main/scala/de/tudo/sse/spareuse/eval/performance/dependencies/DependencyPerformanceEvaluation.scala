@@ -32,7 +32,7 @@ class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEva
 
 
   override val name: String = "TransitiveDependencies"
-  override val numberOfRepetitions = 2
+  override val numberOfRepetitions = 10
 
 
   override def requiredEntityIds: Set[String] = (gavToDependenciesMap.keys ++ gavToDependenciesMap.values.flatten)
