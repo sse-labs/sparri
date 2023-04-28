@@ -165,8 +165,8 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
             if (namesToProcess.isEmpty) {
 
               if(entityNamesToQueue.isEmpty){
-                dataAccessor.setRunState(command.runId, RunState.Failed, Some(command.inputEntityNames))
                 log.error(s"No valid input entity names remain, and no deferred execution was possible for run ${command.runId}.")
+                dataAccessor.setRunState(command.runId, RunState.Failed, Some(command.inputEntityNames))
               } else log.warn("No inputs left to process at this time")
 
               return None
@@ -196,8 +196,8 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       case Success(validRunnerCommand) =>
         Some(validRunnerCommand)
       case Failure(ex) =>
-        Try(dataAccessor.setRunState(command.runId, RunState.Failed, Some(command.inputEntityNames)))
         log.error("Command validation failed, no analysis will be executed.", ex)
+        Try(dataAccessor.setRunState(command.runId, RunState.Failed, Some(command.inputEntityNames)))
         None
     }
 
