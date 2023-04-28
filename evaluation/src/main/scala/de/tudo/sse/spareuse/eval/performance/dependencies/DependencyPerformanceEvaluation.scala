@@ -1,18 +1,17 @@
 package de.tudo.sse.spareuse.eval.performance.dependencies
 
 import de.tudo.sse.spareuse.eval.performance.PerformanceEvaluation
-import de.tudo.sse.spareuse.eval.{TimedResult, gavToEntityId, timedExec}
+import de.tudo.sse.spareuse.eval.{gavToEntityId, timedExec}
 
-import java.nio.file.{Files, Path}
 import scala.util.{Failure, Success, Try}
 import scala.collection.mutable
-import scala.jdk.CollectionConverters.asScalaBufferConverter
+import scala.io.Source
 
 class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEvaluation {
 
   private val springBootDeps: Set[String] = {
-    val uri = getClass.getResource("/dependencies_springboot.txt").toURI
-    Files.readAllLines(Path.of(uri)).asScala.toSet
+    val is = getClass.getResourceAsStream("/dependencies_springboot.txt")
+    Source.fromInputStream(is).getLines().toSet
   }
 
   private val gavToDependenciesMap: Map[String, Set[String]] =
