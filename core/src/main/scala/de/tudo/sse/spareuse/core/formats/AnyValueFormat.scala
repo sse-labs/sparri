@@ -6,7 +6,7 @@ trait AnyValueFormat {
 
   def isValid(jsonValue: JsValue): Boolean
 
-  def formatDescription(): String
+  def formatDescription(ident: Int = 0): String
 
   def isBaseValue: Boolean = false
 }
@@ -20,9 +20,10 @@ case class NamedPropertyFormat(propertyName: String,
     case _ => true
   }
 
-  override def formatDescription(): String = {
+  override def formatDescription(indent: Int = 0): String = {
+    val currIndent = "\t"*indent
     val extra = if(explanation.nonEmpty && !explanation.isBlank) s", that contains $explanation." else "."
-    s"A property with name $propertyName$extra. The property is formatted as: \n\t${propertyFormat.formatDescription()}"
+    s"A property with name $propertyName$extra The property is formatted as: \n$currIndent\t${propertyFormat.formatDescription(indent + 1)}"
   }
 
 }
@@ -42,7 +43,7 @@ case object EntityReferenceFormat extends BaseValueFormat {
     case _ => false
   }
 
-  override def formatDescription(): String = "A text value referencing the UID of a software entity"
+  override def formatDescription(indent: Int = 0): String = "A text value referencing the UID of a software entity"
 
 }
 
@@ -53,7 +54,7 @@ case object StringFormat extends BaseValueFormat {
     case _ => false
   }
 
-  override def formatDescription(): String = "A text value"
+  override def formatDescription(indent: Int = 0): String = "A text value"
 
 }
 
@@ -64,7 +65,7 @@ case object NumberFormat extends BaseValueFormat {
     case _ => false
   }
 
-  override def formatDescription(): String = "A numeric value"
+  override def formatDescription(indent: Int = 0): String = "A numeric value"
 
 }
 
@@ -72,6 +73,6 @@ case object EmptyFormat extends BaseValueFormat {
 
   override def isValid(jsonValue: JsValue): Boolean = true
 
-  override def formatDescription(): String = "An empty value"
+  override def formatDescription(indent: Int = 0): String = "An empty value"
 
 }

@@ -5,7 +5,7 @@ import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
 import de.tudo.sse.spareuse.core.formats.json.CustomObjectWriter
 import de.tudo.sse.spareuse.core.maven.MavenIdentifier
-import de.tudo.sse.spareuse.core.model.{AnalysisResultData, AnalysisRunData, RunState}
+import de.tudo.sse.spareuse.core.model.{AnalysisResultData, RunState}
 import de.tudo.sse.spareuse.core.model.analysis.RunnerCommand
 import de.tudo.sse.spareuse.core.model.entities.{MinerCommand, MinerCommandJsonSupport}
 import de.tudo.sse.spareuse.core.storage.DataAccessor
@@ -140,8 +140,15 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
             }
 
             if (entityNamesToQueue.nonEmpty) {
+              val deferredAnalysisCommand = if(!theAnalysisImpl.inputBatchProcessing || namesToProcess.diff(entityNamesNotIndexed).isEmpty) command// If no current run is executed, we do not need to generate a second run UID
+              else {
+                //If the current run is 'split into two', we need to generate a new run UID for the deferred analysis execution
+                val emptyRunId = dataAccessor.storeEmptyAnalysisRun(analysisName, analysisVersion, command.configurationRaw).get
+                command.updateRunId(emptyRunId)
+              }
+
               // Will re-trigger this analysis, which works fine both in batch and non-batch mode
-              val minerCommand = MinerCommand(entityNamesToQueue, Some(command))
+              val minerCommand = MinerCommand(entityNamesToQueue, Some(deferredAnalysisCommand))
 
               entityQueueWriter.appendToQueue(minerCommand.toJson.compactPrint, Some(2))
 
@@ -156,8 +163,12 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
             // Check that after all non-indexed names have been removed, there are in fact inputs left to process.
             if (namesToProcess.isEmpty) {
-              //TODO: Update Run State!
-              log.warn("No inputs left to process at this time")
+
+              if(entityNamesToQueue.isEmpty){
+                dataAccessor.setRunState(command.runId, RunState.Failed, Some(command.inputEntityNames))
+                log.error(s"No valid input entity names remain, and no deferred execution was possible for run ${command.runId}.")
+              } else log.warn("No inputs left to process at this time")
+
               return None
             }
 
@@ -185,7 +196,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       case Success(validRunnerCommand) =>
         Some(validRunnerCommand)
       case Failure(ex) =>
-        //TODO: Update run state & Inputs if possible!
+        Try(dataAccessor.setRunState(command.runId, RunState.Failed, Some(command.inputEntityNames)))
         log.error("Command validation failed, no analysis will be executed.", ex)
         None
     }

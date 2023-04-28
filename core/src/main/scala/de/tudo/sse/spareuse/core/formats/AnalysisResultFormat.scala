@@ -14,7 +14,10 @@ case class ListResultFormat(elementFormat: AnyValueFormat,
     case _ => false
   }
 
-  override def formatDescription(): String = s"A List of elements that represent $elementExplanation. The elements are formatted as: \n\t${elementFormat.formatDescription()}"
+  override def formatDescription(indent: Int = 0): String = {
+    val currIndent = "\t"*indent
+    s"A List of elements that represent $elementExplanation. The elements are formatted as: \n$currIndent\t${elementFormat.formatDescription(indent + 1)}"
+  }
 
 }
 
@@ -36,8 +39,10 @@ case class MapResultFormat(keyFormat: BaseValueFormat,
     case _ => false
   }
 
-  override def formatDescription(): String =
-    s"A Map of keys - representing $keyExplanation - to values representing $valueExplanation. Keys are formatted as ${keyFormat.formatDescription()}, values are formatted as: \n\t${valueFormat.formatDescription()}"
+  override def formatDescription(indent: Int = 0): String = {
+    val currIndent = "\t"*indent
+    s"A Map of keys - representing $keyExplanation - to values representing $valueExplanation. Keys are formatted as ${keyFormat.formatDescription(indent + 1)}, values are formatted as: \n$currIndent\t${valueFormat.formatDescription(indent + 1)}"
+  }
 
 }
 
@@ -59,10 +64,11 @@ case class GraphResultFormat(edgePropertyFormat: Set[NamedPropertyFormat],
   def toObjectFormat: ObjectResultFormat = ObjectResultFormat(Set(NamedPropertyFormat("nodes", ListResultFormat(nodeObjRep), nodeExplanation), NamedPropertyFormat("edges", ListResultFormat(edgeObjRep), edgeExplanation)))
   override def isValid(jsonValue: JsValue): Boolean = internalRep.isValid(jsonValue)
 
-  override def formatDescription(): String = {
-    val nodePropString = nodePropertyFormat.map(_.formatDescription()).mkString("\n\t")
-    val edgePropString = edgePropertyFormat.map(_.formatDescription()).mkString("\n\t")
-    s"A graph where nodes have ${nodePropertyFormat.size} different properties: \n\t$nodePropString\nGraph edges have ${edgePropertyFormat.size} different properties: \n\t$edgePropString"
+  override def formatDescription(indent: Int = 0): String = {
+    val currIndent = "\t"*indent
+    val nodePropString = nodePropertyFormat.map(_.formatDescription(indent + 1)).mkString(s"\n$currIndent\t")
+    val edgePropString = edgePropertyFormat.map(_.formatDescription(indent + 1)).mkString(s"\n$currIndent\t")
+    s"A graph where nodes have ${nodePropertyFormat.size} different properties: \n$currIndent\t$nodePropString\n${currIndent}Graph edges have ${edgePropertyFormat.size} different properties: \n$currIndent\t$edgePropString"
   }
 
 }
@@ -82,9 +88,16 @@ case class ObjectResultFormat(propertyFormats:Set[NamedPropertyFormat]) extends 
     case _ => false
   }
 
-  override def formatDescription(): String = {
-    val propString = propertyFormats.map(_.formatDescription()).mkString("\n\t")
+  override def formatDescription(indent: Int = 0): String = {
+    val currIndent = "\t"*indent
+    val propString = propertyFormats.map(_.formatDescription(indent + 1)).mkString(s"\n$currIndent\t")
 
-    s"An object containing ${propertyFormats.size} different properties: \n\t$propString"
+    s"An object containing ${propertyFormats.size} different properties: \n$currIndent\t$propString"
+  }
+}
+
+object ObjectResultFormat {
+  def apply(propertyFormats: NamedPropertyFormat*): ObjectResultFormat = {
+    ObjectResultFormat(propertyFormats.toSet)
   }
 }
