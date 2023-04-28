@@ -82,7 +82,7 @@ object PerformanceEvaluationApp {
       case Success(_) =>
         logger.info("All required entities indexed.")
         logger.info("")
-        //allRegisteredEvaluations.foreach(runEval)
+        allRegisteredEvaluations.foreach(runEval)
         logger.info("Finished performance evaluation of SPAR.")
       case Failure(ex) =>
         logger.error("Failed to ensure entities are indexed", ex)

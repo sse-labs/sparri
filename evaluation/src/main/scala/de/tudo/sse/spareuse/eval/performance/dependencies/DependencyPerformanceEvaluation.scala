@@ -23,7 +23,7 @@ class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEva
         Set("org.springframework:spring-aop:5.3.3", "org.springframework:spring-beans:5.3.3", "org.springframework:spring-jcl:5.3.3", "org.springframework:spring-core:5.3.3", "org.springframework:spring-expression:5.3.3"),
       "org.easymock:easymock:4.2" ->
         Set("org.objenesis:objenesis:3.1"),
-      "org.springframework.boot:spring-boot-starter-web:3.0.6" -> springBootDeps
+      "org.springframework.boot:spring-boot-starter-web:2.4.0" -> springBootDeps
     )
 
   private val simpleAnalysis = new SimpleTransitiveDependencyAnalysis
