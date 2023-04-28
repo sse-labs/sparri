@@ -94,11 +94,12 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
   private def validatePrerequisites(command: RunnerCommand): Option[ValidRunnerCommand] = {
     Try {
 
-
+        println("Checking syntax...")
         if (isSyntaxValid(command)) {
+          println("Valid syntax!")
           implicit val theCommand: RunnerCommand = command
 
-          log.debug(s"Validating command: User ${command.userName} requests to start analysis ${command.analysisName}.")
+          log.info(s"Validating command: User ${command.userName} requests to start analysis ${command.analysisName}.")
 
           val parts = command.analysisName.split(":")
           val analysisName = parts(0)
@@ -107,7 +108,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
           // Assert that empty run entry has been created beforehand
           if (!dataAccessor.hasAnalysisRun(analysisName, analysisVersion, command.runId))
             throw new AnalysisRunNotPossibleException("Designated run id not in DB: " + command.runId, command)
-
+          println("Checked run exists")
           // Assert that the required analysis implementation is available. This is the fastest requirement to check.
           if (AnalysisRegistry.analysisImplementationAvailable(analysisName, analysisVersion)) {
             val theAnalysisImpl = AnalysisRegistry.getAnalysisImplementation(analysisName, analysisVersion)
@@ -196,6 +197,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       case Success(validRunnerCommand) =>
         Some(validRunnerCommand)
       case Failure(ex) =>
+        println("General failure")
         log.error("Command validation failed, no analysis will be executed.", ex)
         Try(dataAccessor.setRunState(command.runId, RunState.Failed, Some(command.inputEntityNames)))
         None
