@@ -94,9 +94,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
   private def validatePrerequisites(command: RunnerCommand): Option[ValidRunnerCommand] = {
     Try {
 
-        println("Checking syntax...")
         if (isSyntaxValid(command)) {
-          println("Valid syntax!")
           implicit val theCommand: RunnerCommand = command
 
           log.info(s"Validating command: User ${command.userName} requests to start analysis ${command.analysisName}.")
@@ -112,13 +110,13 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
           // Assert that the required analysis implementation is available. This is the fastest requirement to check.
           if (AnalysisRegistry.analysisImplementationAvailable(analysisName, analysisVersion)) {
             val theAnalysisImpl = AnalysisRegistry.getAnalysisImplementation(analysisName, analysisVersion)
-
+            println("Got analysis implementation")
             // Check that analysis is registered in DB. Should always be the case
             ensureAnalysisIsRegistered(analysisName, analysisVersion)
-
+            println("Checked analysis registered")
             // Filter out all input entities for which results already exist (if analysis is batch processing)
             var namesToProcess = filterUnprocessedEntityNames(command.inputEntityNames, theAnalysisImpl)
-
+            println("Checked entities processed")
             // If some inputs are not indexed yet:
             //  - For Batch analyses we can execute the analysis now with all indexed inputs, and queue non-indexed inputs for mining.
             //    After the mining is done, a callback will re-trigger the analysis for the newly indexed inputs. If there are inputs
@@ -127,6 +125,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
             //    analysis. If there are inputs that are not indexed and not valid (i.e. mining will never succeed), we can throw a
             //    terminal error, since the analysis can never be executed with this input configuration.
             val entityNamesNotIndexed = getEntityNamesNotInDb(namesToProcess, theAnalysisImpl)
+            println("Checked entities not indexed")
             val entityNamesToQueue = entityNamesNotIndexed.filter { n =>
               val isValidName = isValidEntityName(n)
 
@@ -197,7 +196,6 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       case Success(validRunnerCommand) =>
         Some(validRunnerCommand)
       case Failure(ex) =>
-        println("General failure")
         log.error("Command validation failed, no analysis will be executed.", ex)
         Try(dataAccessor.setRunState(command.runId, RunState.Failed, Some(command.inputEntityNames)))
         None
