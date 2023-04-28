@@ -3,6 +3,7 @@ package de.tudo.sse.spareuse.execution.analyses.impl
 import de.tudo.sse.spareuse.core.formats
 import de.tudo.sse.spareuse.core.formats.{AnalysisResultFormat, ListResultFormat, NamedPropertyFormat, ObjectResultFormat}
 import de.tudo.sse.spareuse.core.maven.MavenIdentifier
+import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaProgram
 import de.tudo.sse.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
@@ -45,6 +46,8 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
 
   override val inputBatchProcessing: Boolean = true
+
+  override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Package
 
   override def executionPossible(inputs: Seq[SoftwareEntityData], rawConfig: String): Boolean = {
 
