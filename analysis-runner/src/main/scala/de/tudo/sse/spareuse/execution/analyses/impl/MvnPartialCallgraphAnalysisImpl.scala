@@ -1,7 +1,7 @@
 package de.tudo.sse.spareuse.execution.analyses.impl
 
 import de.tudo.sse.spareuse.core.formats
-import de.tudo.sse.spareuse.core.formats.{AnalysisResultFormat, ListResultFormat, NamedPropertyFormat, ObjectResultFormat}
+import de.tudo.sse.spareuse.core.formats.{AnalysisResultFormat, ListResultFormat, NamedPropertyFormat, NumberFormat, ObjectResultFormat}
 import de.tudo.sse.spareuse.core.maven.MavenIdentifier
 import de.tudo.sse.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import de.tudo.sse.spareuse.core.model.entities.JavaEntities.JavaProgram
@@ -10,9 +10,9 @@ import de.tudo.sse.spareuse.core.model.entities.SoftwareEntityData
 import de.tudo.sse.spareuse.core.opal.OPALProjectHelper
 import de.tudo.sse.spareuse.core.utils.http.HttpDownloadException
 import de.tudo.sse.spareuse.execution.analyses.{AnalysisImplementation, Result}
-import de.tudo.sse.spareuse.execution.analyses.impl.MvnPartialCallgraphAnalysisImpl.{InternalCallSite, InternalMethod, parseConfig, validCallgraphAlgorithms}
+import de.tudo.sse.spareuse.execution.analyses.impl.MvnPartialCallgraphAnalysisImpl.{InternalCallSite, InternalMethod, RTAResult, TypeNode, parseConfig, validCallgraphAlgorithms}
 import org.opalj.br.instructions.Instruction
-import org.opalj.br.{DeclaredMethod, Method}
+import org.opalj.br.{DeclaredMethod, Method, ObjectType}
 import org.opalj.tac.cg.{CHACallGraphKey, CTACallGraphKey, RTACallGraphKey, XTACallGraphKey}
 
 import java.util.concurrent.atomic.AtomicInteger
@@ -21,7 +21,34 @@ import scala.util.{Failure, Success, Try}
 
 class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
-  private val resultFormat: AnalysisResultFormat = ListResultFormat(
+  private val resultFormat: AnalysisResultFormat = ObjectResultFormat(
+    NamedPropertyFormat("graph",
+      ListResultFormat(
+        ObjectResultFormat(Set(
+          NamedPropertyFormat("mId", formats.NumberFormat, "The unique id assigned to this method"),
+          NamedPropertyFormat("mFqn", formats.StringFormat, "The fully qualified name of this method"),
+          NamedPropertyFormat("reachable", formats.NumberFormat, "Indicates whether this method was reachable in the partial callgraph"),
+          NamedPropertyFormat("css", ListResultFormat(ObjectResultFormat(Set(
+            NamedPropertyFormat("csPc", formats.NumberFormat, "PC of this callsite inside the enclosing method body"),
+            NamedPropertyFormat("targets", ListResultFormat(formats.NumberFormat), "List of method ids that have been resolved as targets for this callsite"),
+            NamedPropertyFormat("incomplete", formats.NumberFormat, "Indicates whether the resolution of this callsite was incomplete"),
+            NamedPropertyFormat("instr", formats.StringFormat, "String representation of the callsite instruction")
+          )), "List of callsites for this method"))
+        ))
+        , "List of Method definitions with callsite information")
+      , "The actual RTA callgraph"),
+    NamedPropertyFormat("types",
+      ListResultFormat(ObjectResultFormat(
+        NamedPropertyFormat("id", formats.NumberFormat, "The unique id for this type"),
+        NamedPropertyFormat("fqn", formats.StringFormat, "The type FQN"),
+        NamedPropertyFormat("interface", formats.NumberFormat, "Number indicating whether this type is an interface definition"),
+        NamedPropertyFormat("superId", formats.NumberFormat, "The id of the super type, or -1 if there is none"),
+        NamedPropertyFormat("interfaceIds", formats.ListResultFormat(formats.NumberFormat), "The set of interface type ids")
+      ))
+      , "A list of type nodes")
+  )
+
+  private val resultFormat2: AnalysisResultFormat = ListResultFormat(
     ObjectResultFormat(Set(
       NamedPropertyFormat("mId", formats.NumberFormat, "The unique id assigned to this method"),
       NamedPropertyFormat("mFqn", formats.StringFormat, "The fully qualified name of this method"),
@@ -181,9 +208,22 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
 
 
+          def toTypeNode(t: ObjectType): TypeNode = {
+            val classFile = project.classFile(t)
+
+            val superId = classFile.flatMap(_.superclassType).map(_.id.toLong)
+            val interfaceTypes = classFile.map(_.interfaceTypes.map(_.id.toLong)).getOrElse(Seq.empty[Long])
+
+            new TypeNode(t.id, t.fqn, project.classFile(t).exists(_.isInterfaceDeclaration), superId, interfaceTypes)
+          }
+
+          val types = project.allProjectClassFiles.map(cf => toTypeNode(cf.thisType)).toList
+
+          val resultContent = new RTAResult(allMethodDataWithCallSites ++ extraMethods, types)
+
           log.info(s"Done building partial callgraph representation for ${program.name}")
 
-          Some(Result(allMethodDataWithCallSites ++ extraMethods, Set(program)))
+          Some(Result(resultContent, Set(program)))
 
         case Failure(HttpDownloadException(status, _, _)) if status == 404 =>
           log.warn(s"No JAR file available for ${program.identifier}")
@@ -241,6 +281,21 @@ object MvnPartialCallgraphAnalysisImpl {
     val targets: List[Int] = resolvedTargetIds
     val incomplete: Int = if(isIncomplete) 1 else 0
     val instr: String = instruction
+  }
+
+  class TypeNode(tid: Long, typeFqn: String, isInterface: Boolean, superType: Option[Long], interfaces: Seq[Long]) {
+
+    val id: Long = tid
+    val fqn: String = typeFqn
+    val interface: Long = if (isInterface) 1L else 0L
+    val superId: Long = superType.getOrElse(-1L)
+    val interfaceIds: Seq[Long] = interfaces
+  }
+
+  class RTAResult(graphInfo: List[InternalMethod], typeInfo: List[TypeNode]){
+
+    val graph: List[InternalMethod] = graphInfo
+    val types: List[TypeNode] = typeInfo
   }
 
 }

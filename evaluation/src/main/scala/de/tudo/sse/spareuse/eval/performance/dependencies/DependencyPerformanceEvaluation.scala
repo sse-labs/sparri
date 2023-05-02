@@ -57,7 +57,10 @@ class DependencyPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEva
     val simpleRuntimes = new mutable.ListBuffer[Long]()
     val reuseRuntimes = new mutable.ListBuffer[Long]()
 
-    for (_ <- Range(0, numberOfRepetitions)) {
+    for (i <- Range(0, numberOfRepetitions)) {
+
+      logger.info(s"$name evaluation, run $i/$numberOfRepetitions")
+
       gavToDependenciesMap.keys.foreach { input =>
 
         val timedSimpleResults = timedExec(() => simpleAnalysis.getAllDependencies(input))

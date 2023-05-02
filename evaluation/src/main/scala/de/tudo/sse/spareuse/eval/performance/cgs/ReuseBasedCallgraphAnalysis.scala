@@ -19,7 +19,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
   private var theCg: Option[StitchedCallGraph] = None
 
   override def prepareData(rootGav: String, dependencyGavs: Set[String]): Try[Unit] = Try {
-
+    var typesDuration = 0L
     val timedOp = timedExec { () =>
       theCg = Some(new StitchedCallGraph(rootGav, dependencyGavs))
 
@@ -53,11 +53,14 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
       }
 
 
+
+
       getAnalysisResultsForEntity(gavToEntityId(rootGav), analysisName, analysisVersion, apiBaseUrl, httpClient).get match {
         case ja: JsArray =>
-          val types = getAllTypesForProgram(rootGav, apiBaseUrl, httpClient).get
+          val typesOp = timedExec { () => getAllTypesForProgram(rootGav, apiBaseUrl, httpClient).get }
+          typesDuration += typesOp.getDurationMillis
           val cg = PartialCallGraph(rootGav, toMethodLookup(ja, rootGav))
-          theCg.get.addPartialInfo(rootGav, cg, types)
+          theCg.get.addPartialInfo(rootGav, cg, typesOp.getContent)
         case _ =>
           throw new IllegalStateException("Expected a JSON Array")
       }
@@ -68,8 +71,9 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
           getAnalysisResultsForEntity(entityId, analysisName, analysisVersion, apiBaseUrl, httpClient).get match {
             case ja: JsArray =>
               val cg = PartialCallGraph(gav, toMethodLookup(ja, gav))
-              val types = getAllTypesForProgram(gav, apiBaseUrl, httpClient).get
-              theCg.get.addPartialInfo(gav, cg, types)
+              val typesOp = timedExec{ () => getAllTypesForProgram(gav, apiBaseUrl, httpClient).get}
+              typesDuration += typesOp.getDurationMillis
+              theCg.get.addPartialInfo(gav, cg, typesOp.getContent)
             case _ =>
               throw new IllegalStateException("Expected a JSON Array")
           }
@@ -78,7 +82,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
       logger.info(s"Successfully retrieved ${dependencyGavs.size + 1} partial callgraphs")
     }
 
-    logger.info(s"Preparing data took ${timedOp.getDurationMillis}ms")
+    logger.info(s"Preparing data took ${timedOp.getDurationMillis}ms ($typesDuration ms for types)")
 
     timedOp.getContent
   }
@@ -406,9 +410,9 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
           (fqn, new TypeNode(fqn, classRepr, methods, isInstantiated))
         }.toMap
         typesLookup.values.foreach { typeNode =>
-          rawTypesLookup(typeNode.typeFqn).superType.flatMap(typesLookup.get(_)).foreach(p => typeNode.setSuperType(p))
+          typeNode.typeDeclaration.superType.flatMap(typesLookup.get(_)).foreach(p => typeNode.setSuperType(p))
 
-          typeNode.setInterfaceTypes(rawTypesLookup(typeNode.typeFqn).interfaceTypes.map(_.replace("/", ".")).filter(typesLookup.contains).map(typesLookup(_)))
+          typeNode.setInterfaceTypes(typeNode.typeDeclaration.interfaceTypes.map(_.replace("/", ".")).filter(typesLookup.contains).map(typesLookup(_)))
         }
       }
 

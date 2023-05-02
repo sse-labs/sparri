@@ -9,13 +9,14 @@ import scala.util.{Failure, Success, Try}
 
 class CallgraphPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEvaluation {
 
+
   val depMaps: Map[String, Set[String]] = Map(
-    //"org.gwtproject.core:gwt-core:1.0.0-RC1" ->
-    //  Set("com.google.jsinterop:jsinterop-annotations:1.0.2", "com.google.elemental2:elemental2-core:1.1.0", "com.google.elemental2:elemental2-promise:1.1.0", "com.google.elemental2:elemental2-dom:1.1.0", "com.google.jsinterop:jsinterop-annotations:2.0.0", "com.google.jsinterop:base:1.0.0"),
-    "org.springframework:spring-context:5.3.3" ->
+   "org.springframework:spring-context:5.3.3" ->
       Set("org.springframework:spring-aop:5.3.3", "org.springframework:spring-beans:5.3.3", "org.springframework:spring-jcl:5.3.3", "org.springframework:spring-core:5.3.3", "org.springframework:spring-expression:5.3.3"),
-    //"org.easymock:easymock:4.2" ->
-    //  Set("org.objenesis:objenesis:3.1")
+    "nl.basjes.parse.useragent:yauaa:7.0.0" ->
+      Set("com.github.ben-manes.caffeine:caffeine:3.1.0", "com.google.errorprone:error_prone_annotations:2.13.1", "org.apache.httpcomponents.client5:httpclient5:5.1.3", "org.apache.httpcomponents.core5:httpcore5-h2:5.1.3",
+      "com.google.code.findbugs:jsr305:3.0.2", "org.apache.httpcomponents.core5:httpcore5:5.1.3", "org.slf4j:slf4j-api:1.7.25", "org.apache.commons:commons-text:1.9", "commons-codec:commons-codec:1.15",
+      "org.apache.commons:commons-lang3:3.11", "org.checkerframework:checker-qual:3.21.4", "nl.basjes.collections:prefixmap:2.0")
   )
 
 
@@ -45,7 +46,9 @@ class CallgraphPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEval
     val directRuntimes = new mutable.ListBuffer[Long]()
     val reuseRuntimes = new mutable.ListBuffer[Long]()
 
-    for (_ <- Range(0, numberOfRepetitions)) {
+    for (i <- Range(0, numberOfRepetitions)) {
+
+      logger.info(s"$name evaluation, run $i/$numberOfRepetitions")
 
       depMaps.foreach { t =>
         val rootGav = t._1
