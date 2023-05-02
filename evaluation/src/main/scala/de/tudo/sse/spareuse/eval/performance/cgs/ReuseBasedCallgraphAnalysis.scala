@@ -19,7 +19,6 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
   private var theCg: Option[StitchedCallGraph] = None
 
   override def prepareData(rootGav: String, dependencyGavs: Set[String]): Try[Unit] = Try {
-    var typesDuration = 0L
     val timedOp = timedExec { () =>
       theCg = Some(new StitchedCallGraph(rootGav, dependencyGavs))
 
@@ -52,15 +51,31 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
       }
 
+      def toTypeHierarchy(json: JsArray): Seq[DeclaredTypeNode] = {
+        json.elements.map {
+          case jo: JsObject =>
+            val tId = jo.fields("id").asInstanceOf[JsNumber].value.longValue()
+            val tFqn = jo.fields("fqn").asInstanceOf[JsString].value
+            val isInterface = jo.fields("interface").asInstanceOf[JsNumber].value.intValue() > 0
+            val superType = jo.fields("superId").asInstanceOf[JsNumber].value.longValue()
+            val interfaces = jo.fields("interfaceIds").asInstanceOf[JsArray].elements.map {
+              case n: JsNumber => n.value.longValue()
+              case _ => throw new IllegalStateException("Invalid format of partial results")
+            }
+
+            DeclaredTypeNode(tId, tFqn, isInterface, if(superType == -1) None else Some(superType), interfaces)
+        }
+      }
+
 
 
 
       getAnalysisResultsForEntity(gavToEntityId(rootGav), analysisName, analysisVersion, apiBaseUrl, httpClient).get match {
-        case ja: JsArray =>
-          val typesOp = timedExec { () => getAllTypesForProgram(rootGav, apiBaseUrl, httpClient).get }
-          typesDuration += typesOp.getDurationMillis
-          val cg = PartialCallGraph(rootGav, toMethodLookup(ja, rootGav))
-          theCg.get.addPartialInfo(rootGav, cg, typesOp.getContent)
+        case jo: JsObject =>
+          val methodInfo = jo.fields.get("graph").map(_.asInstanceOf[JsArray]).getOrElse(throw new IllegalStateException("Expected a JSON Array with method info"))
+          val typesInfo = jo.fields.get("types").map(_.asInstanceOf[JsArray]).getOrElse(throw new IllegalStateException("Expected a JSON Array with type info"))
+          val cg = PartialCallGraph(rootGav, toMethodLookup(methodInfo, rootGav))
+          theCg.get.addPartialInfo(rootGav, cg, toTypeHierarchy(typesInfo))
         case _ =>
           throw new IllegalStateException("Expected a JSON Array")
       }
@@ -69,11 +84,12 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
         .foreach { gav =>
           val entityId = gavToEntityId(gav)
           getAnalysisResultsForEntity(entityId, analysisName, analysisVersion, apiBaseUrl, httpClient).get match {
-            case ja: JsArray =>
-              val cg = PartialCallGraph(gav, toMethodLookup(ja, gav))
-              val typesOp = timedExec{ () => getAllTypesForProgram(gav, apiBaseUrl, httpClient).get}
-              typesDuration += typesOp.getDurationMillis
-              theCg.get.addPartialInfo(gav, cg, typesOp.getContent)
+            case jo: JsObject =>
+              val methodInfo = jo.fields.get ("graph").map (_.asInstanceOf[JsArray] ).getOrElse (throw new IllegalStateException ("Expected a JSON Array with method info") )
+              val typesInfo = jo.fields.get ("types").map (_.asInstanceOf[JsArray] ).getOrElse (throw new IllegalStateException ("Expected a JSON Array with type info"))
+
+              val cg = PartialCallGraph(gav, toMethodLookup(methodInfo, gav))
+              theCg.get.addPartialInfo(gav, cg, toTypeHierarchy(typesInfo))
             case _ =>
               throw new IllegalStateException("Expected a JSON Array")
           }
@@ -82,7 +98,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
       logger.info(s"Successfully retrieved ${dependencyGavs.size + 1} partial callgraphs")
     }
 
-    logger.info(s"Preparing data took ${timedOp.getDurationMillis}ms ($typesDuration ms for types)")
+    logger.info(s"Preparing data took ${timedOp.getDurationMillis}ms")
 
     timedOp.getContent
   }
@@ -305,10 +321,12 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
     lazy val isInterface: Boolean = invocationType.equalsIgnoreCase("INVOKEINTERFACE")
   }
 
-  class TypeNode(fqn: String, jc: JavaClass, methods: Set[MethodRepr], instantiated: Boolean, subNodes: Set[TypeNode] = Set.empty, superNode: Option[TypeNode] = None, interfaces: Set[TypeNode] = Set.empty){
+  case class DeclaredTypeNode(id: Long, fqn: String, isInterface: Boolean, superTypeId: Option[Long], interfaceIds: Seq[Long])
+  case class ResolvedDeclaredType(id: Long, fqn: String, isInterface: Boolean, superTypeName: Option[String], interfaceTypeNames: Seq[String])
+  class TypeNode(fqn: String, decl: ResolvedDeclaredType, methods: Set[MethodRepr], instantiated: Boolean, subNodes: Set[TypeNode] = Set.empty, superNode: Option[TypeNode] = None, interfaces: Set[TypeNode] = Set.empty){
 
     val typeFqn: String = fqn
-    val typeDeclaration: JavaClass = jc
+    val typeDeclaration: ResolvedDeclaredType = decl
     val allMethods: Set[MethodRepr] = methods
     val isInstantiated: Boolean = instantiated
 
@@ -357,7 +375,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
     private val partialCgs = new mutable.HashMap[String, PartialCallGraph]()
 
-    private val rawTypesLookup = new mutable.HashMap[String, JavaClass]()
+    private val rawTypesLookup = new mutable.HashMap[String, ResolvedDeclaredType]()
     private val rawMethodByTypeLookup = new mutable.HashMap[String, mutable.Set[MethodRepr]]
 
     private var typesLookup = Map.empty[String, TypeNode]
@@ -372,7 +390,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
 
     def numEdges(): Int = allCallees.values.flatMap(v => v.values.map(_.size)).sum
 
-    def addPartialInfo(gav: String, partialCallGraph: PartialCallGraph, types: Seq[JavaClass]): Unit = {
+    def addPartialInfo(gav: String, partialCallGraph: PartialCallGraph, types: Seq[DeclaredTypeNode]): Unit = {
       partialCgs.put(gav, partialCallGraph)
       partialCallGraph.methodLookup.values.foreach(r => {
         val tFqn = r.identifier.mDeclaringTypeFqn
@@ -381,7 +399,16 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
         if(!currMethods.exists(m => m.fqn.equals(r.fqn)))
           rawMethodByTypeLookup(tFqn).add(r)
       })
-      types.foreach { t => rawTypesLookup.put(t.thisType.replace("/", "."), t) }
+
+      val partialTypesLookup = types.map(t => (t.id, t)).toMap
+
+      types.foreach{ t =>
+        val superTypeOpt = t.superTypeId.map(partialTypesLookup.get(_).map(_.fqn).getOrElse("java.lang.Object"))
+        val interfaceTypes = t.interfaceIds.flatMap(i => if(partialTypesLookup.contains(i)) Some(partialTypesLookup(i).fqn) else None)
+        val resolvedType = ResolvedDeclaredType(t.id, t.fqn, t.isInterface, superTypeOpt, interfaceTypes)
+
+        rawTypesLookup.put(t.fqn.replace("/", "."), resolvedType)
+      }
     }
 
     def resolveAll(): Unit = {
@@ -410,9 +437,9 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
           (fqn, new TypeNode(fqn, classRepr, methods, isInstantiated))
         }.toMap
         typesLookup.values.foreach { typeNode =>
-          typeNode.typeDeclaration.superType.flatMap(typesLookup.get(_)).foreach(p => typeNode.setSuperType(p))
+          typeNode.typeDeclaration.superTypeName.flatMap(typesLookup.get(_)).foreach(p => typeNode.setSuperType(p))
 
-          typeNode.setInterfaceTypes(typeNode.typeDeclaration.interfaceTypes.map(_.replace("/", ".")).filter(typesLookup.contains).map(typesLookup(_)))
+          typeNode.setInterfaceTypes(typeNode.typeDeclaration.interfaceTypeNames.map(_.replace("/", ".")).filter(typesLookup.contains).map(typesLookup(_)).toSet)
         }
       }
 
@@ -500,7 +527,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
               val allTypesCHA = {
                 val targetTypeFqn = callSite.instruction.declaredTypeFqn
                 if (!typesLookup.contains(targetTypeFqn)) {
-                  logger.warn(s"Unknown declared type for non-static invocation: $targetTypeFqn")
+                  //logger.warn(s"Unknown declared type for non-static invocation: $targetTypeFqn")
                   typesLookup.values.toSet //TODO: Deal with types we don't know (i.e. JRE types)
                 } else {
                   val targetType = typesLookup(targetTypeFqn)

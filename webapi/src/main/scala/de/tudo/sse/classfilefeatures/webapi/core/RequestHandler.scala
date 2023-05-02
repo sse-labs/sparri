@@ -22,7 +22,7 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
   private val existingAnalysesCache: SimpleValueCache[Boolean] = new SimpleValueCache[Boolean]()
 
   def hasEntity(entityName: String): Boolean = {
-    existingEntitiesCache.getWithCache(entityName, () => dataAccessor.hasEntity(entityName))
+    dataAccessor.hasEntity(entityName)
   }
 
   def getAnalyses(limit: Int, skip: Int): Try[Set[AnalysisInformationRepr]] = {
