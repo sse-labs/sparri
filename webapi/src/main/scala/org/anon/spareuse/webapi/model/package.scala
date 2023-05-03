@@ -61,10 +61,10 @@ package object model {
         targetTypeOpt = Some(jis.targetTypeName)
         returnTypeOpt = Some(jis.returnTypeName)
         isStaticOpt = Some(jis.isStaticMethod)
-        //TODO: Method Name, Parameter Count, Invocation Types
+        //IMPROVE: Method Name, Parameter Count, Invocation Types
       case jfas: JavaFieldAccessStatement =>
         targetTypeOpt = Some(jfas.targetTypeName)
-        //TODO: Field Type, Field Name, Access Type
+        //IMPROVE: Field Type, Field Name, Access Type
       case _ =>
     }
 

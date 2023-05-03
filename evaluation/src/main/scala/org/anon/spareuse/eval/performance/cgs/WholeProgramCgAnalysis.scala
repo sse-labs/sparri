@@ -10,7 +10,7 @@ trait WholeProgramCgAnalysis {
 
   def prepareData(rootGav: String, dependencyGavs: Set[String]): Try[Unit]
 
-  def buildFullCallgraph(): Try[Any] //TODO: Type
+  def buildFullCallgraph(): Try[Any]
 
   def cleanup(): Unit
 

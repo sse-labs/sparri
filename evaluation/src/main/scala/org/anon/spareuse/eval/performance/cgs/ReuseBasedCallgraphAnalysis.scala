@@ -528,8 +528,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
               val allTypesCHA = {
                 val targetTypeFqn = callSite.instruction.declaredTypeFqn
                 if (!typesLookup.contains(targetTypeFqn)) {
-                  //logger.warn(s"Unknown declared type for non-static invocation: $targetTypeFqn")
-                  typesLookup.values.toSet //TODO: Deal with types we don't know (i.e. JRE types)
+                  typesLookup.values.toSet // Conservative over-approximation
                 } else {
                   val targetType = typesLookup(targetTypeFqn)
                   targetType.allSubTypes ++ Set(targetType)

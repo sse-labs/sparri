@@ -55,7 +55,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   }
 
   private def storeDataAndGetId(data: SoftwareEntityData, parentIdOpt: Option[Long]): Long = {
-    //TODO: Maybe batching?
+    //IMPROVE: More batching for performance improvement
     val res = idReturningEntitiesTable +=
       SoftwareEntityRepr(0, data.name, data.uid, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash)
 

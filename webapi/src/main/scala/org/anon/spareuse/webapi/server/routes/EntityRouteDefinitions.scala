@@ -72,8 +72,6 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
 
     log.debug(s"All entities requested (skip=$skip, limit=$limit). Filters: Kind=${queriedKind.getOrElse("None")}, Parent=${queriedParent.getOrElse("None")}, Language=${queriedLanguage.getOrElse("None")}")
 
-    //TODO: Use language query filter
-
     requestHandler.getAllEntities(limit, skip, queriedKind, queriedParent) match {
       case Success(entities) => complete(entities.toArray.toJson)
       case Failure(_) => complete(InternalServerError)

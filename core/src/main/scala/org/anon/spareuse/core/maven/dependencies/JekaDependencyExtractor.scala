@@ -30,8 +30,7 @@ class JekaDependencyExtractor extends DependencyExtractor {
   }
 
   def getDeclaredDependencies(identifier: MavenIdentifier): Try[Dependencies] = withResolver { resolver =>
-     val dependencySet = JkQualifiedDependencySet.of(JkDependencySet.of(identifier.toString))
-    //TODO: Test scope dependencies?
+    val dependencySet = JkQualifiedDependencySet.of(JkDependencySet.of(identifier.toString))
     resolver
       .resolve(dependencySet)
       .getDependencyTree.getChildren.asScala.flatMap(p => p.getChildren.asScala)
