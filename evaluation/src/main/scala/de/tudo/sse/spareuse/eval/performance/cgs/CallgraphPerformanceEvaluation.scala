@@ -16,7 +16,8 @@ class CallgraphPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEval
     "nl.basjes.parse.useragent:yauaa:7.0.0" ->
       Set("com.github.ben-manes.caffeine:caffeine:3.1.0", "com.google.errorprone:error_prone_annotations:2.13.1", "org.apache.httpcomponents.client5:httpclient5:5.1.3", "org.apache.httpcomponents.core5:httpcore5-h2:5.1.3",
       "com.google.code.findbugs:jsr305:3.0.2", "org.apache.httpcomponents.core5:httpcore5:5.1.3", "org.slf4j:slf4j-api:1.7.25", "org.apache.commons:commons-text:1.9", "commons-codec:commons-codec:1.15",
-      "org.apache.commons:commons-lang3:3.11", "org.checkerframework:checker-qual:3.21.4", "nl.basjes.collections:prefixmap:2.0")
+      "org.apache.commons:commons-lang3:3.11", "org.checkerframework:checker-qual:3.21.4", "nl.basjes.collections:prefixmap:2.0"),
+    "org.checkerframework:checker-qual:3.21.4" -> Set()
   )
 
 
@@ -74,16 +75,10 @@ class CallgraphPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEval
           }
         })
 
-        var allSimple: Set[String] = Set.empty
-
         if (timedSimpleResults.getContent.isFailure)
           logger.error("Invalid results for simple dependency analysis")
         else {
           val result: CallGraph = timedSimpleResults.getContent.get
-          allSimple = result.reachableMethods()
-            .filterNot(_.declaringClassType.fqn.startsWith("java/lang/"))
-            .filterNot(_.declaringClassType.fqn.startsWith("java/util/"))
-            .map(m => s"${m.declaringClassType.fqn.replace("/", ".")} ${m.name} ${m.descriptor.parameterTypes.map(_.toJava).mkString(",")}").toSet
           directRuntimes.append(timedSimpleResults.getDurationMillis)
         }
 
@@ -91,24 +86,6 @@ class CallgraphPerformanceEvaluation(apiBaseUrl: String) extends PerformanceEval
           logger.error("Invalid results for reuse dependency analysis", timedReuseResults.getContent.failed.get)
         else {
           val result: reuseAnalysis.StitchedCallGraph = timedReuseResults.getContent.get
-          val allReuse = result.reachableMethods().map(m => s"${m.identifier.mDeclaringTypeFqn} ${m.identifier.mName} ${m.identifier.mArgumentTypes.mkString(",")}")
-
-          val d1 = allSimple.diff(allReuse)
-          val d2 = allReuse.diff(allSimple)
-          val d3 = allSimple.intersect(allReuse)
-
-          logger.info(s"Simple: [Total: ${allSimple.size}, Unique: ${d1.size}], Reuse: [Total: ${allReuse.size}, Unique: ${d2.size}], Common: ${d3.size}")
-
-          if(d1.size < 50){
-            logger.info("Unique Simple:")
-            d1.foreach(s => logger.info(s"\t - $s"))
-          }
-
-          if(d2.size < 50){
-            logger.info("Unique Reuse:")
-            d2.foreach(s => logger.info(s"\t - $s"))
-          }
-
           reuseRuntimes.append(timedReuseResults.getDurationMillis)
         }
 
