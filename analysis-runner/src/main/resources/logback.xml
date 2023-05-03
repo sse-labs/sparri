@@ -6,8 +6,8 @@
         </encoder>
     </appender>
 
-    <logger name="de.tudo.sse.spareuse.execution.analyses.impl" level="debug"/>
-    <logger name="de.tudo.sse.spareuse" level="info"/>
+    <logger name="org.anon.spareuse.execution.analyses.impl" level="debug"/>
+    <logger name="org.anon.spareuse" level="info"/>
 
     <root level="warn">
         <appender-ref ref="CONSOLE"/>

@@ -1,6 +1,6 @@
 name := "opal-callgraph-miner"
 
-ThisBuild / organization := "de.tudo"
+ThisBuild / organization := "org.anon"
 ThisBuild / version      := "0.1.0-SNAPSHOT"
 ThisBuild / scalaVersion := "2.12.15"
 
@@ -41,7 +41,7 @@ lazy val `maven-entity-name-publisher` = (project in file("maven-entity-name-pub
 		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.akkaHttp, dependencies.logback,
 			dependencies.mvnIndexer),
 
-		assembly / mainClass := Some("de.tudo.sse.spareuse.mvnpub.Application"),
+		assembly / mainClass := Some("org.anon.spareuse.mvnpub.Application"),
 		assembly / assemblyJarName := "maven-entity-name-publisher.jar",
 
 		mergeStrategySettings,
@@ -56,7 +56,7 @@ lazy val `maven-entity-miner` = (project in file("maven-entity-miner"))
 	.settings(
 		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.logback, dependencies.typesafeConfig),
 
-		assembly / mainClass := Some("de.tudo.sse.spareuse.mvnem.Application"),
+		assembly / mainClass := Some("org.anon.spareuse.mvnem.Application"),
 		assembly / assemblyJarName := "maven-entity-miner.jar",
 
 		mergeStrategySettings,
@@ -72,7 +72,7 @@ lazy val `analysis-runner` = (project in file("analysis-runner"))
 		libraryDependencies ++= dependencies.opal,
 		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.logback, dependencies.typesafeConfig),
 
-		assembly / mainClass := Some("de.tudo.sse.spareuse.execution.Application"),
+		assembly / mainClass := Some("org.anon.spareuse.execution.Application"),
 		assembly / assemblyJarName := "analysis-runner.jar",
 
 		mergeStrategySettings,
@@ -92,7 +92,7 @@ lazy val webapi = (project in file("webapi"))
 		libraryDependencies ++= Seq(dependencies.akkaStreams, dependencies.akkaHttp, dependencies.akkaActors, dependencies.akkaSprayJson,
 			dependencies.logback, dependencies.postgresql, dependencies.rabbitMQ, dependencies.akkaHttpCors),
 
-		assembly / mainClass := Some("de.tudo.sse.classfilefeatures.webapi.Application"),
+		assembly / mainClass := Some("org.anon.spareuse.webapi.Application"),
 		assembly / assemblyJarName := "cf-webapi.jar",
 		assemblyMergeStrategy := {
 			case x: String if x.toLowerCase.contains("manifest.mf") => MergeStrategy.discard
@@ -121,7 +121,7 @@ lazy val evaluation = (project in file("evaluation"))
 	.settings(
 		libraryDependencies ++= Seq(dependencies.logback, dependencies.neo4jDriver),
 
-		assembly / mainClass := Some ("de.tudo.sse.spareuse.eval.performance.PerformanceEvaluationApp"),
+		assembly / mainClass := Some ("org.anon.spareuse.eval.performance.PerformanceEvaluationApp"),
 		assembly / assemblyJarName := "spar-evaluation.jar",
 		assemblyMergeStrategy := {
 			case x: String if x.toLowerCase.contains("manifest.mf") => MergeStrategy.discard

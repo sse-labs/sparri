@@ -3,16 +3,14 @@ info:
   version: "0.0.1"
   title: "Online Static Analysis Interface"
 servers:
-  - url: "http://ls5vs029.cs.tu-dortmund.de:9090/api"
-    description: "Production Server with real data"
-  - url: "http://localhost:33449/api"
+  - url: "http://localhost:9090/api"
     description: "Local instance for debugging"
 paths:
 
   /entities:
     get:
       tags: ["Entity Related Information"]
-      description: "Returns a paginated list of all program entities index at this point."
+      description: "Returns a paginated list of all program entities index at this point."F
       parameters:
         - name: skip
           description: "Pagination: Number of entities to skip"
