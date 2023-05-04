@@ -26,6 +26,51 @@ docker run -d --name sparri-db -e POSTGRES_USER=<USER> -e POSTGRES_PASSWORD=<PAS
 ```
 Note that you will need to expose the RabbitMQ port `5672` on your machine (in this example the host's port `9000` is used). The same is true for port `5432` of the Postgres container (here: host port `9001`).
 
-TODO CONFIGURATION
+Now you have to configure SPARRI to know where the message queue and database are located. To do so, open the file `./core/src/main/resources/application.conf` and replace all occurrances of the term `<CHANGEME>` with the respective values. You will need to enter the host name (`serverName` and `mq-host`), the ports for the database (`portNumber`) and RabbitMQ (`mq-port`), as well as the credentials for the database (`user` and `password`) and RabbitMQ (`mq-user` and `mq-pass`).
 
-Now you can build all SPARRI components by executing `sbt clean docker` in the root directory of this repository.
+```
+pa-reuse.postgres {
+    connectionPool = "HikariCP"
+    initializationFailTimeout = 2000
+    dataSourceClass = "org.postgresql.ds.PGSimpleDataSource"
+
+    properties = {
+        serverName="<CHANGEME>"
+        portNumber="<CHANGEME>"
+        databaseName="spa-results"
+        user="<CHANGEME>"
+        password="<CHANGEME>"
+    }
+
+    numThreads = 8
+}
+
+spa-reuse.mq {
+    mq-user = "<CHANGEME>"
+    mq-pass = "<CHANGEME>"
+    mq-host = "<CHANGEME>"
+    mq-port = 0 #ATTENTION: ALSO REPLACE THIS VALUE!
+
+    analysis-queue-name = "mvn-analyses"
+    analysis-queue-exchange-name = "analyses-exchange"
+    analysis-queue-routing-key = "mvn"
+
+    entity-queue-name = "mvn-library-names"
+    entity-queue-exchange-name = "library-name-exchange"
+    entity-queue-routing-key = "mvn"
+    entity-queue-max-priority = 3
+}
+```
+
+Now you are ready to build all SPARRI components by executing `sbt clean docker` in the root directory of this repository. This command will compile and assemble all SPARRI components, and will also publish them as Docker images to your local Docker registry.
+
+## Running SPARRI
+You can execute the different components of SPARRI via Docker. You will need to host at least the WebAPI, EntityMiner and AnalysisRunner. This is done by executing
+
+```
+docker run -d --name sparri-api -p 9090:9090 spar-webapi:latest
+docker run -d --name sparri-miner spar-maven-entity-miner:latest
+docker run -d --name sparri-runner spar-analysis-runner:latest
+```
+
+Once all three containers are up and running, you can interact with SPARRI via the API hosted at port 9090. Refer to `./webapi/api_spec_openapi3.yaml` for a complete specification of our HTTP API.
