@@ -20,7 +20,7 @@ class MavenEntityNamePublisher(config: MavenEntityPublisherConfig)
 
   private final val printoutStepping: Int = 5000
 
-  private val mqWriter: MqMessageWriter = new MqMessageWriter(config)
+  private val mqWriter: MqMessageWriter = new MqMessageWriter(config.buildEntityQueueConfiguration)
 
   private val hashesSeen: mutable.Set[Int] = mutable.Set.empty
 

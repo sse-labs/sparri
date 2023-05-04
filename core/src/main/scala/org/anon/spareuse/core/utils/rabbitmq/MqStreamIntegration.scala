@@ -18,9 +18,9 @@ trait MqStreamIntegration {
 
   def createMqMessageSource(config: MqConnectionConfiguration, abortOnEmptyQueue: Boolean): Source[String, NotUsed] = {
 
-    var sourceSettings = RestartSettings.create(minBackoff = Duration.ofSeconds(30),
+    var sourceSettings = RestartSettings.create(minBackoff = Duration.ofSeconds(10),
       maxBackoff = Duration.ofSeconds(60), randomFactor = 0.2)
-      .withMaxRestarts(100, 5.minutes) // 10 restarts à > 30 seconds in 5 minutes means that this source will always restart and never cancel
+      .withMaxRestarts(100, 5.minutes) // Always restart and never cancel
 
     if(!abortOnEmptyQueue) // Suppress error output when we do not abort on empty queue -> Don't print EmptyQueueExceptions
       sourceSettings = sourceSettings.withLogSettings(sourceSettings.logSettings.withLogLevel(Logging.DebugLevel))

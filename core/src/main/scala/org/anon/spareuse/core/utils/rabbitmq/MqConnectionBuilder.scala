@@ -2,7 +2,7 @@ package org.anon.spareuse.core.utils.rabbitmq
 
 import com.rabbitmq.client.{Connection, ConnectionFactory}
 
-trait MqConnectionBuilder {
+object MqConnectionBuilder {
 
   def buildConnection(configuration: MqConnectionConfiguration): Connection = {
 

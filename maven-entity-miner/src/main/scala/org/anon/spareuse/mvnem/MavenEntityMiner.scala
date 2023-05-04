@@ -46,7 +46,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     super.shutdown()
   }
 
-  override protected def buildSource(): Source[String, NotUsed] = createMqMessageSource(configuration, abortOnEmptyQueue = false)
+  override protected def buildSource(): Source[String, NotUsed] = createMqMessageSource(configuration.toReadConfig, abortOnEmptyQueue = false)
 
   override protected def buildStreamPipeline(source: Source[String, NotUsed]): Future[Done] = {
     source

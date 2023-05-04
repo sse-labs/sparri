@@ -5,9 +5,9 @@ import com.rabbitmq.client.{AMQP, Channel, Connection}
 import java.util
 import scala.util.Try
 
-class MqMessageWriter(configuration: MqDirectQueuePublishConfiguration) extends MqConnectionBuilder {
+class MqMessageWriter(configuration: MqDirectQueuePublishConfiguration) {
 
-  private lazy val connection: Connection = buildConnection(configuration)
+  private lazy val connection: Connection = MqConnectionBuilder.buildConnection(configuration)
 
   private lazy val channel: Channel = connection.createChannel()
 

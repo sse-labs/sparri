@@ -53,11 +53,11 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
     super.shutdown()
   }
 
-  override protected def buildSource(): Source[String, NotUsed] = createMqMessageSource(configuration, abortOnEmptyQueue = false)
+  override protected def buildSource(): Source[String, NotUsed] = createMqMessageSource(configuration.toReaderConfig, abortOnEmptyQueue = false)
 
   override protected def buildStreamPipeline(source: Source[String, NotUsed]): Future[Done] = {
 
-    log.info(s"Listening for analysis commands on message queue '${configuration.mqQueueName}'.")
+    log.info(s"Listening for analysis commands on message queue '${configuration.toReaderConfig.mqQueueName}'.")
 
     source
       .map(parseCommand)

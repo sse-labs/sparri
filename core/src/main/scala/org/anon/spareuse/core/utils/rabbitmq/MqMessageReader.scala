@@ -5,11 +5,11 @@ import org.slf4j.{Logger, LoggerFactory}
 
 import scala.util.{Failure, Success, Try}
 
-class MqMessageReader(configuration: MqConnectionConfiguration, abortOnEmptyQueue: Boolean) extends MqConnectionBuilder {
+class MqMessageReader(configuration: MqConnectionConfiguration, abortOnEmptyQueue: Boolean)  {
 
   private val log: Logger = LoggerFactory.getLogger(this.getClass)
 
-  val connection: Connection = buildConnection(configuration)
+  val connection: Connection = MqConnectionBuilder.buildConnection(configuration)
 
   val channel: Channel = connection.createChannel()
 
