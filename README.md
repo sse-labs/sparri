@@ -1,4 +1,6 @@
 # SPARRI
+[![DOI](https://zenodo.org/badge/387417639.svg)](https://zenodo.org/badge/latestdoi/387417639)
+
 This repository holds a Scala-based implementation of the Static Program Analysis Result Reuse Index (SPARRI). In order to compile and run SPARRI, you will need:
 - JDK 1.8
 - SBT (Scala Build Tool)
