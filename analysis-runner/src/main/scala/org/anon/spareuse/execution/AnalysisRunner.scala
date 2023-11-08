@@ -104,8 +104,8 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
           val analysisVersion = parts(1)
 
           // Assert that empty run entry has been created beforehand
-          if (!dataAccessor.hasAnalysisRun(analysisName, analysisVersion, command.runId))
-            throw new AnalysisRunNotPossibleException("Designated run id not in DB: " + command.runId, command)
+          if (!dataAccessor.hasAnalysisRun(analysisName, analysisVersion, command.associatedRunId))
+            throw new AnalysisRunNotPossibleException("Designated run id not in DB: " + command.associatedRunId, command)
 
           // Assert that the required analysis implementation is available. This is the fastest requirement to check.
           if (AnalysisRegistry.analysisImplementationAvailable(analysisName, analysisVersion)) {
@@ -166,8 +166,8 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
             if (namesToProcess.isEmpty) {
 
               if(entityNamesToQueue.isEmpty){
-                log.error(s"No valid input entity names remain, and no deferred execution was possible for run ${command.runId}.")
-                dataAccessor.setRunState(command.runId, RunState.Failed, Some(command.inputEntityNames))
+                log.error(s"No valid input entity names remain, and no deferred execution was possible for run ${command.associatedRunId}.")
+                dataAccessor.setRunState(command.associatedRunId, RunState.Failed, Some(command.inputEntityNames))
               } else log.warn("No inputs left to process at this time")
 
               return None
@@ -198,7 +198,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
         Some(validRunnerCommand)
       case Failure(ex) =>
         log.error("Command validation failed, no analysis will be executed.", ex)
-        Try(dataAccessor.setRunState(command.runId, RunState.Failed, Some(command.inputEntityNames)))
+        Try(dataAccessor.setRunState(command.associatedRunId, RunState.Failed, Some(command.inputEntityNames)))
         None
     }
 
@@ -210,7 +210,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       log.info(s"Starting analysis ${cmd.analysisName} with ${inputEntities.size} inputs. Requested by user ${cmd.userName}.")
 
       // Sets state of analysis run to "Running" and connects inputs to run
-      Try(dataAccessor.setRunState(cmd.runId, RunState.Running, Some(inputEntities.map(_.uid)))) match {
+      Try(dataAccessor.setRunState(cmd.associatedRunId, RunState.Running, Some(inputEntities.map(_.uid)))) match {
         case Failure(ex) =>
           log.error("Failed to update analysis run record in db", ex)
         case _ =>
@@ -229,7 +229,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
             val runLogs = analysisImpl.getLogs
 
-            val dbRunId = cmd.runId
+            val dbRunId = cmd.associatedRunId
 
             dataAccessor.setRunResults(dbRunId, LocalDateTime.now(), runLogs.toArray, runResults)(serializer) match {
               case Success(_) =>
@@ -239,7 +239,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
             }
 
           case Failure(ex) =>
-            dataAccessor.setRunState(cmd.runId, RunState.Failed, None)
+            dataAccessor.setRunState(cmd.associatedRunId, RunState.Failed, None)
             log.error(s"Analysis execution failed.", ex)
         }
       }(this.streamMaterializer.executionContext)

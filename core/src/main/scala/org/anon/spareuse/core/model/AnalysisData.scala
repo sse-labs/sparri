@@ -9,12 +9,12 @@ import java.time.LocalDateTime
 
 case class AnalysisData(name: String, version: String, description: String, builtOn: String, registeredBy: String,
                         inputLanguages: Set[String], isRevoked: Boolean, resultFormat: AnalysisResultFormat, inputKind: SoftwareEntityKind,
-                        executions: Set[AnalysisRunData])
+                        doesBatchProcessing: Boolean, isIncremental: Boolean, executions: Set[AnalysisRunData])
 
 object AnalysisData {
   def systemAnalysis(name: String, version: String, description: String, builtOn: String, languages: Set[String],
-                     format: AnalysisResultFormat, inputKind: SoftwareEntityKind): AnalysisData = {
-    AnalysisData(name, version, description, builtOn, "system", languages, isRevoked = false, format, inputKind, Set.empty)
+                     format: AnalysisResultFormat, inputKind: SoftwareEntityKind, doesBatchProcessing: Boolean, isIncremental: Boolean): AnalysisData = {
+    AnalysisData(name, version, description, builtOn, "system", languages, isRevoked = false, format, inputKind, doesBatchProcessing, isIncremental, Set.empty)
   }
 }
 

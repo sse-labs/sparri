@@ -69,10 +69,11 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
       "Multiple construction algorithms are supported (use '--algorithm cha|rta|xta|cta'), default is RTA. Use '--use-jre' to include JRE implementations in callgraph.",
     "OPAL",
     Set("java", "scala"),
-    resultFormat, SoftwareEntityKind.Program)
+    resultFormat,
+    SoftwareEntityKind.Program,
+    doesBatchProcessing = true,
+    isIncremental = false)
 
-
-  override val inputBatchProcessing: Boolean = true
 
   override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Package
 

@@ -46,16 +46,17 @@ package object postgresql {
 
 
   case class SoftwareAnalysisRepr(id: Long, name: String, version: String, description: String, builtOn: String,
-                                  registeredBy: String, inputLanguages: String, formatId: Long, revoked: Boolean, inputKind: Int){
+                                  registeredBy: String, inputLanguages: String, formatId: Long, revoked: Boolean,
+                                  inputKind: Int, batchProcessing: Boolean, isIncremental: Boolean){
     def toAnalysisData(format: AnalysisResultFormat, executions: Set[AnalysisRunData] = Set.empty): AnalysisData = {
       AnalysisData(name, version, description, builtOn, registeredBy, inputLanguages.split(",").toSet, revoked,
-        format, SoftwareEntityKind.fromId(inputKind), executions)
+        format, SoftwareEntityKind.fromId(inputKind), batchProcessing, isIncremental, executions)
     }
   }
 
   def toAnalysisRepr(data: AnalysisData, formatId: Long): SoftwareAnalysisRepr = {
     SoftwareAnalysisRepr(-1, data.name, data.version, data.description, data.builtOn, data.registeredBy,
-      data.inputLanguages.mkString(","), formatId, data.isRevoked, data.inputKind.id)
+      data.inputLanguages.mkString(","), formatId, data.isRevoked, data.inputKind.id, data.doesBatchProcessing, data.isIncremental)
   }
 
   class SoftwareAnalyses(tag: Tag) extends Table[SoftwareAnalysisRepr](tag, "analyses") {
@@ -80,8 +81,13 @@ package object postgresql {
 
     def inputKind: Rep[Int] = column[Int]("INPUT_KIND")
 
+    def batchProcessing: Rep[Boolean] = column[Boolean]("IS_BATCH")
+
+    def isIncremental: Rep[Boolean] = column[Boolean]("IS_INCREMENTAL")
+
     override def * : ProvenShape[SoftwareAnalysisRepr] =
-      (id, name, version, description, builtOn, registeredBy, inputLanguages, formatId, isRevoked, inputKind)<> ((SoftwareAnalysisRepr.apply _).tupled, SoftwareAnalysisRepr.unapply)
+      (id, name, version, description, builtOn, registeredBy, inputLanguages, formatId, isRevoked, inputKind, batchProcessing,
+        isIncremental) <> ((SoftwareAnalysisRepr.apply _).tupled, SoftwareAnalysisRepr.unapply)
 
     def format: ForeignKeyQuery[ResultFormats, ResultFormat] =
       foreignKey("FORMAT_FK", formatId, TableQuery[ResultFormats])(_.id)

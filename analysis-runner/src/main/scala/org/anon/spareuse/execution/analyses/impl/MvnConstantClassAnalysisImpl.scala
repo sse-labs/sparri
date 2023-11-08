@@ -29,9 +29,12 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
     "1.0.0",
     "Analysis that processes a Maven library (GA-Tuple) and computes the number of times each class appears in a release, as well as the number of unique versions of every class. MD5 is used to derive class equality.",
     "Scala, built-in facilities",
-    Set("java", "scala"),  resultFormat, SoftwareEntityKind.Library)
-
-  override val inputBatchProcessing: Boolean = true
+    Set("java", "scala"),
+    resultFormat,
+    SoftwareEntityKind.Library,
+    doesBatchProcessing = true,
+    isIncremental = false
+  )
 
   override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Class
 

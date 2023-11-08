@@ -26,10 +26,17 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
   )
 
 
-  override val analysisData: AnalysisData = AnalysisData("mvn-dependencies", "1.0.0", "TBD", "built-in", "system",
-    Set("java"), isRevoked = false, resultFormat, SoftwareEntityKind.Program, Set.empty)
-
-  override val inputBatchProcessing: Boolean = true
+  override val analysisData: AnalysisData = AnalysisData.systemAnalysis(
+    "mvn-dependencies",
+    "1.0.0",
+    "TBD",
+    "Scala, built-in facilities",
+    Set("java"),
+    resultFormat,
+    SoftwareEntityKind.Program,
+    doesBatchProcessing = true,
+    isIncremental = false
+  )
 
   // This analysis does not need any DB information
   override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Program

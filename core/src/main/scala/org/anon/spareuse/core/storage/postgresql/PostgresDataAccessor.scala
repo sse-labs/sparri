@@ -825,4 +825,9 @@ class PostgresDataAccessor extends DataAccessor {
     val queryF = db.run(entitiesTable.filter( e => e.qualifier === ident).exists.result)
     Await.result(queryF, simpleQueryTimeout)
   }
+
+  override def isIncrementalAnalysis(analysisName: String, analysisVersion: String): Boolean = {
+    //TODO: Implement this
+    ???
+  }
 }

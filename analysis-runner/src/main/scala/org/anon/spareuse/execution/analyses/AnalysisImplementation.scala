@@ -29,7 +29,7 @@ trait AnalysisImplementation extends MavenReleaseListDiscovery {
    * Specifies whether this analysis processes the set of inputs one after another (batch processing) or the set of
    * inputs as-a-whole. If set to true, the runner can optimize and remove redundant inputs before execution.
    */
-  val inputBatchProcessing: Boolean
+  final lazy val inputBatchProcessing: Boolean = analysisData.doesBatchProcessing
 
   /**
    * Specifies how deep the input entity structure needs to be, i.e. how much information the analysis needs

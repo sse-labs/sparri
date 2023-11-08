@@ -49,6 +49,8 @@ trait AnalysisAccessor {
 
   def hasAnalysis(analysisName: String): Boolean
 
+  def isIncrementalAnalysis(analysisName: String, analysisVersion: String): Boolean
+
   def hasAnalysisRun(analysisName: String, analysisVersion: String, runUid: String): Boolean
 
   /**
