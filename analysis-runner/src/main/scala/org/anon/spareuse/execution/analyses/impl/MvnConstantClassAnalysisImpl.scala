@@ -7,40 +7,18 @@ import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaLibrary}
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.utils.toHex
-import org.anon.spareuse.execution.analyses.{AnalysisImplementation, Result}
+import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisImplementationDescriptor, Result}
 
 import scala.collection.mutable
 import scala.util.Try
 
 class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
 
-  private val resultFormat = MapResultFormat(
-    formats.StringFormat,
-    ObjectResultFormat(Set(
-      NamedPropertyFormat("noOfOccurrences", NumberFormat, "Number of library releases this class was present in."),
-      NamedPropertyFormat("noOfUniqueOccurrences", NumberFormat, "Number of unique versions this class had in its history.")
-    )),
-    keyExplanation = "Fully qualified class name for every class in the history of this library",
-    valueExplanation = "Constancy information on this class"
-  )
-
-  override val analysisData: AnalysisData = AnalysisData.systemAnalysis(
-    "mvn-constant-classes",
-    "1.0.0",
-    "Analysis that processes a Maven library (GA-Tuple) and computes the number of times each class appears in a release, as well as the number of unique versions of every class. MD5 is used to derive class equality.",
-    "Scala, built-in facilities",
-    Set("java", "scala"),
-    resultFormat,
-    SoftwareEntityKind.Library,
-    doesBatchProcessing = true,
-    isIncremental = false
-  )
-
-  override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Class
+  override val descriptor: AnalysisImplementationDescriptor = MvnConstantClassAnalysisImpl
 
   override def executionPossible(inputs: Seq[SoftwareEntityData], rawConfig: String): Boolean = {
     if (inputs.exists(e => !e.isInstanceOf[JavaLibrary])) {
-      log.warn(s"Execution of analysis $name:$version not possible: Inputs must be of kind 'Library'")
+      log.warn(s"Execution of analysis ${descriptor.fullName} not possible: Inputs must be of kind 'Library'")
       false
     } else {
       true
@@ -84,4 +62,33 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
   }
 
   case class ClassCountResult(noOfOccurrences: Int, noOfUniqueOccurrences: Int)
+}
+
+object MvnConstantClassAnalysisImpl extends AnalysisImplementationDescriptor {
+
+  private val resultFormat = MapResultFormat(
+    formats.StringFormat,
+    ObjectResultFormat(Set(
+      NamedPropertyFormat("noOfOccurrences", NumberFormat, "Number of library releases this class was present in."),
+      NamedPropertyFormat("noOfUniqueOccurrences", NumberFormat, "Number of unique versions this class had in its history.")
+    )),
+    keyExplanation = "Fully qualified class name for every class in the history of this library",
+    valueExplanation = "Constancy information on this class"
+  )
+
+  override val analysisData: AnalysisData = AnalysisData.systemAnalysis(
+    "mvn-constant-classes",
+    "1.0.0",
+    "Analysis that processes a Maven library (GA-Tuple) and computes the number of times each class appears in a release, as well as the number of unique versions of every class. MD5 is used to derive class equality.",
+    "Scala, built-in facilities",
+    Set("java", "scala"),
+    resultFormat,
+    SoftwareEntityKind.Library,
+    doesBatchProcessing = true,
+    isIncremental = false
+  )
+
+  override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Class
+
+
 }

@@ -1,7 +1,9 @@
 package org.anon.spareuse.core.model.entities
 
+import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 
+import scala.annotation.tailrec
 import scala.collection.mutable
 
 trait SoftwareEntityData {
@@ -40,5 +42,21 @@ trait SoftwareEntityData {
   def hasParent: Boolean = parent.isDefined
 
   def getParent: Option[SoftwareEntityData] = parent
+
+  def isLibrary: Boolean = kind == SoftwareEntityKind.Library
+  def isProgram: Boolean = kind == SoftwareEntityKind.Program
+  def isPackage: Boolean = kind == SoftwareEntityKind.Package
+  def isClass: Boolean = kind == SoftwareEntityKind.Class
+  def isMethod: Boolean = kind == SoftwareEntityKind.Method
+  def isFieldAccessInstruction: Boolean = kind == SoftwareEntityKind.FieldAccessStatement
+  def isMethodInvocationInstruction: Boolean = kind == SoftwareEntityKind.InvocationStatement
+  def isInstruction: Boolean = isFieldAccessInstruction || isMethodInvocationInstruction
+
+  @tailrec
+  final def findFirstParent(pred: SoftwareEntityData => Boolean): Option[SoftwareEntityData] = {
+    if(pred(this)) Some(this)
+    else if(!hasParent) None
+    else getParent.get.findFirstParent(pred)
+  }
 
 }

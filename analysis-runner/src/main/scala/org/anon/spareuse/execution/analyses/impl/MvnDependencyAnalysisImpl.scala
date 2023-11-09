@@ -8,46 +8,21 @@ import org.anon.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
-import org.anon.spareuse.execution.analyses.{AnalysisImplementation, Result}
+import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisImplementationDescriptor, Result}
 
 import scala.util.{Failure, Success, Try}
 
 class MvnDependencyAnalysisImpl extends AnalysisImplementation{
 
-  private val resultFormat = ListResultFormat(
-    ObjectResultFormat(Set(
-      NamedPropertyFormat("identifier", ObjectResultFormat(Set(
-        NamedPropertyFormat("groupId", formats.StringFormat),
-        NamedPropertyFormat("artifactId", formats.StringFormat),
-        NamedPropertyFormat("version", formats.StringFormat)
-      )), "The GAV-Triple identifying a dependency, i.e. a required Maven library."),
-      NamedPropertyFormat("scope", formats.StringFormat, "The Maven scope of this dependency")
-    )), "Dependencies (GAV-Triple) for this program"
-  )
-
-
-  override val analysisData: AnalysisData = AnalysisData.systemAnalysis(
-    "mvn-dependencies",
-    "1.0.0",
-    "TBD",
-    "Scala, built-in facilities",
-    Set("java"),
-    resultFormat,
-    SoftwareEntityKind.Program,
-    doesBatchProcessing = true,
-    isIncremental = false
-  )
-
-  // This analysis does not need any DB information
-  override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Program
+  override val descriptor: AnalysisImplementationDescriptor = MvnDependencyAnalysisImpl
 
   override def executionPossible(inputs: Seq[SoftwareEntityData], configRaw: String): Boolean = {
 
     if(inputs.exists( e => !e.isInstanceOf[JavaProgram])){
-      log.warn(s"Execution of analysis $name:$version not possible: Inputs must be of kind 'Program'")
+      log.warn(s"Execution of analysis ${descriptor.fullName} not possible: Inputs must be of kind 'Program'")
       false
     } else if(!isValidConfig(configRaw)){
-      log.warn(s"Execution of analysis $name:$version not possible: Configuration not valid: $configRaw")
+      log.warn(s"Execution of analysis ${descriptor.fullName} not possible: Configuration not valid: $configRaw")
       false
     } else {
       true
@@ -111,6 +86,34 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
   }
 
   private case class DependencyAnalysisConfig(useJeka: Boolean, enableTransitive: Boolean)
+}
 
+object MvnDependencyAnalysisImpl extends AnalysisImplementationDescriptor {
+
+  private val resultFormat = ListResultFormat(
+    ObjectResultFormat(Set(
+      NamedPropertyFormat("identifier", ObjectResultFormat(Set(
+        NamedPropertyFormat("groupId", formats.StringFormat),
+        NamedPropertyFormat("artifactId", formats.StringFormat),
+        NamedPropertyFormat("version", formats.StringFormat)
+      )), "The GAV-Triple identifying a dependency, i.e. a required Maven library."),
+      NamedPropertyFormat("scope", formats.StringFormat, "The Maven scope of this dependency")
+    )), "Dependencies (GAV-Triple) for this program"
+  )
+
+  override val analysisData: AnalysisData = AnalysisData.systemAnalysis(
+    "mvn-dependencies",
+    "1.0.0",
+    "TBD",
+    "Scala, built-in facilities",
+    Set("java"),
+    resultFormat,
+    SoftwareEntityKind.Program,
+    doesBatchProcessing = true,
+    isIncremental = false
+  )
+
+  // This analysis does not need any DB information
+  override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Program
 
 }

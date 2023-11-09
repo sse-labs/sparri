@@ -9,7 +9,7 @@ import org.anon.spareuse.core.utils.rabbitmq.{MqMessageWriter, MqStreamIntegrati
 import org.anon.spareuse.execution.utils.{AnalysisRunNotPossibleException, ValidRunnerCommand, ValidStartRunCommand}
 import org.anon.spareuse.core.formats.json.CustomObjectWriter
 import org.anon.spareuse.core.maven.MavenIdentifier
-import org.anon.spareuse.core.model.analysis.RunnerCommand
+import org.anon.spareuse.core.model.analysis.{AnalysisCommand, IncrementalAnalysisCommand, RunnerCommand}
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
 import org.anon.spareuse.core.utils.http
@@ -36,15 +36,15 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
   override def initialize(): Unit = {
 
-    AnalysisRegistry.registerAnalysisImplementation(new MvnConstantClassAnalysisImpl)
-    AnalysisRegistry.registerAnalysisImplementation(new MvnDependencyAnalysisImpl)
-    AnalysisRegistry.registerAnalysisImplementation(new MvnPartialCallgraphAnalysisImpl)
+    AnalysisRegistry.registerRegularAnalysis(MvnConstantClassAnalysisImpl, () => new MvnConstantClassAnalysisImpl)
+    AnalysisRegistry.registerRegularAnalysis(MvnDependencyAnalysisImpl, () => new MvnDependencyAnalysisImpl)
+    AnalysisRegistry.registerRegularAnalysis(MvnPartialCallgraphAnalysisImpl, () => new MvnPartialCallgraphAnalysisImpl)
 
     entityQueueWriter.initialize()
 
     dataAccessor.initialize()
 
-    AnalysisRegistry.allAnalysisImplementations().foreach(d => dataAccessor.registerIfNotPresent(d.analysisData))
+    AnalysisRegistry.allAnalysisDescriptors().foreach(d => dataAccessor.registerIfNotPresent(d.analysisData))
   }
 
   override def shutdown(): Unit = {
@@ -107,9 +107,36 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
           if (!dataAccessor.hasAnalysisRun(analysisName, analysisVersion, command.associatedRunId))
             throw new AnalysisRunNotPossibleException("Designated run id not in DB: " + command.associatedRunId, command)
 
+          // Check whether an implementation is registered and return a new implementation instance
+          val implementationOpt = command match {
+            case IncrementalAnalysisCommand(_, _, _, _, _, baselineRunId) =>
+              if (AnalysisRegistry.hasIncrementalAnalysisImplementation(analysisName, analysisVersion)) {
+
+                val baselineRun = if(baselineRunId.isBlank) None
+                else {
+                  if(dataAccessor.hasAnalysisRun(analysisName, analysisVersion, baselineRunId)){
+                    //TODO: Are the associatedInputs for results fully resolved by data accessor? No!
+                    Some(dataAccessor.getAnalysisRun(analysisName, analysisVersion, baselineRunId, includeResults = true).get)
+                  } else
+                    throw new AnalysisRunNotPossibleException(s"Baseline run ID invalid: " + baselineRunId, command)
+                }
+
+                Some(AnalysisRegistry.getIncrementalAnalysisImplementation(analysisName, analysisVersion, baselineRun))
+              } else None
+
+            case _: AnalysisCommand =>
+              if (AnalysisRegistry.hasRegularAnalysisImplementation(analysisName, analysisVersion))
+                Some(AnalysisRegistry.getRegularAnalysisImplementation(analysisName, analysisVersion))
+              else None
+
+            case _ =>
+              None
+
+          }
+
           // Assert that the required analysis implementation is available. This is the fastest requirement to check.
-          if (AnalysisRegistry.analysisImplementationAvailable(analysisName, analysisVersion)) {
-            val theAnalysisImpl = AnalysisRegistry.getAnalysisImplementation(analysisName, analysisVersion)
+          if (implementationOpt.isDefined) {
+            val theAnalysisImpl = implementationOpt.get
 
             // Check that analysis is registered in DB. Should always be the case
             ensureAnalysisIsRegistered(analysisName, analysisVersion)
@@ -132,7 +159,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
               if (!isValidName) {
                 log.warn("Input is not a valid entity name: " + n)
 
-                if (!theAnalysisImpl.inputBatchProcessing)
+                if (!theAnalysisImpl.descriptor.inputBatchProcessing)
                   throw new AnalysisRunNotPossibleException("Set of inputs contains an invalid entity name that can never be resolved: " + n, command)
               }
 
@@ -141,7 +168,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
 
             if (entityNamesToQueue.nonEmpty) {
-              val deferredAnalysisCommand = if(!theAnalysisImpl.inputBatchProcessing || namesToProcess.diff(entityNamesNotIndexed).isEmpty) command// If no current run is executed, we do not need to generate a second run UID
+              val deferredAnalysisCommand = if(!theAnalysisImpl.descriptor.inputBatchProcessing || namesToProcess.diff(entityNamesNotIndexed).isEmpty) command// If no current run is executed, we do not need to generate a second run UID
               else {
                 //If the current run is 'split into two', we need to generate a new run UID for the deferred analysis execution
                 val emptyRunId = dataAccessor.storeEmptyAnalysisRun(analysisName, analysisVersion, command.configurationRaw).get
@@ -153,7 +180,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
               entityQueueWriter.appendToQueue(minerCommand.toJson.compactPrint, Some(2))
 
-              if (!theAnalysisImpl.inputBatchProcessing) {
+              if (!theAnalysisImpl.descriptor.inputBatchProcessing) {
                 log.warn("Analysis will be rescheduled once input mining is done.")
                 return None
               }
@@ -174,7 +201,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
             }
 
             // Download entity information for the analysis from the DB
-            Try(namesToProcess.map(name => dataAccessor.getEntity(name, theAnalysisImpl.inputEntityKind, theAnalysisImpl.requiredInputResolutionLevel).get)) match {
+            Try(namesToProcess.map(name => dataAccessor.getEntity(name, theAnalysisImpl.descriptor.inputEntityKind, theAnalysisImpl.descriptor.requiredInputResolutionLevel).get)) match {
               case Success(entities) =>
                 // Finally check that the analysis can in fact be executed with those parameters
                 if (theAnalysisImpl.executionPossible(entities.toSeq, command.configurationRaw)) {
@@ -221,12 +248,12 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
           case Success(results) =>
             log.info(s"Analysis execution finished with ${results.size} results.")
 
-            val serializer = new CustomObjectWriter(analysisImpl.analysisData.resultFormat)
+            val serializer = new CustomObjectWriter(analysisImpl.descriptor.analysisData.resultFormat)
 
             val resultUuidIt = dataAccessor.getFreshResultUuids(results.size).iterator
 
             val runResults = results.map{ res => AnalysisResultData(resultUuidIt.next(), isRevoked = false, res.content, res.affectedEntities) }
-
+            // TODO: Connect to unchanged results for incremental analyses?
             val runLogs = analysisImpl.getLogs
 
             val dbRunId = cmd.associatedRunId
@@ -278,14 +305,14 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
   }
 
   private def getEntityNamesNotInDb(inputEntityNames: Set[String], analysisImpl: AnalysisImplementation): Set[String] = {
-    inputEntityNames.filterNot(name => dataAccessor.hasEntity(name, analysisImpl.inputEntityKind))
+    inputEntityNames.filterNot(name => dataAccessor.hasEntity(name, analysisImpl.descriptor.inputEntityKind))
   }
 
 
   private def filterUnprocessedEntityNames(inputEntityNames: Set[String], analysisImpl: AnalysisImplementation)(implicit cmd: RunnerCommand): Set[String] = {
-    dataAccessor.getAnalysisRuns(analysisImpl.name, analysisImpl.version) match {
+    dataAccessor.getAnalysisRuns(analysisImpl.descriptor.name, analysisImpl.descriptor.version) match {
       case Success(runData) =>
-        if (analysisImpl.inputBatchProcessing) {
+        if (analysisImpl.descriptor.inputBatchProcessing) {
           val allInputsProcessed = runData
             .filter(_.state.equals(RunState.Finished)) // Only consider non-failed runs!
             .flatMap(_.inputs.map(_.uid))
