@@ -2,4 +2,13 @@ package org.anon.spareuse.execution.analyses
 
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
 
-case class Result(content: Object, affectedEntities: Set[SoftwareEntityData])
+trait AnalysisResult {
+  val isFresh: Boolean
+}
+
+case class ExistingResult(resultUid: String) extends AnalysisResult {
+  override val isFresh = false
+}
+case class FreshResult(content: Object, affectedEntities: Set[SoftwareEntityData]) extends AnalysisResult {
+  override val isFresh: Boolean = true
+}

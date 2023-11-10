@@ -5,6 +5,7 @@ import org.anon.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities._
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
+import org.anon.spareuse.core.storage.AnalysisAccessor
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.InputStream
@@ -21,7 +22,7 @@ trait AnalysisImplementation extends MavenReleaseListDiscovery {
 
   def executionPossible(inputs: Seq[SoftwareEntityData], rawConfig: String): Boolean
 
-  def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[Result]]
+  def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[AnalysisResult]]
 
   protected def getFilesFor(jl: JavaLibrary): Try[Map[String, InputStream]] = Try {
     val ga = jl.name

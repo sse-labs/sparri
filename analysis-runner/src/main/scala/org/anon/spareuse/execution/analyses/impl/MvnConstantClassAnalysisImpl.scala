@@ -7,7 +7,7 @@ import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaLibrary}
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.utils.toHex
-import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisImplementationDescriptor, Result}
+import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisImplementationDescriptor, AnalysisResult, FreshResult}
 
 import scala.collection.mutable
 import scala.util.Try
@@ -25,7 +25,7 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
     }
   }
 
-  override def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[Result]] = Try {
+  override def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[AnalysisResult]] = Try {
 
     if(!rawConfig.isBlank)
       log.warn("Non-Empty configuration will be ignored, this analysis does not support configuration options")
@@ -57,7 +57,7 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
       classToHashesMap.mapValues(b => (b.size, b.distinct.size)).foreach{t => log.debug(s"-- ${t._1} -> ${t._2._2}/${t._2._1}")}
 
 
-      Result(resultMap, Set(library))
+      FreshResult(resultMap, Set(library))
     }.toSet
   }
 

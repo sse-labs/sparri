@@ -153,6 +153,25 @@ package object postgresql {
 
   }
 
+  case class AnalysisRunResultRelation(id: Long, analysisRunId: Long, analysisResultId: Long)
+
+  class AnalysisRunResultRelations(tag: Tag) extends Table[AnalysisRunResultRelation](tag, "analysisrunresults"){
+    def id: Rep[Long] = column[Long]("ID", O.PrimaryKey, O.AutoInc)
+
+    def analysisRunID: Rep[Long] = column[Long]("ANALYSIS_RUN_ID")
+
+    def resultID: Rep[Long] = column[Long]("RESULT_ID")
+
+    override def * : ProvenShape[AnalysisRunResultRelation] =
+      (id, analysisRunID, resultID) <> ((AnalysisRunResultRelation.apply _ ).tupled, AnalysisRunResultRelation.unapply)
+
+    def analysisRun: ForeignKeyQuery[SoftwareAnalysisRuns, SoftwareAnalysisRunRepr] =
+      foreignKey("RUN_FK", analysisRunID, TableQuery[SoftwareAnalysisRuns])(_.id)
+
+    def result: ForeignKeyQuery[AnalysisResults, AnalysisResult] =
+      foreignKey("RESULT_FK", resultID, TableQuery[AnalysisResults])(_.id)
+  }
+
   case class AnalysisResult(id: Long, uid: String, runId: Long, isRevoked: Boolean, jsonContent: String)
 
   class AnalysisResults(tag: Tag) extends Table[AnalysisResult](tag, "analysisresults"){

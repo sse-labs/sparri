@@ -7,7 +7,7 @@ import scala.util.{Success, Try}
 
 abstract class IncrementalAnalysisImplementation(protected val baselineRunOpt: Option[AnalysisRunData]) extends AnalysisImplementation {
 
-  override def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[Result]] = {
+  override def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[AnalysisResult]] = {
     baselineRunOpt match {
       case Some(baselineRun) =>
         log.info(s"Running incremental analysis ${descriptor.fullName} with baseline run ${baselineRun.uid}")
@@ -77,6 +77,6 @@ abstract class IncrementalAnalysisImplementation(protected val baselineRunOpt: O
   }
 
 
-  def executeIncremental(inputs: Seq[SoftwareEntityData], previousResult: Option[AnalysisResultData]): Try[Set[Result]]
+  def executeIncremental(inputs: Seq[SoftwareEntityData], previousResult: Option[AnalysisResultData]): Try[Set[AnalysisResult]]
 
 }

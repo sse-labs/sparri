@@ -15,7 +15,7 @@ import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
 import org.anon.spareuse.core.utils.http
 import org.anon.spareuse.core.utils.streaming.AsyncStreamWorker
 import org.anon.spareuse.execution.analyses.impl.{MvnConstantClassAnalysisImpl, MvnDependencyAnalysisImpl, MvnPartialCallgraphAnalysisImpl}
-import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisRegistry}
+import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisRegistry, ExistingResult, FreshResult}
 import spray.json.{enrichAny, enrichString}
 
 import java.time.LocalDateTime
@@ -252,19 +252,29 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       Future {
         analysisImpl.executeAnalysis(inputEntities.toSeq, cmd.configurationRaw) match {
           case Success(results) =>
-            log.info(s"Analysis execution finished with ${results.size} results.")
+
+            val numberOfFreshResults = results.count( _.isFresh )
+
+            log.info(s"Analysis execution finished with ${results.size} results ($numberOfFreshResults fresh results).")
 
             val serializer = new CustomObjectWriter(analysisImpl.descriptor.analysisData.resultFormat)
 
-            val resultUuidIt = dataAccessor.getFreshResultUuids(results.size).iterator
+            val resultUuidIt = dataAccessor.getFreshResultUuids(numberOfFreshResults).iterator
 
-            val runResults = results.map{ res => AnalysisResultData(resultUuidIt.next(), isRevoked = false, res.content, res.affectedEntities) }
-            // TODO: Connect to unchanged results for incremental analyses?
+            val freshResults = results.collect{
+              case FreshResult(content, affectedEntities) =>
+                AnalysisResultData(resultUuidIt.next(), isRevoked = false, content, affectedEntities)
+            }
+
+            val unchangedResultIds = results.collect{
+              case ExistingResult(resultUid) => resultUid
+            }
+
             val runLogs = analysisImpl.getLogs
 
             val dbRunId = cmd.associatedRunId
 
-            dataAccessor.setRunResults(dbRunId, LocalDateTime.now(), runLogs.toArray, runResults)(serializer) match {
+            dataAccessor.setRunResults(dbRunId, LocalDateTime.now(), runLogs.toArray, freshResults, unchangedResultIds)(serializer) match {
               case Success(_) =>
                 log.info(s"Successfully stored ${results.size} results.")
               case Failure(ex) =>

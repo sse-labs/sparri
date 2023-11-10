@@ -11,7 +11,7 @@ import scala.util.{Success, Try}
 
 class IncrementalAnalysisImplementationTest extends AnyFunSpec {
 
-  type IncrementalAnalysisStep = (Seq[SoftwareEntityData], Option[AnalysisResultData]) => Try[Set[Result]]
+  type IncrementalAnalysisStep = (Seq[SoftwareEntityData], Option[AnalysisResultData]) => Try[Set[AnalysisResult]]
 
   describe("Any incremental analysis implementation"){
 
@@ -55,7 +55,7 @@ class IncrementalAnalysisImplementationTest extends AnyFunSpec {
                             (implicit impl: IncrementalAnalysisStep): IncrementalAnalysisImplementation = new IncrementalAnalysisImplementation(baseline) {
 
     override def executeIncremental(inputs: Seq[SoftwareEntityData],
-                                    previousResult: Option[AnalysisResultData]): Try[Set[Result]] = impl(inputs, previousResult)
+                                    previousResult: Option[AnalysisResultData]): Try[Set[AnalysisResult]] = impl(inputs, previousResult)
 
     override val descriptor: AnalysisImplementationDescriptor = d
 

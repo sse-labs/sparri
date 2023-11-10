@@ -1,7 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl
 
 import org.anon.spareuse.core.formats
-import org.anon.spareuse.core.formats.{AnalysisResultFormat, ListResultFormat, NamedPropertyFormat, NumberFormat, ObjectResultFormat}
+import org.anon.spareuse.core.formats.{AnalysisResultFormat, ListResultFormat, NamedPropertyFormat, ObjectResultFormat}
 import org.anon.spareuse.core.maven.MavenIdentifier
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
@@ -10,7 +10,7 @@ import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.opal.OPALProjectHelper
 import org.anon.spareuse.core.utils.http.HttpDownloadException
 import MvnPartialCallgraphAnalysisImpl.{InternalCallSite, InternalMethod, RTAResult, TypeNode, parseConfig, validCallgraphAlgorithms}
-import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisImplementationDescriptor, Result}
+import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisImplementationDescriptor, AnalysisResult, FreshResult}
 import org.opalj.br.instructions.Instruction
 import org.opalj.br.{DeclaredMethod, Method, ObjectType}
 import org.opalj.tac.cg.{CHACallGraphKey, CTACallGraphKey, RTACallGraphKey, XTACallGraphKey}
@@ -43,7 +43,7 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
     inputs.forall( sed => sed.isInstanceOf[JavaProgram])
   }
 
-  override def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[Result]] = Try {
+  override def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[AnalysisResult]] = Try {
 
     val opalHelper = new OPALProjectHelper(loadJreClassImplementation = false)
     val config = parseConfig(rawConfig)
@@ -170,7 +170,7 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
           log.info(s"Done building partial callgraph representation for ${program.name}")
 
-          Some(Result(resultContent, Set(program)))
+          Some(FreshResult(resultContent, Set(program)))
 
         case Failure(HttpDownloadException(status, _, _)) if status == 404 =>
           log.warn(s"No JAR file available for ${program.identifier}")

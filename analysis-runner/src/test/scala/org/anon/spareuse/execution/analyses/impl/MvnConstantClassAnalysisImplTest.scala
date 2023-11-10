@@ -4,6 +4,7 @@ import org.anon.spareuse.core.formats
 import org.anon.spareuse.core.formats.json.CustomObjectWriter
 import org.anon.spareuse.core.formats.{MapResultFormat, NamedPropertyFormat, NumberFormat, ObjectResultFormat}
 import org.anon.spareuse.core.model.entities.JavaEntities.{buildClassFor, buildLibrary, buildPackageFor, buildProgramFor}
+import org.anon.spareuse.execution.analyses.FreshResult
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must
 
@@ -65,7 +66,9 @@ class MvnConstantClassAnalysisImplTest extends AnyFlatSpec with must.Matchers {
 
     assert(result.isSuccess && result.get.size == 1)
 
-    val data = result.get.head
+    assert(result.get.head.isFresh)
+
+    val data = result.get.head.asInstanceOf[FreshResult]
 
     assert(data.affectedEntities.contains(lib) && data.affectedEntities.size == 1)
 

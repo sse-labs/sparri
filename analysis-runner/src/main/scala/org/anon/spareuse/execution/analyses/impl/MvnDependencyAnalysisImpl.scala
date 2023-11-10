@@ -8,7 +8,7 @@ import org.anon.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
-import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisImplementationDescriptor, Result}
+import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisImplementationDescriptor, AnalysisResult, FreshResult}
 
 import scala.util.{Failure, Success, Try}
 
@@ -29,7 +29,7 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
     }
   }
 
-  override def executeAnalysis(inputs: Seq[SoftwareEntityData], configRaw: String): Try[Set[Result]] = Try {
+  override def executeAnalysis(inputs: Seq[SoftwareEntityData], configRaw: String): Try[Set[AnalysisResult]] = Try {
     val theConfig = parseConfig(configRaw)
     val resolver: DependencyExtractor = if(theConfig.useJeka) new JekaDependencyExtractor() else new PomFileDependencyExtractor()
 
@@ -52,7 +52,7 @@ class MvnDependencyAnalysisImpl extends AnalysisImplementation{
             log.debug(s"Results for program [$gav]:")
             dependencies.foreach{ d => log.debug(s"-- ${d.identifier}:${d.scope}")}
 
-            Result(dependencies, Set(jp))
+            FreshResult(dependencies, Set(jp))
           case Failure(ex) =>
             log.error("Dependency extraction failed", ex)
             throw ex
