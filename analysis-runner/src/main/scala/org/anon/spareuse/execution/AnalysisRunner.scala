@@ -115,8 +115,14 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
                 val baselineRun = if(baselineRunId.isBlank) None
                 else {
                   if(dataAccessor.hasAnalysisRun(analysisName, analysisVersion, baselineRunId)){
-                    //TODO: Are the associatedInputs for results fully resolved by data accessor? No!
-                    Some(dataAccessor.getAnalysisRun(analysisName, analysisVersion, baselineRunId, includeResults = true).get)
+
+                    // Make sure the run that we pass to the analysis as a baseline has fully resolved entity hierarchies
+                    val theRun = dataAccessor
+                      .getAnalysisRun(analysisName, analysisVersion, baselineRunId, includeResults = true)
+                      .get
+                      .withResolvedGenerics( uid => dataAccessor.getEntity(uid).get , forceResolve = true)
+
+                    Some(theRun)
                   } else
                     throw new AnalysisRunNotPossibleException(s"Baseline run ID invalid: " + baselineRunId, command)
                 }

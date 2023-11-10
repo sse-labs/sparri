@@ -3,7 +3,7 @@ package org.anon.spareuse.execution.analyses
 import org.anon.spareuse.core.model.{AnalysisResultData, AnalysisRunData}
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
 
-import scala.util.Try
+import scala.util.{Success, Try}
 
 abstract class IncrementalAnalysisImplementation(protected val baselineRunOpt: Option[AnalysisRunData]) extends AnalysisImplementation {
 
@@ -48,9 +48,13 @@ abstract class IncrementalAnalysisImplementation(protected val baselineRunOpt: O
 
           }
         }
-      case None =>
+      case None if inputs.nonEmpty =>
         log.info(s"Running incremental analysis ${descriptor.fullName} with empty baseline.")
         executeIncremental(inputs, None)
+
+      case _ =>
+        log.info(s"No inputs supplied, analysis ${descriptor.fullName} will not be executed.")
+        Success(Set.empty)
     }
   }
 

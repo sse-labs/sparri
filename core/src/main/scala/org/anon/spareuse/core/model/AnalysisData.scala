@@ -3,7 +3,7 @@ package org.anon.spareuse.core.model
 import org.anon.spareuse.core.formats.AnalysisResultFormat
 import org.anon.spareuse.core.model.RunState.RunState
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import org.anon.spareuse.core.model.entities.SoftwareEntityData
+import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
 
 import java.time.LocalDateTime
 
@@ -19,7 +19,35 @@ object AnalysisData {
 }
 
 case class AnalysisRunData(uid: String, timestamp: LocalDateTime, logs: Array[String], configuration: String, state: RunState, isRevoked: Boolean,
-                           inputs: Set[SoftwareEntityData], results: Set[AnalysisResultData], parentAnalysisName: String, parentAnalysisVersion: String)
+                           inputs: Set[SoftwareEntityData], results: Set[AnalysisResultData], parentAnalysisName: String, parentAnalysisVersion: String){
+  def withResolvedGenerics(resolver: String => SoftwareEntityData, forceResolve: Boolean = false): AnalysisRunData = {
+
+    def resolveIfNeeded(sed: SoftwareEntityData) = sed match {
+      case g: GenericEntityData =>
+        resolver(g.uid)
+      case s: SoftwareEntityData if (!s.hasParent && s.getChildren.isEmpty) || forceResolve =>
+        resolver(s.uid)
+      case s@_ =>
+        s
+    }
+
+    val resolvedResults = results.map { _.withResolvedGenerics(resolver, forceResolve) }
+
+
+    AnalysisRunData(
+      uid,
+      timestamp,
+      logs,
+      configuration,
+      state,
+      isRevoked,
+      inputs.map(resolveIfNeeded),
+      resolvedResults,
+      parentAnalysisName,
+      parentAnalysisVersion
+    )
+  }
+}
 
 object RunState extends Enumeration {
 
