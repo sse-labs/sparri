@@ -7,6 +7,6 @@ trait RequestsJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
 
   implicit val enqueueRequestFormat: JsonFormat[EnqueueRequest] = jsonFormat1(EnqueueRequest)
 
-  implicit val executeAnalysisRequestFormat: JsonFormat[ExecuteAnalysisRequest] = jsonFormat3(ExecuteAnalysisRequest)
+  implicit val executeAnalysisRequestFormat: JsonFormat[ExecuteAnalysisRequest] = jsonFormat4(ExecuteAnalysisRequest)
 
 }

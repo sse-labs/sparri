@@ -26,7 +26,21 @@ trait AnalysisAccessor {
 
   def storeEmptyAnalysisRun(analysisName: String, analysisVersion: String, runConfig: String): Try[String]
 
-  def setRunResults(runUid: String, timeStamp: LocalDateTime, logs: Array[String], results: Set[AnalysisResultData])(implicit serializer: JsonWriter[Object]): Try[Unit]
+  /**
+   * Sets the results for a given run, as well as its timestamp and logs. Will set the run's state to 'Finished'.
+   * @param runUid UID of the run to set results for
+   * @param timeStamp Timestamp to associate with the given run
+   * @param logs Logs to associated with the given run
+   * @param freshResults Results freshly introduced with this run, i.e. not existing in the DB so far
+   * @param unchangedResultIds IDs of results that already exist in the DB, and are also valid (without changes) for the given run
+   * @param serializer Serializer for results produced by this run
+   * @return Unit if successful, Failure otherwise
+   */
+  def setRunResults(runUid: String,
+                    timeStamp: LocalDateTime,
+                    logs: Array[String],
+                    freshResults: Set[AnalysisResultData],
+                    unchangedResultIds: Set[String])(implicit serializer: JsonWriter[Object]): Try[Unit]
 
   /**
    * This Method retrieves all results for the given run, but does not deserialize the contents into an actual object
@@ -48,6 +62,8 @@ trait AnalysisAccessor {
   def hasAnalysis(analysisName: String, analysisVersion: String): Boolean = getAnalysisData(analysisName, analysisVersion).isSuccess
 
   def hasAnalysis(analysisName: String): Boolean
+
+  def isIncrementalAnalysis(analysisName: String, analysisVersion: String): Boolean
 
   def hasAnalysisRun(analysisName: String, analysisVersion: String, runUid: String): Boolean
 

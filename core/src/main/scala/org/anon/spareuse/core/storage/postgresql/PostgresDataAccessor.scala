@@ -47,6 +47,7 @@ class PostgresDataAccessor extends DataAccessor {
   private val resultFormatsTable = TableQuery[ResultFormats]
   private val nestedResultFormatsTable = TableQuery[NestedResultFormatReferences]
   private val resultValiditiesTable = TableQuery[AnalysisResultValidities]
+  private val runResultsTable = TableQuery[AnalysisRunResultRelations]
 
   private lazy val idReturningAnalysisRunTable = analysisRunsTable returning analysisRunsTable.map(_.id)
   private lazy val idReturningFormatTable = resultFormatsTable returning resultFormatsTable.map(_.id)
@@ -68,7 +69,7 @@ class PostgresDataAccessor extends DataAccessor {
   override def initializeAnalysisTables(): Unit = {
     val setupAction = DBIO.seq(resultFormatsTable.schema.createIfNotExists, nestedResultFormatsTable.schema.createIfNotExists,
       analysesTable.schema.createIfNotExists, analysisRunsTable.schema.createIfNotExists, analysisRunInputsTable.schema.createIfNotExists,
-      analysisResultsTable.schema.createIfNotExists, resultValiditiesTable.schema.createIfNotExists)
+      analysisResultsTable.schema.createIfNotExists, resultValiditiesTable.schema.createIfNotExists, runResultsTable.schema.createIfNotExists)
 
     val setupF = db.run(setupAction)
 
@@ -593,7 +594,12 @@ class PostgresDataAccessor extends DataAccessor {
     }
   }
 
-  override def setRunResults(runUid: String, timeStamp: LocalDateTime, logs: Array[String], results: Set[AnalysisResultData])(implicit serializer: JsonWriter[Object]): Try[Unit] = Try {
+  override def setRunResults(runUid: String,
+                             timeStamp: LocalDateTime,
+                             logs: Array[String],
+                             freshResults: Set[AnalysisResultData],
+                             unchangedResultIds: Set[String])(implicit serializer: JsonWriter[Object]): Try[Unit] = Try {
+
     val runRepr: SoftwareAnalysisRunRepr = getRunRepr(runUid)
     setRunState(runRepr.id, RunState.Finished.id)
 
@@ -606,7 +612,7 @@ class PostgresDataAccessor extends DataAccessor {
     Await.ready(updateTimeStampAction, simpleQueryTimeout)
     Await.ready(updateLogsAction, simpleQueryTimeout)
 
-    results.foreach{ runResult =>
+    val newResultIds = freshResults.map{ runResult =>
       // Serialize result content
       val content = serializer.write(runResult.content).compactPrint
       val resultDbObj = AnalysisResult(-1, runResult.uid, runRepr.id, runResult.isRevoked, content)
@@ -619,14 +625,28 @@ class PostgresDataAccessor extends DataAccessor {
         Await.ready(db.run(resultValiditiesTable += AnalysisResultValidity(-1, resultDbId, affectedEntityId)), simpleQueryTimeout)
       }
 
+      resultDbId
+    }
 
+
+    val resultDbIdsAction = db.run(analysisResultsTable.filter(r => r.uid inSet unchangedResultIds).map(_.id).result)
+    val unchangedResultIdsInDb = Await.result(resultDbIdsAction, simpleQueryTimeout)
+
+    (newResultIds ++ unchangedResultIdsInDb).foreach{ resultDbId =>
+      Await.ready(db.run(runResultsTable += AnalysisRunResultRelation(-1, runRepr.id, resultDbId)), simpleQueryTimeout )
     }
   }
 
   override def getRunResultsAsJSON(runUid: String, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]] = Try {
+
     val runRepr: SoftwareAnalysisRunRepr = getRunRepr(runUid)
 
-    val resQuery = db.run(analysisResultsTable.filter(r => r.runID === runRepr.id).sortBy(_.id).drop(skip).take(limit).result)
+    val resQuery = db.run {
+      val joinQuery = for { (_, resultRepr) <- runResultsTable.filter(rr => rr.analysisRunID === runRepr.id).sortBy(_.id).drop(skip).take(limit) join analysisResultsTable on (_.resultID === _.id) } yield resultRepr
+
+      joinQuery.result
+    }
+
     val allResults = Await.result(resQuery, longActionTimeout)
 
 
@@ -643,7 +663,10 @@ class PostgresDataAccessor extends DataAccessor {
         .filter(t => t._1 == resultRep.id)
         .map(t => toGenericEntityData(t._2))
 
-      AnalysisResultData(resultRep.uid, resultRep.isRevoked, resultRep.jsonContent, allAssociatedEntities.toSet)
+      val runIdQuery = db.run(analysisRunsTable.filter(_.id === resultRep.runId).map(_.uid).result)
+      val producingRunUid = Await.result(runIdQuery, simpleQueryTimeout).head
+
+      AnalysisResultData(resultRep.uid, resultRep.isRevoked, producingRunUid, resultRep.jsonContent, allAssociatedEntities.toSet)
     }.toSet
 
   }
@@ -692,6 +715,7 @@ class PostgresDataAccessor extends DataAccessor {
 
   override def getJSONResultsFor(entityName: String, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]] = Try {
 
+
     val eid = getEntityId(entityName)
 
     // Get all results associated with this entity
@@ -731,7 +755,10 @@ class PostgresDataAccessor extends DataAccessor {
         .filter(t => t._1 == resultRep.id)
         .map(t => toGenericEntityData(t._2))
 
-      AnalysisResultData(resultRep.uid, resultRep.isRevoked, resultRep.jsonContent, allAssociatedEntities.toSet)
+      val runIdQuery = db.run(analysisRunsTable.filter(_.id === resultRep.runId).map(_.uid).result)
+      val producingRunUid = Await.result(runIdQuery, simpleQueryTimeout).head
+
+      AnalysisResultData(resultRep.uid, resultRep.isRevoked, producingRunUid, resultRep.jsonContent, allAssociatedEntities.toSet)
     }.toSet
 
   }
@@ -824,5 +851,13 @@ class PostgresDataAccessor extends DataAccessor {
   override def hasEntity(ident: String): Boolean = Try {
     val queryF = db.run(entitiesTable.filter( e => e.qualifier === ident).exists.result)
     Await.result(queryF, simpleQueryTimeout)
+  }
+
+  override def isIncrementalAnalysis(analysisName: String, analysisVersion: String): Boolean = Try {
+    val queryF = db.run(analysesTable.filter(a => a.name === analysisName && a.version === analysisVersion).map(_.isIncremental).result)
+
+    val queryResult = Await.result(queryF, simpleQueryTimeout)
+
+    queryResult.nonEmpty && queryResult.head
   }
 }

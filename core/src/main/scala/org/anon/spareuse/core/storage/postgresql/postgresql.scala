@@ -46,16 +46,17 @@ package object postgresql {
 
 
   case class SoftwareAnalysisRepr(id: Long, name: String, version: String, description: String, builtOn: String,
-                                  registeredBy: String, inputLanguages: String, formatId: Long, revoked: Boolean, inputKind: Int){
+                                  registeredBy: String, inputLanguages: String, formatId: Long, revoked: Boolean,
+                                  inputKind: Int, batchProcessing: Boolean, isIncremental: Boolean){
     def toAnalysisData(format: AnalysisResultFormat, executions: Set[AnalysisRunData] = Set.empty): AnalysisData = {
       AnalysisData(name, version, description, builtOn, registeredBy, inputLanguages.split(",").toSet, revoked,
-        format, SoftwareEntityKind.fromId(inputKind), executions)
+        format, SoftwareEntityKind.fromId(inputKind), batchProcessing, isIncremental, executions)
     }
   }
 
   def toAnalysisRepr(data: AnalysisData, formatId: Long): SoftwareAnalysisRepr = {
     SoftwareAnalysisRepr(-1, data.name, data.version, data.description, data.builtOn, data.registeredBy,
-      data.inputLanguages.mkString(","), formatId, data.isRevoked, data.inputKind.id)
+      data.inputLanguages.mkString(","), formatId, data.isRevoked, data.inputKind.id, data.doesBatchProcessing, data.isIncremental)
   }
 
   class SoftwareAnalyses(tag: Tag) extends Table[SoftwareAnalysisRepr](tag, "analyses") {
@@ -80,8 +81,13 @@ package object postgresql {
 
     def inputKind: Rep[Int] = column[Int]("INPUT_KIND")
 
+    def batchProcessing: Rep[Boolean] = column[Boolean]("IS_BATCH")
+
+    def isIncremental: Rep[Boolean] = column[Boolean]("IS_INCREMENTAL")
+
     override def * : ProvenShape[SoftwareAnalysisRepr] =
-      (id, name, version, description, builtOn, registeredBy, inputLanguages, formatId, isRevoked, inputKind)<> ((SoftwareAnalysisRepr.apply _).tupled, SoftwareAnalysisRepr.unapply)
+      (id, name, version, description, builtOn, registeredBy, inputLanguages, formatId, isRevoked, inputKind, batchProcessing,
+        isIncremental) <> ((SoftwareAnalysisRepr.apply _).tupled, SoftwareAnalysisRepr.unapply)
 
     def format: ForeignKeyQuery[ResultFormats, ResultFormat] =
       foreignKey("FORMAT_FK", formatId, TableQuery[ResultFormats])(_.id)
@@ -145,6 +151,25 @@ package object postgresql {
     def inputEntity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
       foreignKey("INPUT_FK", inputEntityID, TableQuery[SoftwareEntities])(_.id)
 
+  }
+
+  case class AnalysisRunResultRelation(id: Long, analysisRunId: Long, analysisResultId: Long)
+
+  class AnalysisRunResultRelations(tag: Tag) extends Table[AnalysisRunResultRelation](tag, "analysisrunresults"){
+    def id: Rep[Long] = column[Long]("ID", O.PrimaryKey, O.AutoInc)
+
+    def analysisRunID: Rep[Long] = column[Long]("ANALYSIS_RUN_ID")
+
+    def resultID: Rep[Long] = column[Long]("RESULT_ID")
+
+    override def * : ProvenShape[AnalysisRunResultRelation] =
+      (id, analysisRunID, resultID) <> ((AnalysisRunResultRelation.apply _ ).tupled, AnalysisRunResultRelation.unapply)
+
+    def analysisRun: ForeignKeyQuery[SoftwareAnalysisRuns, SoftwareAnalysisRunRepr] =
+      foreignKey("RUN_FK", analysisRunID, TableQuery[SoftwareAnalysisRuns])(_.id)
+
+    def result: ForeignKeyQuery[AnalysisResults, AnalysisResult] =
+      foreignKey("RESULT_FK", resultID, TableQuery[AnalysisResults])(_.id)
   }
 
   case class AnalysisResult(id: Long, uid: String, runId: Long, isRevoked: Boolean, jsonContent: String)

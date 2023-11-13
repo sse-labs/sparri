@@ -4,6 +4,7 @@ import org.anon.spareuse.core.formats
 import org.anon.spareuse.core.formats.json.CustomObjectWriter
 import org.anon.spareuse.core.formats.{ListResultFormat, MapResultFormat, NamedPropertyFormat, ObjectResultFormat}
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaProgram, buildPackage, buildPackageFor}
+import org.anon.spareuse.execution.analyses.FreshResult
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must
 
@@ -27,10 +28,15 @@ class MvnDependencyAnalysisImplTest extends AnyFlatSpec with must.Matchers {
 
     assert(result.isSuccess)
     assert(result.get.size == 1)
-    assert(result.get.head.affectedEntities.size == 1 && result.get.head.affectedEntities.head.equals(sampleProgram))
+    assert(result.get.head.isFresh)
+
+    val data = result.get.head.asInstanceOf[FreshResult]
+
+
+    assert(data.affectedEntities.size == 1 && data.affectedEntities.head.equals(sampleProgram))
 
     val writer = new CustomObjectWriter(expectedResultFormat)
-    val json = writer.write(result.get.head.content)
+    val json = writer.write(data.content)
 
     println(json.prettyPrint)
 

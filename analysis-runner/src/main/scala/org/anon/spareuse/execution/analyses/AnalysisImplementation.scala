@@ -5,6 +5,7 @@ import org.anon.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities._
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
+import org.anon.spareuse.core.storage.AnalysisAccessor
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.InputStream
@@ -17,29 +18,11 @@ trait AnalysisImplementation extends MavenReleaseListDiscovery {
   private val internalLog: Logger = LoggerFactory.getLogger(getClass)
   protected val log: PersistingLogger = new PersistingLogger
 
-  val analysisData: AnalysisData
-
-  lazy val name: String = analysisData.name
-  lazy val version: String = analysisData.version
-
-  lazy val inputEntityKind: SoftwareEntityKind = analysisData.inputKind
-
-
-  /**
-   * Specifies whether this analysis processes the set of inputs one after another (batch processing) or the set of
-   * inputs as-a-whole. If set to true, the runner can optimize and remove redundant inputs before execution.
-   */
-  val inputBatchProcessing: Boolean
-
-  /**
-   * Specifies how deep the input entity structure needs to be, i.e. how much information the analysis needs
-   * from the database. By default, entities will be resolved until the Method level (thus excluding instructions).
-   */
-  val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Method
+  val descriptor: AnalysisImplementationDescriptor
 
   def executionPossible(inputs: Seq[SoftwareEntityData], rawConfig: String): Boolean
 
-  def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[Result]]
+  def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[AnalysisResult]]
 
   protected def getFilesFor(jl: JavaLibrary): Try[Map[String, InputStream]] = Try {
     val ga = jl.name
@@ -129,5 +112,30 @@ trait AnalysisImplementation extends MavenReleaseListDiscovery {
     def getLogs: Seq[String] = logs
 
   }
+}
 
+trait AnalysisImplementationDescriptor {
+
+  val analysisData: AnalysisData
+
+  lazy val name: String = analysisData.name
+  lazy val version: String = analysisData.version
+  lazy val fullName: String = s"$name:$version"
+
+  lazy val inputEntityKind: SoftwareEntityKind = analysisData.inputKind
+
+  lazy val isIncremental: Boolean = analysisData.isIncremental
+
+
+  /**
+   * Specifies whether this analysis processes the set of inputs one after another (batch processing) or the set of
+   * inputs as-a-whole. If set to true, the runner can optimize and remove redundant inputs before execution.
+   */
+  final lazy val inputBatchProcessing: Boolean = analysisData.doesBatchProcessing
+
+  /**
+   * Specifies how deep the input entity structure needs to be, i.e. how much information the analysis needs
+   * from the database. By default, entities will be resolved until the Method level (thus excluding instructions).
+   */
+  val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Method
 }

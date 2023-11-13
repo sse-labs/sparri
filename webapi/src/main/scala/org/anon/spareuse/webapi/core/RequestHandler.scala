@@ -4,7 +4,7 @@ import org.anon.spareuse.webapi.model.{genericEntityToEntityRepr, toAnalysisForm
 import org.anon.spareuse.core.utils.rabbitmq.MqMessageWriter
 import org.anon.spareuse.core.model.RunState
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import org.anon.spareuse.core.model.analysis.{RunnerCommand, RunnerCommandJsonSupport}
+import org.anon.spareuse.core.model.analysis.{AnalysisCommand, IncrementalAnalysisCommand, RunnerCommand, RunnerCommandJsonSupport}
 import org.anon.spareuse.core.model.entities.{MinerCommand, MinerCommandJsonSupport}
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.webapi.WebapiConfig
@@ -132,15 +132,42 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     }
   }
 
+  def validateRunRequest(analysisName: String, analysisVersion: String, request: ExecuteAnalysisRequest): (Boolean, String) = {
+
+    val isIncrementalAnalysis = dataAccessor.isIncrementalAnalysis(analysisName, analysisVersion)
+
+    if(request.BaselineRun.isDefined && !isIncrementalAnalysis) {
+      (false, "A baseline run cannot be specified for non-incremental analyses.")
+    } else if(!isIncrementalAnalysis){
+      (true, "")
+    } else if (request.BaselineRun.isEmpty){
+      log.warn(s"An incremental analysis has been triggered without specifying a baseline run: $analysisName:$analysisVersion")
+      (true, "Running incremental analysis with empty baseline.")
+    } else {
+      dataAccessor.getAnalysisRun(analysisName, analysisVersion, request.BaselineRun.get) match {
+        case Success(_) =>
+          (true, "")
+        case Failure(_) =>
+          (false, s"Invalid baseline run specified, id ${request.BaselineRun.get} not found")
+      }
+    }
+  }
+
   def triggerNewAnalysisRun(analysisName: String, analysisVersion: String, request: ExecuteAnalysisRequest): Try[String] = Try {
+
+    val isIncrementalAnalysis = dataAccessor.isIncrementalAnalysis(analysisName, analysisVersion)
 
     // Create new empty record for analysis run
     val newId = dataAccessor.storeEmptyAnalysisRun(analysisName, analysisVersion, request.Configuration).get
 
     // Queue run execution
     val name = s"$analysisName:$analysisVersion"
-    val command = RunnerCommand(name, newId, request.User.getOrElse("Anonymous"), request.Inputs.toSet, request.Configuration)
-    val commandJson = command.toJson.compactPrint
+
+    // We assume all validation has been done beforehand, i.e. validateRunRequest has been called
+    val command = AnalysisCommand(name, newId, request.User.getOrElse("Anonymous"), request.Inputs.toSet, request.Configuration)
+
+    val commandJson = if(isIncrementalAnalysis) command.asIncremental(request.BaselineRun).toJson.compactPrint
+    else command.toJson.compactPrint
 
     log.info(s"Publishing a new Runner Command for analysis $name : $commandJson")
 

@@ -1,6 +1,6 @@
 package org.anon.spareuse.webapi.server.routes
 
-import akka.http.scaladsl.model.StatusCodes.{Accepted, Found, InternalServerError, OK}
+import akka.http.scaladsl.model.StatusCodes.{Accepted, BadRequest, Found, InternalServerError, OK}
 import akka.http.scaladsl.model.headers.Location
 import akka.http.scaladsl.model.{HttpRequest, Uri}
 import akka.http.scaladsl.server.Directives._
@@ -129,14 +129,24 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
 
         // If it does not exist, create new run record and trigger analysis. Respond with id of new run record
         case Success(None) =>
-          val runId: Try[String] = requestHandler.triggerNewAnalysisRun(analysisName, analysisVersion, entity)
-          runId match {
-            case Success(id) => respondWithHeaders(Location(buildRunUri(id))) {
-              complete(Accepted, id)
-            }
-            case Failure(ex) =>
-              log.error("Failed to create a new run id for analysis request", ex)
-              complete(InternalServerError)
+
+          requestHandler.validateRunRequest(analysisName, analysisVersion, entity) match {
+
+            // If consistency checks for request fail, respond with appropriate error message
+            case (false, msg) =>
+              complete(BadRequest, msg)
+
+            // If request is valid, proceed with handling it
+            case (true, _) =>
+              val runId: Try[String] = requestHandler.triggerNewAnalysisRun(analysisName, analysisVersion, entity)
+              runId match {
+                case Success(id) => respondWithHeaders(Location(buildRunUri(id))) {
+                  complete(Accepted, id)
+                }
+                case Failure(ex) =>
+                  log.error("Failed to create a new run id for analysis request", ex)
+                  complete(InternalServerError)
+              }
           }
 
         // If checking DB for entries failed, respond with error

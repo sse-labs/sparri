@@ -66,13 +66,13 @@ object JavaEntities {
     val identifier: String = entityIdent
   }
 
-  class JavaLibrary(libraryName: String,
+  class JavaLibrary(val libraryName: String,
                     repositoryIdent: String) extends PathIdentifiableJavaEntity(libraryName, libraryName, libraryName, repositoryIdent, None){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Library
   }
 
-  class JavaProgram(programName: String,
-                    programIdent: String,
+  class JavaProgram(val programName: String,
+                    val programIdent: String,
                     programUid: String,
                     repositoryIdent: String,
                     hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(programName, programIdent, programUid, repositoryIdent, Some(hashedBytes)) {

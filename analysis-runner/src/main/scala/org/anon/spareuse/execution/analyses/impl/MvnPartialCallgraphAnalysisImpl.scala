@@ -1,7 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl
 
 import org.anon.spareuse.core.formats
-import org.anon.spareuse.core.formats.{AnalysisResultFormat, ListResultFormat, NamedPropertyFormat, NumberFormat, ObjectResultFormat}
+import org.anon.spareuse.core.formats.{AnalysisResultFormat, ListResultFormat, NamedPropertyFormat, ObjectResultFormat}
 import org.anon.spareuse.core.maven.MavenIdentifier
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
@@ -10,7 +10,7 @@ import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.opal.OPALProjectHelper
 import org.anon.spareuse.core.utils.http.HttpDownloadException
 import MvnPartialCallgraphAnalysisImpl.{InternalCallSite, InternalMethod, RTAResult, TypeNode, parseConfig, validCallgraphAlgorithms}
-import org.anon.spareuse.execution.analyses.{AnalysisImplementation, Result}
+import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisImplementationDescriptor, AnalysisResult, FreshResult}
 import org.opalj.br.instructions.Instruction
 import org.opalj.br.{DeclaredMethod, Method, ObjectType}
 import org.opalj.tac.cg.{CHACallGraphKey, CTACallGraphKey, RTACallGraphKey, XTACallGraphKey}
@@ -21,60 +21,7 @@ import scala.util.{Failure, Success, Try}
 
 class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
-  private val resultFormat: AnalysisResultFormat = ObjectResultFormat(
-    NamedPropertyFormat("graph",
-      ListResultFormat(
-        ObjectResultFormat(Set(
-          NamedPropertyFormat("mId", formats.NumberFormat, "The unique id assigned to this method"),
-          NamedPropertyFormat("mFqn", formats.StringFormat, "The fully qualified name of this method"),
-          NamedPropertyFormat("reachable", formats.NumberFormat, "Indicates whether this method was reachable in the partial callgraph"),
-          NamedPropertyFormat("css", ListResultFormat(ObjectResultFormat(Set(
-            NamedPropertyFormat("csPc", formats.NumberFormat, "PC of this callsite inside the enclosing method body"),
-            NamedPropertyFormat("targets", ListResultFormat(formats.NumberFormat), "List of method ids that have been resolved as targets for this callsite"),
-            NamedPropertyFormat("incomplete", formats.NumberFormat, "Indicates whether the resolution of this callsite was incomplete"),
-            NamedPropertyFormat("instr", formats.StringFormat, "String representation of the callsite instruction")
-          )), "List of callsites for this method"))
-        ))
-        , "List of Method definitions with callsite information")
-      , "The actual RTA callgraph"),
-    NamedPropertyFormat("types",
-      ListResultFormat(ObjectResultFormat(
-        NamedPropertyFormat("id", formats.NumberFormat, "The unique id for this type"),
-        NamedPropertyFormat("fqn", formats.StringFormat, "The type FQN"),
-        NamedPropertyFormat("interface", formats.NumberFormat, "Number indicating whether this type is an interface definition"),
-        NamedPropertyFormat("superId", formats.NumberFormat, "The id of the super type, or -1 if there is none"),
-        NamedPropertyFormat("interfaceIds", formats.ListResultFormat(formats.NumberFormat), "The set of interface type ids")
-      ))
-      , "A list of type nodes")
-  )
-
-  private val resultFormat2: AnalysisResultFormat = ListResultFormat(
-    ObjectResultFormat(Set(
-      NamedPropertyFormat("mId", formats.NumberFormat, "The unique id assigned to this method"),
-      NamedPropertyFormat("mFqn", formats.StringFormat, "The fully qualified name of this method"),
-      NamedPropertyFormat("reachable", formats.NumberFormat, "Indicates whether this method was reachable in the partial callgraph"),
-      NamedPropertyFormat("css", ListResultFormat(ObjectResultFormat(Set(
-        NamedPropertyFormat("csPc", formats.NumberFormat, "PC of this callsite inside the enclosing method body"),
-        NamedPropertyFormat("targets", ListResultFormat(formats.NumberFormat), "List of method ids that have been resolved as targets for this callsite"),
-        NamedPropertyFormat("incomplete", formats.NumberFormat, "Indicates whether the resolution of this callsite was incomplete"),
-        NamedPropertyFormat("instr", formats.StringFormat, "String representation of the callsite instruction")
-      )), "List of callsites for this method"))
-    ))
-  , "List of Method definitions with callsite information")
-
-  override val analysisData: AnalysisData = AnalysisData.systemAnalysis(
-    "mvn-partial-callgraphs",
-    "1.0.0",
-    "This analysis uses OPAL to calculate a partial callgraph for a given Maven program (GAV-Triple). The graph is returned as a list of methods with unique ids and references to callees. " +
-      "Multiple construction algorithms are supported (use '--algorithm cha|rta|xta|cta'), default is RTA. Use '--use-jre' to include JRE implementations in callgraph.",
-    "OPAL",
-    Set("java", "scala"),
-    resultFormat, SoftwareEntityKind.Program)
-
-
-  override val inputBatchProcessing: Boolean = true
-
-  override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Package
+  override val descriptor: AnalysisImplementationDescriptor = MvnPartialCallgraphAnalysisImpl
 
   override def executionPossible(inputs: Seq[SoftwareEntityData], rawConfig: String): Boolean = {
 
@@ -96,7 +43,7 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
     inputs.forall( sed => sed.isInstanceOf[JavaProgram])
   }
 
-  override def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[Result]] = Try {
+  override def executeAnalysis(inputs: Seq[SoftwareEntityData], rawConfig: String): Try[Set[AnalysisResult]] = Try {
 
     val opalHelper = new OPALProjectHelper(loadJreClassImplementation = false)
     val config = parseConfig(rawConfig)
@@ -223,7 +170,7 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
           log.info(s"Done building partial callgraph representation for ${program.name}")
 
-          Some(Result(resultContent, Set(program)))
+          Some(FreshResult(resultContent, Set(program)))
 
         case Failure(HttpDownloadException(status, _, _)) if status == 404 =>
           log.warn(s"No JAR file available for ${program.identifier}")
@@ -238,9 +185,65 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
   }
 }
 
-object MvnPartialCallgraphAnalysisImpl {
+object MvnPartialCallgraphAnalysisImpl extends AnalysisImplementationDescriptor {
 
   val validCallgraphAlgorithms: Set[String] = Set("cha", "rta", "cta", "xta")
+
+  private val resultFormat: AnalysisResultFormat = ObjectResultFormat(
+    NamedPropertyFormat("graph",
+      ListResultFormat(
+        ObjectResultFormat(Set(
+          NamedPropertyFormat("mId", formats.NumberFormat, "The unique id assigned to this method"),
+          NamedPropertyFormat("mFqn", formats.StringFormat, "The fully qualified name of this method"),
+          NamedPropertyFormat("reachable", formats.NumberFormat, "Indicates whether this method was reachable in the partial callgraph"),
+          NamedPropertyFormat("css", ListResultFormat(ObjectResultFormat(Set(
+            NamedPropertyFormat("csPc", formats.NumberFormat, "PC of this callsite inside the enclosing method body"),
+            NamedPropertyFormat("targets", ListResultFormat(formats.NumberFormat), "List of method ids that have been resolved as targets for this callsite"),
+            NamedPropertyFormat("incomplete", formats.NumberFormat, "Indicates whether the resolution of this callsite was incomplete"),
+            NamedPropertyFormat("instr", formats.StringFormat, "String representation of the callsite instruction")
+          )), "List of callsites for this method"))
+        ))
+        , "List of Method definitions with callsite information")
+      , "The actual RTA callgraph"),
+    NamedPropertyFormat("types",
+      ListResultFormat(ObjectResultFormat(
+        NamedPropertyFormat("id", formats.NumberFormat, "The unique id for this type"),
+        NamedPropertyFormat("fqn", formats.StringFormat, "The type FQN"),
+        NamedPropertyFormat("interface", formats.NumberFormat, "Number indicating whether this type is an interface definition"),
+        NamedPropertyFormat("superId", formats.NumberFormat, "The id of the super type, or -1 if there is none"),
+        NamedPropertyFormat("interfaceIds", formats.ListResultFormat(formats.NumberFormat), "The set of interface type ids")
+      ))
+      , "A list of type nodes")
+  )
+
+  private val resultFormat2: AnalysisResultFormat = ListResultFormat(
+    ObjectResultFormat(Set(
+      NamedPropertyFormat("mId", formats.NumberFormat, "The unique id assigned to this method"),
+      NamedPropertyFormat("mFqn", formats.StringFormat, "The fully qualified name of this method"),
+      NamedPropertyFormat("reachable", formats.NumberFormat, "Indicates whether this method was reachable in the partial callgraph"),
+      NamedPropertyFormat("css", ListResultFormat(ObjectResultFormat(Set(
+        NamedPropertyFormat("csPc", formats.NumberFormat, "PC of this callsite inside the enclosing method body"),
+        NamedPropertyFormat("targets", ListResultFormat(formats.NumberFormat), "List of method ids that have been resolved as targets for this callsite"),
+        NamedPropertyFormat("incomplete", formats.NumberFormat, "Indicates whether the resolution of this callsite was incomplete"),
+        NamedPropertyFormat("instr", formats.StringFormat, "String representation of the callsite instruction")
+      )), "List of callsites for this method"))
+    ))
+    , "List of Method definitions with callsite information")
+
+  override val analysisData: AnalysisData = AnalysisData.systemAnalysis(
+    "mvn-partial-callgraphs",
+    "1.0.0",
+    "This analysis uses OPAL to calculate a partial callgraph for a given Maven program (GAV-Triple). The graph is returned as a list of methods with unique ids and references to callees. " +
+      "Multiple construction algorithms are supported (use '--algorithm cha|rta|xta|cta'), default is RTA. Use '--use-jre' to include JRE implementations in callgraph.",
+    "OPAL",
+    Set("java", "scala"),
+    resultFormat,
+    SoftwareEntityKind.Program,
+    doesBatchProcessing = true,
+    isIncremental = false)
+
+
+  override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Package
 
   case class PartialCallgraphAnalysisConfig(algorithm: String, includeJre: Boolean, applicationMode: Boolean)
 

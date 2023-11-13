@@ -3,23 +3,51 @@ package org.anon.spareuse.core.model
 import org.anon.spareuse.core.formats.AnalysisResultFormat
 import org.anon.spareuse.core.model.RunState.RunState
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import org.anon.spareuse.core.model.entities.SoftwareEntityData
+import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
 
 import java.time.LocalDateTime
 
 case class AnalysisData(name: String, version: String, description: String, builtOn: String, registeredBy: String,
                         inputLanguages: Set[String], isRevoked: Boolean, resultFormat: AnalysisResultFormat, inputKind: SoftwareEntityKind,
-                        executions: Set[AnalysisRunData])
+                        doesBatchProcessing: Boolean, isIncremental: Boolean, executions: Set[AnalysisRunData])
 
 object AnalysisData {
   def systemAnalysis(name: String, version: String, description: String, builtOn: String, languages: Set[String],
-                     format: AnalysisResultFormat, inputKind: SoftwareEntityKind): AnalysisData = {
-    AnalysisData(name, version, description, builtOn, "system", languages, isRevoked = false, format, inputKind, Set.empty)
+                     format: AnalysisResultFormat, inputKind: SoftwareEntityKind, doesBatchProcessing: Boolean, isIncremental: Boolean): AnalysisData = {
+    AnalysisData(name, version, description, builtOn, "system", languages, isRevoked = false, format, inputKind, doesBatchProcessing, isIncremental, Set.empty)
   }
 }
 
 case class AnalysisRunData(uid: String, timestamp: LocalDateTime, logs: Array[String], configuration: String, state: RunState, isRevoked: Boolean,
-                           inputs: Set[SoftwareEntityData], results: Set[AnalysisResultData], parentAnalysisName: String, parentAnalysisVersion: String)
+                           inputs: Set[SoftwareEntityData], results: Set[AnalysisResultData], parentAnalysisName: String, parentAnalysisVersion: String){
+  def withResolvedGenerics(resolver: String => SoftwareEntityData, forceResolve: Boolean = false): AnalysisRunData = {
+
+    def resolveIfNeeded(sed: SoftwareEntityData) = sed match {
+      case g: GenericEntityData =>
+        resolver(g.uid)
+      case s: SoftwareEntityData if (!s.hasParent && s.getChildren.isEmpty) || forceResolve =>
+        resolver(s.uid)
+      case s@_ =>
+        s
+    }
+
+    val resolvedResults = results.map { _.withResolvedGenerics(resolver, forceResolve) }
+
+
+    AnalysisRunData(
+      uid,
+      timestamp,
+      logs,
+      configuration,
+      state,
+      isRevoked,
+      inputs.map(resolveIfNeeded),
+      resolvedResults,
+      parentAnalysisName,
+      parentAnalysisVersion
+    )
+  }
+}
 
 object RunState extends Enumeration {
 
