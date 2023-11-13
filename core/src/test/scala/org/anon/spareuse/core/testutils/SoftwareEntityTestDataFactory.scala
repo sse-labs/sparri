@@ -2,7 +2,8 @@ package org.anon.spareuse.core.testutils
 
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaMethod}
+import org.anon.spareuse.core.model.entities.{GenericEntityData, JavaEntities, SoftwareEntityData}
 
 object SoftwareEntityTestDataFactory {
 
@@ -24,4 +25,25 @@ object SoftwareEntityTestDataFactory {
                     repository: String = "Maven"): SoftwareEntityData =
     new GenericEntityData(name, language, kind, repository, None, uid, None)
 
+
+
+  def fullMethodEntity(gav: String, packageName: String, className: String, methodName: String, returnType: String = "String", paramTypeNames: Seq[String] = Seq.empty): JavaMethod = {
+    assert(gav.count(_ == ':') == 2)
+
+    val lib = JavaEntities.buildLibrary(gav.substring(0, gav.lastIndexOf(':')))
+    val prog = JavaEntities.buildProgramFor(lib, gav)
+    val pack = JavaEntities.buildPackageFor(prog, packageName)
+    val classObj = JavaEntities.buildClassFor(pack,
+      className,
+      className,
+      isInterface = false,
+      isFinal = false,
+      isAbstract = false)
+
+    methodFor(classObj, methodName, returnType, paramTypeNames)
+  }
+
+  def methodFor(jc: JavaClass, methodName: String = "toString", returnType: String = "String", paramTypeNames: Seq[String] = Seq.empty, isFinal: Boolean = false, isStatic: Boolean = false, isAbstract: Boolean = false, visibility: String = "public"): JavaMethod = {
+    JavaEntities.buildMethodFor(jc, methodName, returnType, paramTypeNames, isFinal, isStatic, isAbstract, visibility)
+  }
 }

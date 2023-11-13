@@ -62,17 +62,19 @@ abstract class IncrementalAnalysisImplementation(protected val baselineRunOpt: O
   protected def isValidBaselineFor(potentialBaseline: SoftwareEntityData, current: SoftwareEntityData): Boolean = {
     // Results must be valid for *part of a library* - not the library itself - to be used for incremental analysis
     if(potentialBaseline.isLibrary || current.isLibrary) false
-    // Results must refer to entities of the same kind to be used for incremental computations
-    else if(potentialBaseline.kind != current.kind) false
+    // Results must refer to entities of the same kind and same name to be used for incremental computations
+    else if(potentialBaseline.kind != current.kind || potentialBaseline.name != current.name) false
     // Results must belong to entities of the same library to be used for incremental computations
     // Note: No check for subsequent version numbers here, any result for the same library may be used
     else {
-      val baselineProgram = potentialBaseline.findFirstParent(_.isLibrary)
-      val currentProgramOpt = current.findFirstParent(_.isLibrary)
+      val baselineLibrary = potentialBaseline.findFirstParent(_.isLibrary)
+      val currentLibrary = current.findFirstParent(_.isLibrary)
 
-      baselineProgram.isDefined &&
-        currentProgramOpt.isDefined &&
-        baselineProgram.get.uid.equals(currentProgramOpt.get.uid)
+      //TODO: This will need some deeper equality testing to make sure results for 'foo(Bar b)' are not registered as valid for 'foo()', etc.
+
+      baselineLibrary.isDefined &&
+        currentLibrary.isDefined &&
+        baselineLibrary.get.uid.equals(currentLibrary.get.uid)
     }
   }
 
