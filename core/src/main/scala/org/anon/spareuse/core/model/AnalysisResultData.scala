@@ -2,7 +2,7 @@ package org.anon.spareuse.core.model
 
 import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
 
-case class AnalysisResultData(uid: String, isRevoked: Boolean, content: Object, affectedEntities: Set[SoftwareEntityData]){
+case class AnalysisResultData(uid: String, isRevoked: Boolean, originRunUid: String, content: Object, affectedEntities: Set[SoftwareEntityData]){
 
   def withResolvedGenerics(resolver: String => SoftwareEntityData, forceResolve: Boolean = false): AnalysisResultData = {
 
@@ -15,7 +15,7 @@ case class AnalysisResultData(uid: String, isRevoked: Boolean, content: Object, 
         s
     }
 
-    AnalysisResultData(uid, isRevoked, content, affectedEntities.map(resolveIfNeeded))
+    AnalysisResultData(uid, isRevoked, originRunUid, content, affectedEntities.map(resolveIfNeeded))
   }
 
 }

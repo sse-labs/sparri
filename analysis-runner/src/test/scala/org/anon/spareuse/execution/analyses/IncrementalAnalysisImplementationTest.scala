@@ -4,7 +4,7 @@ import org.anon.spareuse.core.formats.{EmptyFormat, ListResultFormat}
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData, SoftwareEntityKind}
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
-import org.anon.spareuse.testutils.SoftwareEntityTestDataFactory
+import org.anon.spareuse.core.testutils.SoftwareEntityTestDataFactory
 import org.scalatest.funspec.AnyFunSpec
 
 import scala.util.{Success, Try}

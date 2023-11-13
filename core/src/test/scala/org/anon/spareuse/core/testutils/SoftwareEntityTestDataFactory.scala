@@ -1,4 +1,4 @@
-package org.anon.spareuse.testutils
+package org.anon.spareuse.core.testutils
 
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind

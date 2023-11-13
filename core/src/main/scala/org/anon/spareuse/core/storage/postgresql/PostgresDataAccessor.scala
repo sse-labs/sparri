@@ -639,13 +639,14 @@ class PostgresDataAccessor extends DataAccessor {
 
   override def getRunResultsAsJSON(runUid: String, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]] = Try {
 
-
-    //TODO: A result may be valid for multiple runs. This must be reflected in the core data model and retrieved via the corresponding table
-    ???
-
     val runRepr: SoftwareAnalysisRunRepr = getRunRepr(runUid)
 
-    val resQuery = db.run(analysisResultsTable.filter(r => r.runID === runRepr.id).sortBy(_.id).drop(skip).take(limit).result)
+    val resQuery = db.run {
+      val joinQuery = for { (_, resultRepr) <- runResultsTable.filter(rr => rr.analysisRunID === runRepr.id).sortBy(_.id).drop(skip).take(limit) join analysisResultsTable on (_.resultID === _.id) } yield resultRepr
+
+      joinQuery.result
+    }
+
     val allResults = Await.result(resQuery, longActionTimeout)
 
 
@@ -662,7 +663,10 @@ class PostgresDataAccessor extends DataAccessor {
         .filter(t => t._1 == resultRep.id)
         .map(t => toGenericEntityData(t._2))
 
-      AnalysisResultData(resultRep.uid, resultRep.isRevoked, resultRep.jsonContent, allAssociatedEntities.toSet)
+      val runIdQuery = db.run(analysisRunsTable.filter(_.id === resultRep.runId).map(_.uid).result)
+      val producingRunUid = Await.result(runIdQuery, simpleQueryTimeout).head
+
+      AnalysisResultData(resultRep.uid, resultRep.isRevoked, producingRunUid, resultRep.jsonContent, allAssociatedEntities.toSet)
     }.toSet
 
   }
@@ -711,8 +715,6 @@ class PostgresDataAccessor extends DataAccessor {
 
   override def getJSONResultsFor(entityName: String, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]] = Try {
 
-    //TODO: Reflect that result belongs to multiple runs
-    ???
 
     val eid = getEntityId(entityName)
 
@@ -753,7 +755,10 @@ class PostgresDataAccessor extends DataAccessor {
         .filter(t => t._1 == resultRep.id)
         .map(t => toGenericEntityData(t._2))
 
-      AnalysisResultData(resultRep.uid, resultRep.isRevoked, resultRep.jsonContent, allAssociatedEntities.toSet)
+      val runIdQuery = db.run(analysisRunsTable.filter(_.id === resultRep.runId).map(_.uid).result)
+      val producingRunUid = Await.result(runIdQuery, simpleQueryTimeout).head
+
+      AnalysisResultData(resultRep.uid, resultRep.isRevoked, producingRunUid, resultRep.jsonContent, allAssociatedEntities.toSet)
     }.toSet
 
   }

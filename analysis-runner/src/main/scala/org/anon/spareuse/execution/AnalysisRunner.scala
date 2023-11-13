@@ -263,7 +263,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
             val freshResults = results.collect{
               case FreshResult(content, affectedEntities) =>
-                AnalysisResultData(resultUuidIt.next(), isRevoked = false, content, affectedEntities)
+                AnalysisResultData(resultUuidIt.next(), isRevoked = false, cmd.associatedRunId, content, affectedEntities)
             }
 
             val unchangedResultIds = results.collect{
