@@ -66,7 +66,7 @@ lazy val `maven-entity-miner` = (project in file("maven-entity-miner"))
 	)
 
 lazy val `analysis-runner` = (project in file("analysis-runner"))
-	.dependsOn(core)
+	.dependsOn( core % "test->test;compile->compile" )
 	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= dependencies.opal,
