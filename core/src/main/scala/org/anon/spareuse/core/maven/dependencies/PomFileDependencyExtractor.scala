@@ -5,7 +5,7 @@ import org.anon.spareuse.core.maven.MavenIdentifier.DefaultRepository
 import org.anon.spareuse.core.maven.{MavenDependencyIdentifier, MavenIdentifier}
 import org.anon.spareuse.core.maven.MavenIdentifier
 
-import scala.jdk.CollectionConverters.asScalaBufferConverter
+import scala.jdk.CollectionConverters.ListHasAsScala
 import scala.util.Try
 
 class PomFileDependencyExtractor extends DependencyExtractor {
@@ -17,7 +17,7 @@ class PomFileDependencyExtractor extends DependencyExtractor {
     val theArtifact = theResolver.artifactFor(identifier.toString)
     val resolvedArtifact = theResolver.resolve(theArtifact)
 
-    resolvedArtifact.component2().getModel.getDependencies.asScala.map { dependency =>
+    resolvedArtifact.component2().getModel.getDependencies.asScala.toList.map { dependency =>
       val ident = new MavenIdentifier(DefaultRepository, dependency.getGroupId, dependency.getArtifactId, dependency.getVersion)
 
       MavenDependencyIdentifier(ident, dependency.getScope)

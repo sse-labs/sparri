@@ -13,7 +13,7 @@ import spray.json.{JsArray, JsObject, JsString, enrichString}
 import java.util
 import java.util.concurrent.TimeUnit
 import scala.util.{Failure, Success, Try}
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters.SeqHasAsJava
 
 class DependencyGraphGenerator(dbUri: String, dbUser: String, dbPass: String) {
 

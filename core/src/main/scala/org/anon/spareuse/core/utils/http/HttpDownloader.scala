@@ -1,6 +1,5 @@
 package org.anon.spareuse.core.utils.http
 
-import org.apache.http.HttpException
 import org.apache.http.client.methods.{CloseableHttpResponse, HttpGet}
 import org.apache.http.impl.client.HttpClients
 
@@ -25,7 +24,7 @@ class HttpDownloader {
         throw  HttpDownloadException(closeableResponse.getStatusLine.getStatusCode, requestedUri, s"Non-Success status while attempting to download.")
 
       val entityInputStream = closeableResponse.getEntity.getContent
-      val entityBytes = Stream.continually(entityInputStream.read).takeWhile(_ != -1).map(_.toByte).toArray
+      val entityBytes = LazyList.continually(entityInputStream.read).takeWhile(_ != -1).map(_.toByte).toArray
 
       new ByteArrayInputStream(entityBytes)
     }

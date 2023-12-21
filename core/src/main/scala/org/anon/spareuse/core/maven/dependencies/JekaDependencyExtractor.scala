@@ -4,9 +4,10 @@ import org.anon.spareuse.core.maven.MavenIdentifier.DefaultRepository
 import org.anon.spareuse.core.maven.{MavenDependencyIdentifier, MavenIdentifier}
 import dev.jeka.core.api.depmanagement.{JkDependencySet, JkQualifiedDependencySet, JkRepo}
 import dev.jeka.core.api.depmanagement.resolution.JkDependencyResolver
-import org.anon.spareuse.core.maven.MavenIdentifier
 
-import scala.jdk.CollectionConverters.{asScalaBufferConverter, asScalaSetConverter}
+import scala.jdk.CollectionConverters.ListHasAsScala
+import scala.jdk.CollectionConverters.SetHasAsScala
+
 import scala.util.Try
 
 class JekaDependencyExtractor extends DependencyExtractor {

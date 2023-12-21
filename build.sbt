@@ -2,7 +2,8 @@ name := "opal-callgraph-miner"
 
 ThisBuild / organization := "org.anon"
 ThisBuild / version      := "0.1.0-SNAPSHOT"
-ThisBuild / scalaVersion := "2.12.15"
+ThisBuild / scalaVersion := "2.13.12"
+ThisBuild / scalacOptions ++= Seq("-unchecked", "-deprecation")
 
 lazy val dockerSettings = docker / dockerfile := {
 
@@ -147,12 +148,12 @@ lazy val evaluation = (project in file("evaluation"))
 	
 lazy val dependencies = new {
 
-	val opalVersion = "4.0.0"
+	val opalVersion = "5.0.0"
 	val slickVersion = "3.4.1"
 
 	val opal = Seq(
-	  "de.opal-project" % "common_2.12" % opalVersion,
-	  "de.opal-project" % "framework_2.12" % opalVersion,
+	  "de.opal-project" % "common_2.13" % opalVersion,
+	  "de.opal-project" % "framework_2.13" % opalVersion,
 	)
 	
 	val jeka = "dev.jeka" % "jeka-core" % "0.9.15.RELEASE"

@@ -109,7 +109,7 @@ trait AnalysisImplementation extends MavenReleaseListDiscovery {
       }
     }
 
-    def getLogs: Seq[String] = logs
+    def getLogs: Seq[String] = logs.toSeq
 
   }
 }

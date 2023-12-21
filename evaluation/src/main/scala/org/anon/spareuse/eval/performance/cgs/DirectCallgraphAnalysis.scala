@@ -55,12 +55,12 @@ class DirectCallgraphAnalysis extends WholeProgramCgAnalysis {
     val cg = opalProject.get(RTACallGraphKey)
     logger.info("Done building RTA Callgraph.")
 
-    val reachableNonJavaMethods = cg.reachableMethods().count{ m =>
-      opalProject.isProjectType(m.declaringClassType) || opalProject.isLibraryType(m.declaringClassType)
+    val reachableNonJavaMethods = cg.reachableMethods().count{ ctx =>
+      opalProject.isProjectType(ctx.method.declaringClassType) || opalProject.isLibraryType(ctx.method.declaringClassType)
     }
 
-    val edges = cg.reachableMethods().map{ m =>
-      cg.calleesOf(m).map(_._2.size).sum
+    val edges = cg.reachableMethods().map{ ctx =>
+      cg.calleesOf(ctx.method).map(_._2.size).sum
     }.sum
 
     logger.info(s"#nodes: $reachableNonJavaMethods #edges: $edges")
@@ -81,7 +81,7 @@ class DirectCallgraphAnalysis extends WholeProgramCgAnalysis {
     val baos = new ByteArrayOutputStream()
     val buffer = new Array[Byte](32 * 1024)
 
-    Stream.continually(in.read(buffer)).takeWhile(_ > 0).foreach { bytesRead =>
+    LazyList.continually(in.read(buffer)).takeWhile(_ > 0).foreach { bytesRead =>
       baos.write(buffer, 0, bytesRead)
       baos.flush()
     }

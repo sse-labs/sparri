@@ -50,11 +50,16 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
       }))
 
       val resultMap = classToHashesMap
+        .view
         .mapValues(b => ClassCountResult(b.size, b.distinct.size))
+        .toMap
 
       log.debug(s"Results for library [${library.identifier}]:")
       log.debug(s"-- #Releases: $releasesCnt")
-      classToHashesMap.mapValues(b => (b.size, b.distinct.size)).foreach{t => log.debug(s"-- ${t._1} -> ${t._2._2}/${t._2._1}")}
+      classToHashesMap
+        .view
+        .mapValues(b => (b.size, b.distinct.size))
+        .toMap.foreach{t => log.debug(s"-- ${t._1} -> ${t._2._2}/${t._2._1}")}
 
 
       FreshResult(resultMap, Set(library))

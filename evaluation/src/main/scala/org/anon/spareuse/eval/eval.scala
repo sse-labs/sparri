@@ -52,7 +52,7 @@ package object eval {
     val url = baseUrl + "processing/enqueueEntity"
 
     val request = new HttpPost(url)
-    request.setEntity(new StringEntity(body, "application/json", HTTP.DEFAULT_CONTENT_CHARSET))
+    request.setEntity(new StringEntity(body, "application/json"))
 
     val response: CloseableHttpResponse = httpClient.execute(request)
 
@@ -99,7 +99,7 @@ package object eval {
     bodyBuilder.append(user)
     bodyBuilder.append("\"}")
     val requestBody = bodyBuilder.toString()
-    execRequest.setEntity(new StringEntity(requestBody, "application/json", HTTP.DEFAULT_CONTENT_CHARSET))
+    execRequest.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8))
 
     var execResponse: CloseableHttpResponse = null
 

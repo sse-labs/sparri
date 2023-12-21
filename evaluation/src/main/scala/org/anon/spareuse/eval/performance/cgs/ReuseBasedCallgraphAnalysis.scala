@@ -26,17 +26,17 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
       def toMethodLookup(json: JsArray, gav: String): Map[Long, MethodRepr] = {
         json.elements.map {
           case jo: JsObject =>
-            val mId = jo.fields("mId").asInstanceOf[JsNumber].value.longValue()
+            val mId = jo.fields("mId").asInstanceOf[JsNumber].value.longValue
             val mFqn = jo.fields("mFqn").asInstanceOf[JsString].value
             val reachable = jo.fields("reachable").asInstanceOf[JsNumber].value > 0
 
             val callSites = jo.fields("css").asInstanceOf[JsArray].elements.map {
               case siteObj: JsObject =>
-                val pc = siteObj.fields("csPc").asInstanceOf[JsNumber].value.intValue()
-                val isIncomplete = siteObj.fields("incomplete").asInstanceOf[JsNumber].value.intValue() > 0
+                val pc = siteObj.fields("csPc").asInstanceOf[JsNumber].value.intValue
+                val isIncomplete = siteObj.fields("incomplete").asInstanceOf[JsNumber].value.intValue > 0
                 val instrRep = siteObj.fields("instr").asInstanceOf[JsString].value
                 val targets = siteObj.fields("targets").asInstanceOf[JsArray].elements.map {
-                  case n: JsNumber => n.value.longValue()
+                  case n: JsNumber => n.value.longValue
                   case _ => throw new IllegalStateException("Invalid format of partial results")
                 }.toList
 
@@ -55,16 +55,18 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
       def toTypeHierarchy(json: JsArray): Seq[DeclaredTypeNode] = {
         json.elements.map {
           case jo: JsObject =>
-            val tId = jo.fields("id").asInstanceOf[JsNumber].value.longValue()
+            val tId = jo.fields("id").asInstanceOf[JsNumber].value.longValue
             val tFqn = jo.fields("fqn").asInstanceOf[JsString].value
-            val isInterface = jo.fields("interface").asInstanceOf[JsNumber].value.intValue() > 0
-            val superType = jo.fields("superId").asInstanceOf[JsNumber].value.longValue()
+            val isInterface = jo.fields("interface").asInstanceOf[JsNumber].value.intValue > 0
+            val superType = jo.fields("superId").asInstanceOf[JsNumber].value.longValue
             val interfaces = jo.fields("interfaceIds").asInstanceOf[JsArray].elements.map {
-              case n: JsNumber => n.value.longValue()
+              case n: JsNumber => n.value.longValue
               case _ => throw new IllegalStateException("Invalid format of partial results")
             }
 
             DeclaredTypeNode(tId, tFqn, isInterface, if(superType == -1) None else Some(superType), interfaces)
+          case _ =>
+            throw new RuntimeException("Invalid json format")
         }
       }
 
@@ -217,7 +219,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
             if(c == ')'){
               if(builder.nonEmpty) arguments.append(builder.toString())
               builder.clear()
-              return MethodIdentifier(declaringType, name, returnType, arguments, isStatic, visibility)
+              return MethodIdentifier(declaringType, name, returnType, arguments.toSeq, isStatic, visibility)
             } else if(c == ',') {
               arguments.append(builder.toString())
               builder.clear()
@@ -584,7 +586,7 @@ class ReuseBasedCallgraphAnalysis(apiBaseUrl: String) extends WholeProgramCgAnal
       logger.info(s"Resolver loop took $t2 ms and found ${reachableMethods.size} reachable Methods")
 
       allReachableMethods = reachableMethods.toSet
-      allCallees = calleesLookup.mapValues(v => v.mapValues(_.toSet)).toMap
+      allCallees = calleesLookup.view.mapValues(v => v.view.mapValues(_.toSet).toMap).toMap
     }
 
 

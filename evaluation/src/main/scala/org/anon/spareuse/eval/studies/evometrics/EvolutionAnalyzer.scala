@@ -43,7 +43,7 @@ class EvolutionAnalyzer {
             }
         }
 
-      allPackageUsages.groupBy(_._1).mapValues(_.map(_._2))
+      allPackageUsages.groupBy(_._1).view.mapValues(_.map(_._2)).toMap
     }
 
     val result = Try {
@@ -56,16 +56,20 @@ class EvolutionAnalyzer {
       val newPackageNames = P_new.keySet
 
       val RELi = P_old
+        .view
         .mapValues( findPackagesUsed(_, oldPackageNames) )
         .flatMap{ t =>
           t._2.map(t2 => ((t._1, t2._1), t2._2))
         }
+        .toMap
 
       val RELi1 = P_new
+        .view
         .mapValues( findPackagesUsed(_, newPackageNames) )
         .flatMap { t =>
           t._2.map(t2 => ((t._1, t2._1), t2._2))
         }
+        .toMap
 
       // At this point we have all data necessary for the computations, i.e. Set of packages and classes for both old and
       // new, as well as sets of usage relations between packages.

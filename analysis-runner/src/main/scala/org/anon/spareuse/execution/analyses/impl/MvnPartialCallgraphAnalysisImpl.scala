@@ -78,6 +78,7 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
           val methodObjLookup: Map[DeclaredMethod, Seq[InternalMethod]] = cg
             .reachableMethods()
+            .map(c => c.method)
             .filter{ declMethod => // Filter out non-project (i.e. JRE) methods
               project.isProjectType(declMethod.declaringClassType)
             }
@@ -96,6 +97,7 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
 
           val allMethodDataWithCallSites = cg
             .reachableMethods()
+            .map(c => c.method)
             .filter { declMethod => // Filter out non-project (i.e. JRE) methods
               project.isProjectType(declMethod.declaringClassType)
             }
@@ -120,7 +122,7 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
                   val pc = callSiteInfo._1
                   new InternalCallSite(
                     pc, // PC of this callsite
-                    callSiteInfo._2.flatMap(dm => methodObjLookup.getOrElse(dm, Seq.empty).map(_.mId)).toList, // All ids of confirmed targets of this callsite
+                    callSiteInfo._2.flatMap(c => methodObjLookup.getOrElse(c.method, Seq.empty).map(_.mId)).toList, // All ids of confirmed targets of this callsite
                     incompleteCsPcs.contains(pc), // Whether this callsite is incomplete atm
                     getCallSiteInstruction(pc).map(_.toString(pc)).getOrElse("<none>")
                   )
@@ -131,7 +133,7 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
             }
             .toList
 
-          val reachableMethodSignatures = cg.reachableMethods().filter(m => project.isProjectType(m.declaringClassType)).map(_.toJava).toSet
+          val reachableMethodSignatures = cg.reachableMethods().map(_.method).filter(m => project.isProjectType(m.declaringClassType)).map(_.toJava).toSet
           val extraMethods = project
             .allMethods
             .filterNot( method => reachableMethodSignatures.contains(method.toJava))

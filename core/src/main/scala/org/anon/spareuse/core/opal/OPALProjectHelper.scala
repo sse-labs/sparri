@@ -84,7 +84,7 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
     Project(jreClasses,
       List.empty,
       libraryClassFilesAreInterfacesOnly = !loadJreClassImplementation,
-      Traversable.empty,
+      Iterable.empty,
       inconsistentExceptionHandler
     )(config, projectLogger)
   }
@@ -112,7 +112,7 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
     Project(projectClasses,
       dependencies,
       libraryClassFilesAreInterfacesOnly = if(loadJre) !loadJreClassImplementation else false, // IMPROVE: Make this configurable
-      Traversable.empty,
+      Iterable.empty,
       inconsistentExceptionHandler
     )(config, projectLogger)
   }
@@ -204,7 +204,7 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
       val baos = new ByteArrayOutputStream()
       val buffer = new Array[Byte](32 * 1024)
 
-      Stream.continually(in.read(buffer)).takeWhile(_ > 0).foreach { bytesRead =>
+      LazyList.continually(in.read(buffer)).takeWhile(_ > 0).foreach { bytesRead =>
         baos.write(buffer, 0, bytesRead)
         baos.flush()
       }
