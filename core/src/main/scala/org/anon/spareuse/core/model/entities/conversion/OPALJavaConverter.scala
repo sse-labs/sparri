@@ -49,10 +49,25 @@ object OPALJavaConverter {
     classRep
   }
 
+  def buildMethodHash(m: Method): Int = {
+    val bodyHash = m
+      .body
+      .map { code =>
+        var sum = 0
+        code.foreach { pcAndInstr =>
+          sum += 5 * pcAndInstr.pc + 29 * pcAndInstr.instruction.toString(pcAndInstr.pc).hashCode
+        }
+        sum
+      }
+      .getOrElse(0)
+
+    97 * m.classFile.thisType.fqn.hashCode + 73 * m.name.hashCode + 47 * m.descriptor.hashCode + 23 * bodyHash
+  }
+
   def addMethod(m: Method, c: JavaClass): JavaMethod = {
 
     val methodRep = JavaEntities.buildMethodFor(c, m.name, m.returnType.toJVMTypeName, m.parameterTypes.map(_.toJVMTypeName),
-      m.isFinal, m.isStatic, m.isAbstract, m.visibilityModifier.map(_.javaName.get).getOrElse("default"))
+      m.isFinal, m.isStatic, m.isAbstract, m.visibilityModifier.map(_.javaName.get).getOrElse("default"), buildMethodHash(m))
 
     m.body.foreach { code =>
 

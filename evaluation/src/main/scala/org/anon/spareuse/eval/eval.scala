@@ -9,7 +9,7 @@ import org.apache.http.entity.StringEntity
 import org.apache.http.impl.client.CloseableHttpClient
 import org.apache.http.protocol.HTTP
 import org.apache.http.util.EntityUtils
-import spray.json.{JsArray, JsBoolean, JsObject, JsString, JsValue, enrichString}
+import spray.json.{JsArray, JsBoolean, JsNumber, JsObject, JsString, JsValue, enrichString}
 
 import java.nio.charset.StandardCharsets
 import scala.collection.mutable
@@ -255,7 +255,8 @@ package object eval {
               jo.fields("IsStatic").asInstanceOf[JsBoolean].value,
               jo.fields("IsAbstract").asInstanceOf[JsBoolean].value,
               jo.fields("Visibility").asInstanceOf[JsString].value,
-              jo.fields("Repository").asInstanceOf[JsString].value
+              jo.fields("Repository").asInstanceOf[JsString].value,
+              jo.fields("MethodHash").asInstanceOf[JsNumber].value.intValue
             )
         }
       case Failure(ex) =>

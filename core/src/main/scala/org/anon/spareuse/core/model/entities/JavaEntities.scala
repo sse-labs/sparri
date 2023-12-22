@@ -43,9 +43,9 @@ object JavaEntities {
     classObj
   }
 
-  def buildMethodFor(jc: JavaClass, methodName: String, returnTypeName: String, paramTypeNames: Seq[String], isFinal: Boolean, isStatic: Boolean, isAbstract: Boolean, visibility: String): JavaMethod = {
+  def buildMethodFor(jc: JavaClass, methodName: String, returnTypeName: String, paramTypeNames: Seq[String], isFinal: Boolean, isStatic: Boolean, isAbstract: Boolean, visibility: String, hashCode: Int): JavaMethod = {
     val ident = jc.uid + "!" + buildMethodIdent(methodName, returnTypeName, paramTypeNames)
-    val methodObj = new JavaMethod(methodName, returnTypeName, paramTypeNames, ident, isFinal, isStatic, isAbstract, visibility, jc.repository)
+    val methodObj = new JavaMethod(methodName, returnTypeName, paramTypeNames, ident, isFinal, isStatic, isAbstract, visibility, jc.repository, hashCode)
     methodObj.setParent(jc)
     methodObj
   }
@@ -78,6 +78,11 @@ object JavaEntities {
                     hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(programName, programIdent, programUid, repositoryIdent, Some(hashedBytes)) {
 
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Program
+
+    private lazy val isGAV: Boolean = programName.count(_ == ':') == 2
+
+    val ga: String = if(isGAV) programName.substring(0, programName.lastIndexOf(":")) else programName
+    val v: String = if(isGAV) programName.substring(programName.lastIndexOf(":") + 1) else programName
 
   }
 
@@ -118,7 +123,8 @@ object JavaEntities {
                    staticMethod: Boolean,
                    abstractMethod: Boolean,
                    methodVisibility: String,
-                   repositoryIdent: String) extends PathIdentifiableJavaEntity(methodName, buildMethodIdent(methodName, returnTypeFqn, paramTypeNames), methodUid, repositoryIdent, None){
+                   repositoryIdent: String,
+                   hash: Int) extends PathIdentifiableJavaEntity(methodName, buildMethodIdent(methodName, returnTypeFqn, paramTypeNames), methodUid, repositoryIdent, None){
 
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Method
 
@@ -129,6 +135,7 @@ object JavaEntities {
     val isStatic: Boolean = staticMethod
     val isAbstract: Boolean = abstractMethod
     val visibility: String = methodVisibility
+    val methodHash: Int = hash
   }
 
   abstract class JavaStatement(name: String, pc: Int, stmtUid: String, repositoryIdent: String)

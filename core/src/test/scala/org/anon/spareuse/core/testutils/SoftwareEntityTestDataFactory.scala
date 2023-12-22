@@ -2,7 +2,7 @@ package org.anon.spareuse.core.testutils
 
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaMethod}
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaMethod, JavaProgram}
 import org.anon.spareuse.core.model.entities.{GenericEntityData, JavaEntities, SoftwareEntityData}
 
 object SoftwareEntityTestDataFactory {
@@ -26,6 +26,9 @@ object SoftwareEntityTestDataFactory {
     new GenericEntityData(name, language, kind, repository, None, uid, None)
 
 
+  def fullProgram(gav: String): JavaProgram = {
+    JavaEntities.buildProgram(gav)
+  }
 
   def fullMethodEntity(gav: String, packageName: String, className: String, methodName: String, returnType: String = "String", paramTypeNames: Seq[String] = Seq.empty): JavaMethod = {
     assert(gav.count(_ == ':') == 2)
@@ -43,7 +46,7 @@ object SoftwareEntityTestDataFactory {
     methodFor(classObj, methodName, returnType, paramTypeNames)
   }
 
-  def methodFor(jc: JavaClass, methodName: String = "toString", returnType: String = "String", paramTypeNames: Seq[String] = Seq.empty, isFinal: Boolean = false, isStatic: Boolean = false, isAbstract: Boolean = false, visibility: String = "public"): JavaMethod = {
-    JavaEntities.buildMethodFor(jc, methodName, returnType, paramTypeNames, isFinal, isStatic, isAbstract, visibility)
+  def methodFor(jc: JavaClass, methodName: String = "toString", returnType: String = "String", paramTypeNames: Seq[String] = Seq.empty, isFinal: Boolean = false, isStatic: Boolean = false, isAbstract: Boolean = false, visibility: String = "public", hash: Int = 0): JavaMethod = {
+    JavaEntities.buildMethodFor(jc, methodName, returnType, paramTypeNames, isFinal, isStatic, isAbstract, visibility, hash)
   }
 }

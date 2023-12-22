@@ -41,6 +41,7 @@ package object model {
     var isAbstractOpt: Option[Boolean] = None
     var visibilityOpt: Option[String] = None
     var targetTypeOpt: Option[String] = None
+    var methodHashOpt: Option[Int] = None
 
     entity match {
       case jc: JavaClass =>
@@ -57,6 +58,7 @@ package object model {
         isStaticOpt = Some(jm.isStatic)
         isAbstractOpt = Some(jm.isAbstract)
         visibilityOpt = Some(jm.visibility)
+        methodHashOpt = Some(jm.methodHash)
       case jis: JavaInvokeStatement =>
         targetTypeOpt = Some(jis.targetTypeName)
         returnTypeOpt = Some(jis.returnTypeName)
@@ -89,7 +91,8 @@ package object model {
       visibilityOpt,
       returnTypeOpt,
       paramTypesOpt,
-      targetTypeOpt
+      targetTypeOpt,
+      methodHashOpt
     )
   }
 
@@ -113,6 +116,6 @@ package object model {
 
   def genericEntityToEntityRepr(entity: GenericEntityData): EntityRepr = {
     EntityRepr(entity.name, entity. uid, entity.kind.toString, entity.language, entity.repository, entity.parentUid,
-      entity.binaryHash.map(toHex), None, None, None, None, None, None, None, None, None, None, None, None)
+      entity.binaryHash.map(toHex), None, None, None, None, None, None, None, None, None, None, None, None, None)
   }
 }

@@ -29,7 +29,7 @@ object JavaDefinitions {
       foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
   }
 
-  type JavaMethodRepr = (Long, String, Int, String, Boolean, Boolean, Boolean, String)
+  type JavaMethodRepr = (Long, String, Int, String, Boolean, Boolean, Boolean, String, Int)
 
   class JavaMethods(tag: Tag) extends Table[JavaMethodRepr](tag, "javamethods"){
 
@@ -49,8 +49,10 @@ object JavaDefinitions {
 
     def visibility: Rep[String] = column[String]("VISIBILITY")
 
+    def methodHash: Rep[Int] = column[Int]("HASH")
 
-    override def * : ProvenShape[JavaMethodRepr] = (id, returnType, paramCount, paramTypes, isFinal, isStatic, isAbstract, visibility)
+
+    override def * : ProvenShape[JavaMethodRepr] = (id, returnType, paramCount, paramTypes, isFinal, isStatic, isAbstract, visibility, methodHash)
 
     def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
       foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
