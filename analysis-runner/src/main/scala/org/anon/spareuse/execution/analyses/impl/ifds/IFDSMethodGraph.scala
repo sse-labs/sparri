@@ -1,5 +1,6 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
+import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.{FactRep, InternalActivationRep, MethodIFDSRep, StatementRep}
 import org.opalj.br.{Method, MethodDescriptor}
 import org.opalj.tac.{FunctionCall, ReturnValue}
 
@@ -21,6 +22,8 @@ class IFDSMethodGraph(val method: Method) {
         throw new RuntimeException(s"Unhandled return ${expr.getClass}")
     }
     .toSet
+
+  def isReturnNode(pc: Int): Boolean = pcToStmtMap.contains(pc) && pcToStmtMap(pc).stmt.isInstanceOf[ReturnValue[TACVar]]
 
   def createStatement(stmt: TACStmt, predecessor: Option[StatementNode]): StatementNode = {
 
@@ -56,6 +59,10 @@ class IFDSMethodGraph(val method: Method) {
       .filter(stmtNode => stmtNode.isCallNode || stmtNode.hasActivations || stmtNode.stmt.isReturnValue)
       .toSeq
       .sortBy(_.stmt.pc)
+  }
+
+  def statementNodes: Seq[StatementNode] = {
+    pcToStmtMap.values.toSeq.sortBy(_.stmt.pc)
   }
 
   def print(): Unit = {
@@ -105,7 +112,48 @@ class IFDSMethodGraph(val method: Method) {
 
     }
 
+  }
 
+  def toResultRepresentation(squashIdentityStmts: Boolean): DefaultIFDSSummaryBuilder.MethodIFDSRep = {
+    var factId: Int = 0
+    val factIdMap = allFacts
+      .map { f =>
+        val id = factId
+        factId += 1
+        (f.uniqueIdent, id)
+      }
+      .toMap
+
+    val factReps = allFacts.map{currFact =>
+      val currId = factIdMap(currFact.uniqueIdent)
+      new FactRep(currId, currFact.uniqueIdent, currFact.displayName)
+    }.toList
+
+    val stmts = if(squashIdentityStmts) relevantStatementNodes else statementNodes
+
+    val stmtReps = stmts
+      .map { s =>
+
+        val isReturn = isReturnNode(s.stmt.pc)
+        val predecessors = s.getPredecessors.map(_.stmt.pc).toList
+
+        val activations = s.allActivations.map{ a =>
+          val sourceId = factIdMap(a._1.uniqueIdent)
+          val targetIds = a._2.map( f => factIdMap(f.uniqueIdent))
+          new InternalActivationRep(sourceId, targetIds)
+        }.toList
+
+        s match {
+          case csn: CallStatementNode =>
+            new StatementRep(csn.stmt.pc, isReturn, csn.stmt.toString, predecessors, Some(csn.functionName), Some(csn.descriptor.toJVMDescriptor), Some(csn.declaringClassJVMName), activations)
+          case sn: StatementNode =>
+            new StatementRep(sn.stmt.pc, isReturn, sn.stmt.toString, predecessors, None, None, None, activations)
+        }
+
+      }
+      .toList
+
+    new MethodIFDSRep(method.name, method.classFile.thisType.fqn, method.descriptor.toJVMDescriptor, stmtReps, factReps)
   }
 
 }
@@ -140,10 +188,14 @@ class StatementNode(val stmt: TACStmt) {
     if (!node.successors.contains(this)) node.successors.add(this)
   }
 
+  def getPredecessors: Set[StatementNode] = predecessors.toSet
+
   def addSuccessor(node: StatementNode): Unit = {
     if (!successors.contains(node)) successors.add(node)
     if (!node.predecessors.contains(this)) node.predecessors.add(this)
   }
+
+  def getSuccessors: Set[StatementNode] = successors.toSet
 
   def allFactsInvolved: Set[IFDSFact] = activations.values.flatten.toSet ++ activations.keySet
 
@@ -156,6 +208,9 @@ class StatementNode(val stmt: TACStmt) {
   def hasActivation(fact: IFDSFact): Boolean = activations.contains(fact)
 
   def activatesOn(fact: IFDSFact): Set[IFDSFact] = activations.get(fact).map(_.toSet).getOrElse(Set.empty)
+
+  type Activation = (IFDSFact, Set[IFDSFact])
+  def allActivations: Seq[Activation] = activations.toSeq.map(t => (t._1, t._2.toSet))
 }
 
 class CallStatementNode(stmt: TACStmt, callExpr: FunctionCall[TACVar]) extends StatementNode(stmt){

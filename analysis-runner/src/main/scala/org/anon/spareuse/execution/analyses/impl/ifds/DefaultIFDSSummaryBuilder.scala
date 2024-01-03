@@ -1,13 +1,15 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
+import org.anon.spareuse.core.formats
+import org.anon.spareuse.core.formats.{ListResultFormat, NamedPropertyFormat, ObjectResultFormat}
 import org.anon.spareuse.core.maven.MavenIdentifier
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaMethod, JavaProgram}
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaMethod, JavaProgram, buildMethodIdent}
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.model.entities.conversion.OPALJavaConverter
 import org.anon.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData, SoftwareEntityKind}
 import org.anon.spareuse.core.opal.OPALProjectHelper
-import org.anon.spareuse.execution.analyses.{AnalysisImplementationDescriptor, AnalysisResult, ExistingResult, IncrementalAnalysisImplementation}
+import org.anon.spareuse.execution.analyses.{AnalysisImplementationDescriptor, AnalysisResult, ExistingResult, FreshResult, IncrementalAnalysisImplementation}
 import org.opalj.ai.domain
 import org.opalj.ai.fpcf.properties.AIDomainFactoryKey
 import org.opalj.br.Method
@@ -61,6 +63,13 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
         }
     }
 
+    val inputMethodMap = input
+      .getChildren
+      .flatMap( packageEnt => packageEnt.getChildren.flatMap( classEnt => classEnt.getChildren))
+      .map(_.asInstanceOf[JavaMethod])
+      .map(jm => (buildMethodIdent(jm.name, jm.returnType, jm.paramTypes), jm))
+      .toMap
+
     getFileFor(input) match {
       case Success(inputStream) =>
         Try{
@@ -97,29 +106,36 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
 
           var methodCnt = 0
 
-          val allGraphs = project
+          val results = project
             .allMethodsWithBody
             .filterNot(m => findValidPreviousResult(m).isDefined)
             .map{ m =>
               log.info(s"\t [ $methodCnt / $computationsNeeded ] Building IFDS summary for method: ${m.toJava}")
               methodCnt += 1
-              analyzeMethod(m)
+
+              val ifdsGraph = analyzeMethod(m)
+              val resultData = ifdsGraph.toResultRepresentation(squashStatements)
+
+              val correspondingEntity = inputMethodMap.get(buildMethodIdent(m.name, m.returnType.toJVMTypeName, m.parameterTypes.map(_.toJVMTypeName)))
+
+              if(correspondingEntity.isEmpty) throw new IllegalStateException(s"Could not find defined method in input entities: ${m.toJava}")
+
+              FreshResult(resultData, Set(correspondingEntity.get))
             }
+            .toSet[AnalysisResult]
 
-          //TODO: Handle results
-
+          log.info(s"Done building $methodCnt IFDS summaries. Freeing OPAL resources ..")
+          opalHelper.freeOpalResources()
+          results
         }
 
       case Failure(ex) =>
         log.error(s"Failed to build IFDS summaries for entity ${input.name}, JAR download failed", ex)
+        opalHelper.freeOpalResources()
         Failure(ex)
 
     }
 
-
-    opalHelper.freeOpalResources()
-
-    ???
   }
 
 
@@ -179,6 +195,66 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
 
 object DefaultIFDSSummaryBuilder {
 
+  private val activationFormat = new ObjectResultFormat(Set(
+    NamedPropertyFormat("sourceFactId", formats.NumberFormat, "The uid of the fact that is being activated"),
+    NamedPropertyFormat("enablingFactIds", ListResultFormat(formats.NumberFormat, "Id of a fact that may activate the source fact"), "List of facts activating the source fact")
+  ))
+
+  class InternalActivationRep(sourceId: Int, factsEnabling: Set[Int]) {
+    val sourceFactId: Int = sourceId
+    val enablingFactIds: List[Int] = factsEnabling.toList
+  }
+
+  private val stmtFormat = new ObjectResultFormat(Set(
+    NamedPropertyFormat("pc", formats.NumberFormat, "The program counter of this statement"),
+    NamedPropertyFormat("isReturn", formats.NumberFormat, "Non-Zero if this statement is a return statement"),
+    NamedPropertyFormat("TACRepresentation", formats.StringFormat, "String representation of the statement's Three-Address-Code"),
+    NamedPropertyFormat("predecessors", ListResultFormat(formats.NumberFormat, "Program counters of predecessor statements"), "References to predecessors of this statement"),
+    NamedPropertyFormat("calleeMethodName", formats.StringFormat, "Name of the method that is called by this statement, empty if no method is called."),
+    NamedPropertyFormat("calleeDescriptor", formats.StringFormat, "String representation of the descriptor of the method that is called by this statement."),
+    NamedPropertyFormat("calleeClassName", formats.StringFormat, "FQN of the declaring class of the method that is called by this statement"),
+    NamedPropertyFormat("activations", ListResultFormat(activationFormat, "Individual activation for this statement"))
+  ))
+
+  class StatementRep(programCounter: Int, isReturnStmt: Boolean, tacStr: String, predPcs: List[Int], calleeName: Option[String], calleeDescr: Option[String], calleeClass: Option[String], stmtActivations: List[InternalActivationRep]) {
+    val pc: Int = programCounter
+    val isReturn: Int = if (isReturnStmt) 1 else 0
+    val TACRepresentation: String = tacStr
+    val predecessors: List[Int] = predPcs
+    val calleeMethodName: String = calleeName.getOrElse("")
+    val calleeDescriptor: String = calleeDescr.getOrElse("")
+    val calleeClassName: String = calleeClass.getOrElse("")
+    val activations: List[InternalActivationRep] = stmtActivations
+  }
+
+  private val factFormat = new ObjectResultFormat(Set(
+    NamedPropertyFormat("uid", formats.NumberFormat, "Unique id for this fact inside this method"),
+    NamedPropertyFormat("identifier", formats.StringFormat, "Unique string representation of this fact"),
+    NamedPropertyFormat("displayName", formats.StringFormat, "Display name for this fact")
+  ))
+
+  class FactRep(numId: Int, identStr: String, name: String) {
+    val uid: Int = numId
+    val identifier: String = identStr
+    val displayName: String = name
+  }
+
+  private val methodFormat = new ObjectResultFormat(Set(
+    NamedPropertyFormat("name", formats.StringFormat, "Name of this method"),
+    NamedPropertyFormat("declaringClassName", formats.StringFormat, "Name of the class this method is defined in"),
+    NamedPropertyFormat("descriptor", formats.StringFormat, "String representation of this method's descriptor"),
+    NamedPropertyFormat("statements", ListResultFormat(stmtFormat, "Objects representing individual statements of the method"), "List containing all method statements"),
+    NamedPropertyFormat("facts", ListResultFormat(factFormat, "Object representing individual facts occurring in this method"), "List of all facts relevant for this method")
+  ))
+
+  class MethodIFDSRep(mName: String, mDeclClass: String, mDescriptor: String, stmts: List[StatementRep], factReps: List[FactRep]) {
+    val name: String = mName
+    val declaringClassName: String = mDeclClass
+    val descriptor: String = mDescriptor
+    val statements: List[StatementRep] = stmts
+    val facts: List[FactRep] = factReps
+  }
+
   def buildDescriptor(aName: String, aVersion: String, aDescription: String): AnalysisImplementationDescriptor = new AnalysisImplementationDescriptor {
 
     override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Method
@@ -189,11 +265,11 @@ object DefaultIFDSSummaryBuilder {
       aDescription,
       "OPAL 4.0.0",
       Set("java", "scala"),
-      ???, //TODO: Define general format for IFDS Method flow graphs
+      methodFormat,
       SoftwareEntityKind.Program,
       doesBatchProcessing = true,
       isIncremental = true
-      )
+    )
   }
 
 }
