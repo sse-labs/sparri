@@ -149,7 +149,7 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
    * @param TACAIProvider A TAC provider to get the three-address-code representation of a methods body
    * @return Finalized IFDSMethodGraph that contains all possible fact activations
    */
-  protected def analyzeMethod(method: Method)(implicit TACAIProvider: MethodTACProvider): IFDSMethodGraph = {
+  protected[ifds] def analyzeMethod(method: Method)(implicit TACAIProvider: MethodTACProvider): IFDSMethodGraph = {
 
     val theTAC = TACAIProvider(method)
     val cfg = theTAC.cfg
@@ -189,7 +189,7 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
     graph
   }
 
-  protected def analyzeStatement(currentNode: StatementNode, currentMethod: Method, graph: IFDSMethodGraph): Unit
+  protected[ifds] def analyzeStatement(currentNode: StatementNode, currentMethod: Method, graph: IFDSMethodGraph): Unit
 
 }
 
@@ -223,7 +223,7 @@ object DefaultIFDSSummaryBuilder {
     val predecessors: List[Int] = predPcs
     val calleeMethodName: String = calleeName.getOrElse("")
     val calleeDescriptor: String = calleeDescr.getOrElse("")
-    val calleeClassName: String = calleeClass.getOrElse("")
+    val calleeClassName: String = calleeClass.getOrElse("")//TODO: This is missing information about the concrete parameters being passed to the invocation
     val activations: List[InternalActivationRep] = stmtActivations
   }
 
