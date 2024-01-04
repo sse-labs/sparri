@@ -195,6 +195,16 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
 
 object DefaultIFDSSummaryBuilder {
 
+  private val variableFormat = new ObjectResultFormat(Set(
+    NamedPropertyFormat("variableName", formats.StringFormat, "The (normalized) name of this local variable"),
+    NamedPropertyFormat("defSites", ListResultFormat(formats.NumberFormat), "All definition sites of this local variable")
+  ))
+
+  class InternalVariableRep(name: String, defBy: List[Int]){
+    val variableName: String = name
+    val defSites: List[Int] = defBy
+  }
+
   private val activationFormat = new ObjectResultFormat(Set(
     NamedPropertyFormat("sourceFactId", formats.NumberFormat, "The uid of the fact that is being activated"),
     NamedPropertyFormat("enablingFactIds", ListResultFormat(formats.NumberFormat, "Id of a fact that may activate the source fact"), "List of facts activating the source fact")
@@ -213,17 +223,20 @@ object DefaultIFDSSummaryBuilder {
     NamedPropertyFormat("calleeMethodName", formats.StringFormat, "Name of the method that is called by this statement, empty if no method is called."),
     NamedPropertyFormat("calleeDescriptor", formats.StringFormat, "String representation of the descriptor of the method that is called by this statement."),
     NamedPropertyFormat("calleeClassName", formats.StringFormat, "FQN of the declaring class of the method that is called by this statement"),
+    NamedPropertyFormat("calleeParameterVariables", ListResultFormat(variableFormat), "The actual variables passed to the method that is called by this statement"),
     NamedPropertyFormat("activations", ListResultFormat(activationFormat, "Individual activation for this statement"))
   ))
 
-  class StatementRep(programCounter: Int, isReturnStmt: Boolean, tacStr: String, predPcs: List[Int], calleeName: Option[String], calleeDescr: Option[String], calleeClass: Option[String], stmtActivations: List[InternalActivationRep]) {
+  class StatementRep(programCounter: Int, isReturnStmt: Boolean, tacStr: String, predPcs: List[Int], calleeName: Option[String], calleeDescr: Option[String], calleeClass: Option[String], calleeParams: Option[List[InternalVariableRep]], callReceiver: Option[InternalVariableRep], stmtActivations: List[InternalActivationRep]) {
     val pc: Int = programCounter
     val isReturn: Int = if (isReturnStmt) 1 else 0
     val TACRepresentation: String = tacStr
     val predecessors: List[Int] = predPcs
     val calleeMethodName: String = calleeName.getOrElse("")
     val calleeDescriptor: String = calleeDescr.getOrElse("")
-    val calleeClassName: String = calleeClass.getOrElse("")//TODO: This is missing information about the concrete parameters being passed to the invocation
+    val calleeClassName: String = calleeClass.getOrElse("")
+    val calleeParameterVariables: List[InternalVariableRep] = calleeParams.getOrElse(List.empty[InternalVariableRep])
+    val callReceiverVar: InternalVariableRep = callReceiver.getOrElse(new InternalVariableRep("", List.empty))
     val activations: List[InternalActivationRep] = stmtActivations
   }
 

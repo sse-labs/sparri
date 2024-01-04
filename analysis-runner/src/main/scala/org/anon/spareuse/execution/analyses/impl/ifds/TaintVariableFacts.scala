@@ -6,7 +6,7 @@ import scala.collection.mutable
 
 object TaintVariableFacts {
 
-  private def normalizeVarName(localVar: TACVar): String = localVar match {
+  private[ifds] def normalizeVarName(localVar: TACVar): String = localVar match {
     case uvar: TACUVar =>
       uvar.name.substring(1, uvar.name.length - 1)
     case dvar: TACDVar =>

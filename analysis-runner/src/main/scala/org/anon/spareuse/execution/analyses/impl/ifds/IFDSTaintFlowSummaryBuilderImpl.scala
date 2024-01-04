@@ -2,7 +2,7 @@ package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.core.model.AnalysisRunData
 import org.opalj.br.{Method, ObjectType}
-import org.opalj.tac.{Assignment, BinaryExpr, Const, Expr, FunctionCall, GetField, GetStatic, PutField, PutStatic}
+import org.opalj.tac.{Assignment, BinaryExpr, Const, Expr, FunctionCall, GetField, GetStatic, InstanceFunctionCall, PutField, PutStatic}
 import org.opalj.value.IsStringValue
 
 class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) extends DefaultIFDSSummaryBuilder(baselineRunOpt) {
@@ -54,17 +54,33 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
       currentNode.setGeneratesOn(targetFact, Set(enablingFact))
     case BinaryExpr(_, _, _, left, right) =>
       //TODO: Find out if this matches for TAC in case of String res = "a" + "b";
+      log.info(s"Found a binary expression assigned to a string: $expression")
       analyzeExpression(currentNode, targetFact, left, currentMethod)
       analyzeExpression(currentNode, targetFact, right, currentMethod)
     case fc: FunctionCall[TACVar] if fc.name.equalsIgnoreCase("source") =>
       // This is the hardcoded source for taint: All methods named "source" (for now)
       currentNode.setGeneratesFact(targetFact)
 
+    case ifc: InstanceFunctionCall[TACVar] if ifc.receiver.isVar && ifc.name == "concat" =>
+      // Concatinations do not need to be resolved, they are hardcoded to carry taint if the receiver or parameter carries taint
+      val paramFacts = ifc.params.collect {
+        case localVar: TACVar =>
+          TaintVariableFacts.buildFact(localVar)
+      }
+
+      val sourceFact = TaintVariableFacts.buildFact(ifc.receiver.asVar)
+
+      currentNode.setGeneratesOn(targetFact, paramFacts.toSet ++ Set(sourceFact))
+
     case fc: FunctionCall[TACVar] =>
-      //TODO: Whether or not there must be taint assigned depends on the receiver object (for instance calls). We need to store the receiver variable somewhere
-      //TODO: Have special handling for sanatizers
+      // For the general function call: Create artificial return node to represent taint of the target variable
+      // TODO: Special calls to sanatizers should be handled differently
       val sourceFact = TaintVariableFacts.buildFact(currentMethod, currentNode.asCallNode)
       currentNode.setGeneratesOn(targetFact, Set(sourceFact))
+
+
+    case other@_ =>
+      log.warn(s"Unhandled expression assigned to ${targetFact.displayName}: $other")
 
 
   }
