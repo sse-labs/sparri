@@ -1,6 +1,8 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
+import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.TaintFunctionReturn
 import org.anon.spareuse.execution.analyses.{buildProject, getTACProvider, loadFixture}
+import org.opalj.br.ObjectType
 import org.scalatest.funspec.AnyFunSpec
 
 class IFDSTaintFlowSummaryBuilderImplTest extends AnyFunSpec {
@@ -38,6 +40,11 @@ class IFDSTaintFlowSummaryBuilderImplTest extends AnyFunSpec {
             assert(newFacts.size == 2)
           case 4 =>
             assert(newFacts.size == 2)
+          case 9 =>
+            val targetFact = TaintVariableFacts.buildFact(sn.stmt.asAssignment.targetVar)
+            assert(sn.hasActivation(targetFact))
+            val a = sn.activatesOn(targetFact)
+            assert(a.size == 1 && a.head.isInstanceOf[TaintFunctionReturn]) // Assert that the graph holds an artificial method return fact
           case _ =>
         }
 
