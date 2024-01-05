@@ -1,8 +1,8 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.{FactRep, InternalActivationRep, InternalVariableRep, MethodIFDSRep, StatementRep}
-import org.opalj.br.{Method, MethodDescriptor}
-import org.opalj.tac.{FunctionCall, InstanceFunctionCall, ReturnValue}
+import org.opalj.br.{ArrayType, ArrayTypeSignature, Method, MethodDescriptor, ObjectType}
+import org.opalj.tac.{Call, FunctionCall, InstanceFunctionCall, ReturnValue}
 
 import scala.collection.mutable
 
@@ -27,23 +27,31 @@ class IFDSMethodGraph(val method: Method) {
 
   def createStatement(stmt: TACStmt, predecessor: Option[StatementNode]): StatementNode = {
 
-    var callExpr: Option[FunctionCall[TACVar]] = None
+    var callExpr: Option[Call[TACVar]] = None
     var callReceiver: Option[TACVar] = None
 
-    stmt.forallSubExpressions[TACVar]{
-      case fc: FunctionCall[TACVar] if callExpr.isEmpty=>
-        callExpr = Some(fc)
-        fc match {
-          case ifc: InstanceFunctionCall[TACVar] if ifc.receiver.isVar =>
-            callReceiver = Some(ifc.receiver.asVar)
-          case _ =>
-        }
-        true
-      case _: FunctionCall[TACVar] if callExpr.isDefined =>
-        throw new RuntimeException(s"Two function calls in one statement: ${stmt.toString}")
-      case _ =>
-        false
+    if(stmt.isMethodCall) {
+      val call = stmt.asMethodCall
+      callExpr = Some(call)
+      if(call.receiverOption.exists(_.isVar)) callReceiver = call.receiverOption.map(_.asVar)
+    } else {
+      stmt.forallSubExpressions[TACVar] {
+        case fc: FunctionCall[TACVar] if callExpr.isEmpty =>
+          callExpr = Some(fc)
+          fc match {
+            case ifc: InstanceFunctionCall[TACVar] if ifc.receiver.isVar =>
+              callReceiver = Some(ifc.receiver.asVar)
+            case _ =>
+          }
+          true
+        case _: FunctionCall[TACVar] if callExpr.isDefined =>
+          throw new RuntimeException(s"Two function calls in one statement: ${stmt.toString}")
+        case _ =>
+          false
+      }
     }
+
+
 
     val node = if(callExpr.isDefined) new CallStatementNode(stmt, callExpr.get, callReceiver)
     else new StatementNode(stmt)
@@ -155,7 +163,7 @@ class IFDSMethodGraph(val method: Method) {
               new InternalVariableRep(TaintVariableFacts.normalizeVarName(v), v.definedBy.toList)
             }.toList
             val receiverOpt = csn.receiver.map(v => new InternalVariableRep(TaintVariableFacts.normalizeVarName(v), v.definedBy.toList))
-            new StatementRep(csn.stmt.pc, isReturn, csn.stmt.toString, predecessors, Some(csn.functionName), Some(csn.descriptor.toJVMDescriptor), Some(csn.declaringClassJVMName), Some(parameterReps), receiverOpt, activations)
+            new StatementRep(csn.stmt.pc, isReturn, csn.stmt.toString, predecessors, Some(csn.functionName), Some(csn.descriptor.toJVMDescriptor), Some(csn.declaringClassFqn), Some(parameterReps), receiverOpt, activations)
           case sn: StatementNode =>
             new StatementRep(sn.stmt.pc, isReturn, sn.stmt.toString, predecessors, None, None, None, None, None, activations)
         }
@@ -219,11 +227,20 @@ class StatementNode(val stmt: TACStmt) {
 
   def activatesOn(fact: IFDSFact): Set[IFDSFact] = activations.get(fact).map(_.toSet).getOrElse(Set.empty)
 
+  def getFactsKilled: Set[IFDSFact] = activations.filter(t => t._2.isEmpty).keys.toSet
+
+  def getFactsActivatedBy(fact: IFDSFact): Set[IFDSFact] = activations.filter(t => t._2.contains(fact)).keys.toSet
+
+  def getFactsAfter(currentFacts: Set[IFDSFact]): Set[IFDSFact] = {
+    (currentFacts.filter(f => !hasActivation(f)) ++ currentFacts.flatMap(f => getFactsActivatedBy(f))).diff(getFactsKilled)
+  }
+
+
   type Activation = (IFDSFact, Set[IFDSFact])
   def allActivations: Seq[Activation] = activations.toSeq.map(t => (t._1, t._2.toSet))
 }
 
-class CallStatementNode(stmt: TACStmt, callExpr: FunctionCall[TACVar], callReceiver: Option[TACVar]) extends StatementNode(stmt){
+class CallStatementNode(stmt: TACStmt, callExpr: Call[TACVar], callReceiver: Option[TACVar]) extends StatementNode(stmt){
 
   val parameterVariables: Seq[TACVar] =
     callExpr
@@ -232,7 +249,10 @@ class CallStatementNode(stmt: TACStmt, callExpr: FunctionCall[TACVar], callRecei
       .map(_.asVar)
 
   val functionName: String = callExpr.name
-  val declaringClassJVMName: String = callExpr.declaringClass.toJVMTypeName
+  val declaringClassFqn: String = callExpr.declaringClass match {
+    case ot: ObjectType => ot.fqn
+    case at: ArrayType => at.toJava //TODO: Find out if we need to keep track of operations on arrays
+  }
   val descriptor: MethodDescriptor = callExpr.descriptor
   val receiver: Option[TACVar] = callReceiver
 

@@ -19,7 +19,7 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
   }
 
   override protected[ifds] def analyzeStatement(currentNode: StatementNode, currentMethod: Method, graph: IFDSMethodGraph): Unit = currentNode.stmt match {
-    case Assignment(_, targetVar: TACDVar, assignedExpr) if targetVar.value.isInstanceOf[IsStringValue]=>
+    case Assignment(_, targetVar: TACDVar, assignedExpr) =>
       val targetFact = TaintVariableFacts.buildFact(targetVar)
       analyzeExpression(currentNode, targetFact, assignedExpr, currentMethod)
 

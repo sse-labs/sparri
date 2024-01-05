@@ -82,6 +82,13 @@ lazy val `analysis-runner` = (project in file("analysis-runner"))
 		docker / imageNames := Seq(ImageName(s"spar-analysis-runner:latest"))
 	)
 
+lazy val compileRunnerFixtures = taskKey[Unit]("Compile java test fixtures for analysis runner")
+
+compileRunnerFixtures := {
+	import scala.sys.process._
+	"javac -d ./analysis-runner/src/test/resources/ ./analysis-runner/src/test/fixtures-java/*.java" !
+}
+
 lazy val playground = (project in file("playground"))
 	.dependsOn(core, evaluation)
 	.settings(libraryDependencies ++= Seq(dependencies.logback))
