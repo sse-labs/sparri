@@ -30,4 +30,17 @@ package object analyses {
     project.get(ComputeTACAIKey)
   }
 
+  // Use the following code to refer to java fixtures that are located in the fixtures-java directory and compiled to the
+  // resources directory using `sbt compileRunnerFixtures`
+
+  val complexCfgFixtureName = "BranchingTaint.class"
+  val simpleSelfContainedFixtureName = "StringConcatHelper.class"
+  val simpleCfgExternalCallFixtureName = "SimpleStringTaint.class"
+
+  val allFixtureNames: Seq[String] = Seq(complexCfgFixtureName, simpleCfgExternalCallFixtureName, simpleSelfContainedFixtureName)
+
+  def foreachFixture(implicit executor: File => Unit): Unit = allFixtureNames.map(loadFixture).foreach(executor)
+
+
+
 }
