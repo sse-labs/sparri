@@ -58,7 +58,7 @@ object JavaDefinitions {
       foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
   }
 
-  type JavaInvocationRepr = (Long, String, Int, String, Int, Int)
+  type JavaInvocationRepr = (Long, String, String, String, Int, Int)
 
   class JavaInvocationStatements(tag: Tag) extends Table[JavaInvocationRepr](tag, "javainvocations"){
 
@@ -66,7 +66,7 @@ object JavaDefinitions {
 
     def declaredType: Rep[String] = column[String]("DECLARED_TYPE")
 
-    def parameterCount: Rep[Int] = column[Int]("PARAMETER_CNT")
+    def paramTypes: Rep[String] = column[String]("PARAMETER_TYPES")
 
     def returnType: Rep[String] = column[String]("RETURN_TYPE")
 
@@ -74,7 +74,7 @@ object JavaDefinitions {
 
     def pc: Rep[Int] = column[Int]("PC")
 
-    override def * : ProvenShape[JavaInvocationRepr] = (id, declaredType, parameterCount, returnType, kind, pc)
+    override def * : ProvenShape[JavaInvocationRepr] = (id, declaredType, paramTypes, returnType, kind, pc)
 
     def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
       foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)

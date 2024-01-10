@@ -1,10 +1,10 @@
 package org.anon.spareuse.core.model.entities.conversion
 
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaPackage, JavaProgram, JavaStatement}
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaPackage, JavaProgram, JavaStatement, JavaNewInstanceStatement}
 import org.anon.spareuse.core.model.entities.JavaEntities
 import org.opalj.ba
 import org.opalj.bc.Assembler
-import org.opalj.br.instructions.{FieldAccess, GETFIELD, GETSTATIC, INVOKEDYNAMIC, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL, Instruction, PUTFIELD, PUTSTATIC}
+import org.opalj.br.instructions.{FieldAccess, GETFIELD, GETSTATIC, INVOKEDYNAMIC, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL, Instruction, NEW, PUTFIELD, PUTSTATIC}
 import org.opalj.br.{ClassFile, Method}
 
 import java.security.MessageDigest
@@ -116,30 +116,34 @@ object OPALJavaConverter {
         val invokeInstr = i.asInvocationInstruction
 
         val targetMethodName = invokeInstr.name
-        val paramCount = invokeInstr.methodDescriptor.parametersCount
+        val paramTypes = invokeInstr.methodDescriptor.parameterTypes.map(_.toJVMTypeName)
         val returnType = invokeInstr.methodDescriptor.returnType.toJVMTypeName
 
         invokeInstr match {
           case static: INVOKESTATIC =>
             Some(new JavaInvokeStatement(targetMethodName, static.declaringClass.fqn,
-              paramCount, returnType, JavaInvocationType.Static, pc, ident, m.repository))
+              paramTypes, returnType, JavaInvocationType.Static, pc, ident, m.repository))
 
           case special: INVOKESPECIAL =>
             Some(new JavaInvokeStatement(targetMethodName, special.declaringClass.fqn,
-              paramCount, returnType, JavaInvocationType.Special, pc, ident, m.repository))
+              paramTypes, returnType, JavaInvocationType.Special, pc, ident, m.repository))
 
           case virtual: INVOKEVIRTUAL =>
             Some(new JavaInvokeStatement(targetMethodName, virtual.declaringClass.toJVMTypeName,
-              paramCount, returnType, JavaInvocationType.Virtual, pc, ident, m.repository))
+              paramTypes, returnType, JavaInvocationType.Virtual, pc, ident, m.repository))
 
           case interface: INVOKEINTERFACE =>
             Some(new JavaInvokeStatement(targetMethodName, interface.declaringClass.fqn,
-              paramCount, returnType, JavaInvocationType.Interface, pc, ident, m.repository))
+              paramTypes, returnType, JavaInvocationType.Interface, pc, ident, m.repository))
 
           case _: INVOKEDYNAMIC =>
-            Some(new JavaInvokeStatement(targetMethodName, "<DYNAMIC>", paramCount,
+            Some(new JavaInvokeStatement(targetMethodName, "<DYNAMIC>", paramTypes,
               "<DYNAMIC>", JavaInvocationType.Dynamic, pc, ident, m.repository))
         }
+
+      case NEW.opcode =>
+        val newInstr = i.asNEW
+        Some(new JavaNewInstanceStatement(newInstr.objectType.fqn, pc, ident, m.repository))
 
       case _ => None
     }

@@ -1,6 +1,6 @@
 package org.anon.spareuse.core.storage.postgresql
 
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaLibrary, JavaMethod, JavaPackage, JavaProgram}
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaLibrary, JavaMethod, JavaNewInstanceStatement, JavaPackage, JavaProgram}
 import org.anon.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaFieldAccessRepr, JavaInvocationRepr, JavaMethodRepr}
 import org.anon.spareuse.core.utils.fromHex
 
@@ -36,12 +36,22 @@ object JavaConverter {
   def toInvocation(repr: SoftwareEntityRepr, invokeData: JavaInvocationRepr): JavaInvokeStatement = {
     val invocationType = JavaInvocationType.fromId(invokeData._5)
 
-    new JavaInvokeStatement(repr.name, invokeData._2, invokeData._3, invokeData._4, invocationType, invokeData._6, repr.fqn, repr.repository)
+    new JavaInvokeStatement(repr.name, invokeData._2, invokeData._3.split("!").toSeq, invokeData._4, invocationType, invokeData._6, repr.fqn, repr.repository)
   }
 
   def toFieldAccess(repr: SoftwareEntityRepr, fieldAccessData: JavaFieldAccessRepr): JavaFieldAccessStatement = {
     val accessType = JavaFieldAccessType.fromId(fieldAccessData._4)
 
     new JavaFieldAccessStatement(repr.name, fieldAccessData._2, fieldAccessData._3, accessType, fieldAccessData._5, repr.fqn, repr.repository)
+  }
+
+  def toNewInstanceCreation(repr: SoftwareEntityRepr): JavaNewInstanceStatement = {
+    val lastIndex = repr.fqn.lastIndexOf("!")
+
+    if(lastIndex < 0 || lastIndex >= repr.fqn.length - 1)
+      throw new IllegalStateException(s"Malformed uid for statement: ${repr.fqn}")
+
+    val pc = repr.fqn.substring(lastIndex + 1).toInt
+    new JavaNewInstanceStatement(repr.name, pc, repr.fqn, repr.repository)
   }
 }

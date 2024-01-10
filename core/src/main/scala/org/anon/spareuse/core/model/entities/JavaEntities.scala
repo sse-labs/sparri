@@ -145,7 +145,7 @@ object JavaEntities {
 
   class JavaInvokeStatement(methodName: String,
                             declaredTypeFqn: String,
-                            paramCount: Int,
+                            paramTypeNames: Seq[String],
                             returnTypeFqn: String,
                             invocationType: JavaInvocationType,
                             pc: Int,
@@ -154,7 +154,8 @@ object JavaEntities {
     override val kind: SoftwareEntityKind = SoftwareEntityKind.InvocationStatement
 
     val targetMethodName: String = methodName
-    val targetMethodParameterCount: Int = paramCount
+    val targetMethodParameterCount: Int = paramTypeNames.size
+    val targetMethodParameterTypeNames: Seq[String] = paramTypeNames
     val returnTypeName: String = returnTypeFqn
     val targetTypeName: String = declaredTypeFqn
     val isStaticMethod: Boolean = invocationType == JavaInvocationType.Static
@@ -174,6 +175,12 @@ object JavaEntities {
     val targetFieldTypeName: String = fieldTypeFqn
     val targetTypeName: String = declaredTypeFqn
     val fieldAccessType: JavaFieldAccessType = accessType
+  }
+
+  class JavaNewInstanceStatement(typeName: String, pc: Int, stmtUid: String, repositoryIdent: String)
+    extends JavaStatement(typeName, pc, stmtUid, repositoryIdent){
+    override val kind: SoftwareEntityKind = SoftwareEntityKind.NewInstanceStatement
+    val instantiatedTypeName: String = typeName
   }
 
   object JavaInvocationType extends Enumeration {

@@ -11,6 +11,7 @@ object SoftwareEntityKind extends Enumeration {
   val Method: Value = Value(4)
   val InvocationStatement: Value = Value(5)
   val FieldAccessStatement: Value = Value(6)
+  val NewInstanceStatement: Value = Value(7)
 
   def fromId(id: Int): SoftwareEntityKind = {
     SoftwareEntityKind(id)
@@ -34,6 +35,7 @@ object SoftwareEntityKind extends Enumeration {
     case "method" => Some(Method)
     case "invocationstatement" => Some(InvocationStatement)
     case "fieldaccessstatement" => Some(FieldAccessStatement)
+    case "newinstancestatement" => Some(NewInstanceStatement)
     case _ => None
   }
 }

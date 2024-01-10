@@ -58,7 +58,7 @@ trait EntityAccessor {
                                                    kind: SoftwareEntityKind,
                                                    resolutionScope: SoftwareEntityKind): Try[T] =
     getEntity(ident, kind, resolutionScope).flatMap{
-      case it: T => Success(it)
+      case it: SoftwareEntityData => Success(it.asInstanceOf[T])
       case _ => Failure(new IllegalStateException(s"Not of kind ${kind.toString}: $ident"))
     }
 }
