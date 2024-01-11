@@ -5,6 +5,8 @@ import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaFieldAccessType.JavaFieldAccessType
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaInvocationType.JavaInvocationType
 import org.anon.spareuse.core.model.SoftwareEntityKind
+import org.opalj.br.MethodDescriptor
+import org.opalj.tac.fpcf.analyses.cg.MethodDesc
 
 object JavaEntities {
 
@@ -43,9 +45,9 @@ object JavaEntities {
     classObj
   }
 
-  def buildMethodFor(jc: JavaClass, methodName: String, returnTypeName: String, paramTypeNames: Seq[String], isFinal: Boolean, isStatic: Boolean, isAbstract: Boolean, visibility: String, hashCode: Int): JavaMethod = {
-    val ident = jc.uid + "!" + buildMethodIdent(methodName, returnTypeName, paramTypeNames)
-    val methodObj = new JavaMethod(methodName, returnTypeName, paramTypeNames, ident, isFinal, isStatic, isAbstract, visibility, jc.repository, hashCode)
+  def buildMethodFor(jc: JavaClass, methodName: String, descriptor: String, isFinal: Boolean, isStatic: Boolean, isAbstract: Boolean, visibility: String, hashCode: Int): JavaMethod = {
+    val ident = jc.uid + "!" + buildMethodIdent(methodName, descriptor)
+    val methodObj = new JavaMethod(methodName, descriptor, ident, isFinal, isStatic, isAbstract, visibility, jc.repository, hashCode)
     methodObj.setParent(jc)
     methodObj
   }
@@ -126,30 +128,31 @@ object JavaEntities {
     def getMethods: Set[JavaMethod] = getChildren.map(_.asInstanceOf[JavaMethod])
   }
 
-  def buildMethodIdent(methodName: String, returnType: String, paramTypes: Seq[String]) =
-    s"$returnType $methodName(${paramTypes.mkString(",")})"
+  def buildMethodIdent(methodName: String, jvmDescriptor: String) = s"$methodName: $jvmDescriptor"
 
   class JavaMethod(methodName: String,
-                   returnTypeFqn: String,
-                   paramTypeNames: Seq[String],
+                   jvmDescriptor: String,
                    methodUid: String,
                    finalMethod: Boolean,
                    staticMethod: Boolean,
                    abstractMethod: Boolean,
                    methodVisibility: String,
                    repositoryIdent: String,
-                   hash: Int) extends PathIdentifiableJavaEntity(methodName, buildMethodIdent(methodName, returnTypeFqn, paramTypeNames), methodUid, repositoryIdent, None){
+                   hash: Int) extends PathIdentifiableJavaEntity(methodName, buildMethodIdent(methodName, jvmDescriptor), methodUid, repositoryIdent, None){
 
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Method
 
-    val returnType: String = returnTypeFqn
-    val paramCount: Int = paramTypeNames.size
-    val paramTypes: Seq[String] = paramTypeNames
+    private lazy val opalDescriptor = MethodDescriptor(jvmDescriptor)
+
+    val descriptor: String = jvmDescriptor
     val isFinal: Boolean = finalMethod
     val isStatic: Boolean = staticMethod
     val isAbstract: Boolean = abstractMethod
     val visibility: String = methodVisibility
     val methodHash: Int = hash
+
+    def paramTypes: Seq[String] = opalDescriptor.parameterTypes.map(_.toJVMTypeName)
+    def returnType: String = opalDescriptor.returnType.toJVMTypeName
 
     def getStatements: Seq[JavaStatement] = getChildren.map(_.asInstanceOf[JavaStatement]).toSeq.sortBy(_.instructionPc)
     def getNewStatements: Seq[JavaNewInstanceStatement] = getChildren.collect{ case x: JavaNewInstanceStatement => x }.toSeq.sortBy(_.instructionPc)
@@ -164,8 +167,7 @@ object JavaEntities {
 
   class JavaInvokeStatement(methodName: String,
                             declaredTypeFqn: String,
-                            paramTypeNames: Seq[String],
-                            returnTypeFqn: String,
+                            jvmDescriptor: String,
                             invocationType: JavaInvocationType,
                             pc: Int,
                             stmtUid: String,
@@ -173,9 +175,7 @@ object JavaEntities {
     override val kind: SoftwareEntityKind = SoftwareEntityKind.InvocationStatement
 
     val targetMethodName: String = methodName
-    val targetMethodParameterCount: Int = paramTypeNames.size
-    val targetMethodParameterTypeNames: Seq[String] = paramTypeNames
-    val returnTypeName: String = returnTypeFqn
+    val targetDescriptor: String = jvmDescriptor
     val targetTypeName: String = declaredTypeFqn
     val isStaticMethod: Boolean = invocationType == JavaInvocationType.Static
     val invokeStatementType: JavaInvocationType = invocationType

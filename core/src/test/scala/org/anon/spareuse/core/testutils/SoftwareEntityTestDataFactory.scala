@@ -4,6 +4,7 @@ import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaMethod, JavaProgram}
 import org.anon.spareuse.core.model.entities.{GenericEntityData, JavaEntities, SoftwareEntityData}
+import org.opalj.br.{FieldTypes, MethodDescriptor, ObjectType}
 
 object SoftwareEntityTestDataFactory {
 
@@ -47,6 +48,8 @@ object SoftwareEntityTestDataFactory {
   }
 
   def methodFor(jc: JavaClass, methodName: String = "toString", returnType: String = "String", paramTypeNames: Seq[String] = Seq.empty, isFinal: Boolean = false, isStatic: Boolean = false, isAbstract: Boolean = false, visibility: String = "public", hash: Int = 0): JavaMethod = {
-    JavaEntities.buildMethodFor(jc, methodName, returnType, paramTypeNames, isFinal, isStatic, isAbstract, visibility, hash)
+
+    val d = MethodDescriptor.apply(FieldTypes.from(paramTypeNames.map(s => ObjectType(s))), ObjectType(returnType))
+    JavaEntities.buildMethodFor(jc, methodName, d.toJVMDescriptor, isFinal, isStatic, isAbstract, visibility, hash)
   }
 }

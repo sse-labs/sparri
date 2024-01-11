@@ -25,18 +25,14 @@ object JavaConverter {
   }
 
   def toMethod(repr: SoftwareEntityRepr, methodData: JavaMethodRepr): JavaMethod = {
-    val paramTypeNames = if(!methodData._4.trim.isBlank) methodData._4.split(",") else Array.empty[String]
 
-    if (paramTypeNames.length != methodData._3)
-      throw new IllegalStateException("Corrupt database, parameter count does not match actual parameters")
-
-    new JavaMethod(repr.name, methodData._2, paramTypeNames.toSeq, repr.fqn, methodData._5, methodData._6, methodData._7, methodData._8, repr.repository, methodData._9)
+    new JavaMethod(repr.name, methodData._2, repr.fqn, methodData._3, methodData._4, methodData._5, methodData._6, repr.repository, methodData._7)
   }
 
   def toInvocation(repr: SoftwareEntityRepr, invokeData: JavaInvocationRepr): JavaInvokeStatement = {
-    val invocationType = JavaInvocationType.fromId(invokeData._5)
+    val invocationType = JavaInvocationType.fromId(invokeData._4)
 
-    new JavaInvokeStatement(repr.name, invokeData._2, invokeData._3.split("!").toSeq, invokeData._4, invocationType, invokeData._6, repr.fqn, repr.repository)
+    new JavaInvokeStatement(repr.name, invokeData._2, invokeData._3, invocationType, invokeData._5, repr.fqn, repr.repository)
   }
 
   def toFieldAccess(repr: SoftwareEntityRepr, fieldAccessData: JavaFieldAccessRepr): JavaFieldAccessStatement = {

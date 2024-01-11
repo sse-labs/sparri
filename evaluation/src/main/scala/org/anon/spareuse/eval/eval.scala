@@ -248,8 +248,7 @@ package object eval {
           case jo: JsObject =>
             new JavaMethod(
               jo.fields("Name").asInstanceOf[JsString].value,
-              jo.fields("ReturnType").asInstanceOf[JsString].value,
-              jo.fields("ParameterTypes").asInstanceOf[JsArray].elements.collect{ case s: JsString => s.value },
+              jo.fields("Descriptor").asInstanceOf[JsString].value,
               jo.fields("Identifier").asInstanceOf[JsString].value,
               jo.fields("IsFinal").asInstanceOf[JsBoolean].value,
               jo.fields("IsStatic").asInstanceOf[JsBoolean].value,

@@ -135,10 +135,10 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
   private def toClassRepr(jc: JavaClass, parentId: Long): JavaClassRepr = (parentId, jc.thisType, jc.superType, jc.interfaceTypes.mkString(";"), jc.isInterface, jc.isFinal, jc.isAbstract)
 
-  private def toMethodRepr(jm: JavaMethod, parentId: Long): JavaMethodRepr = (parentId, jm.returnType, jm.paramCount, jm.paramTypes.mkString(","), jm.isFinal, jm.isStatic, jm.isAbstract, jm.visibility, jm.methodHash)
+  private def toMethodRepr(jm: JavaMethod, parentId: Long): JavaMethodRepr = (parentId, jm.descriptor, jm.isFinal, jm.isStatic, jm.isAbstract, jm.visibility, jm.methodHash)
 
   private def toInvocationRepr(jis: JavaInvokeStatement, parentId: Long): JavaInvocationRepr =
-    (parentId, jis.targetTypeName, jis.targetMethodParameterTypeNames.mkString("!"), jis.returnTypeName, jis.invokeStatementType.id, jis.instructionPc)
+    (parentId, jis.targetTypeName, jis.targetDescriptor, jis.invokeStatementType.id, jis.instructionPc)
 
   private def toFieldAccessRepr(jfas: JavaFieldAccessStatement, parentId: Long): JavaFieldAccessRepr =
     (parentId, jfas.targetFieldTypeName, jfas.targetTypeName, jfas.fieldAccessType.id, jfas.instructionPc)

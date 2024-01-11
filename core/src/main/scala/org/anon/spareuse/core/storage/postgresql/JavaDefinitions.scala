@@ -29,17 +29,13 @@ object JavaDefinitions {
       foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
   }
 
-  type JavaMethodRepr = (Long, String, Int, String, Boolean, Boolean, Boolean, String, Int)
+  type JavaMethodRepr = (Long, String, Boolean, Boolean, Boolean, String, Int)
 
   class JavaMethods(tag: Tag) extends Table[JavaMethodRepr](tag, "javamethods"){
 
     def id: Rep[Long] = column[Long]("ID", O.PrimaryKey)
 
-    def returnType: Rep[String] = column[String]("RETURN_TYPE")
-
-    def paramCount: Rep[Int] = column[Int]("PARAMETER_CNT")
-
-    def paramTypes: Rep[String] = column[String]("PARAMETER_TYPES")
+    def descriptor: Rep[String] = column[String]("DESCRIPTOR")
 
     def isFinal: Rep[Boolean] = column[Boolean]("IS_FINAL")
 
@@ -51,14 +47,13 @@ object JavaDefinitions {
 
     def methodHash: Rep[Int] = column[Int]("HASH")
 
-
-    override def * : ProvenShape[JavaMethodRepr] = (id, returnType, paramCount, paramTypes, isFinal, isStatic, isAbstract, visibility, methodHash)
+    override def * : ProvenShape[JavaMethodRepr] = (id, descriptor, isFinal, isStatic, isAbstract, visibility, methodHash)
 
     def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
       foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
   }
 
-  type JavaInvocationRepr = (Long, String, String, String, Int, Int)
+  type JavaInvocationRepr = (Long, String, String, Int, Int)
 
   class JavaInvocationStatements(tag: Tag) extends Table[JavaInvocationRepr](tag, "javainvocations"){
 
@@ -66,15 +61,13 @@ object JavaDefinitions {
 
     def declaredType: Rep[String] = column[String]("DECLARED_TYPE")
 
-    def paramTypes: Rep[String] = column[String]("PARAMETER_TYPES")
-
-    def returnType: Rep[String] = column[String]("RETURN_TYPE")
+    def descriptor: Rep[String] = column[String]("DESCRIPTOR")
 
     def kind: Rep[Int] = column[Int]("KIND")
 
     def pc: Rep[Int] = column[Int]("PC")
 
-    override def * : ProvenShape[JavaInvocationRepr] = (id, declaredType, paramTypes, returnType, kind, pc)
+    override def * : ProvenShape[JavaInvocationRepr] = (id, declaredType, descriptor, kind, pc)
 
     def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
       foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)

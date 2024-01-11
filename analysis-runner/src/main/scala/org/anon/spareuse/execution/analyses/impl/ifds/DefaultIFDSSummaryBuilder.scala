@@ -67,7 +67,7 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
       .getChildren
       .flatMap( packageEnt => packageEnt.getChildren.flatMap( classEnt => classEnt.getChildren))
       .map(_.asInstanceOf[JavaMethod])
-      .map(jm => (buildMethodIdent(jm.name, jm.returnType, jm.paramTypes), jm))
+      .map(jm => (buildMethodIdent(jm.name, jm.descriptor), jm))
       .toMap
 
     getFileFor(input) match {
@@ -116,7 +116,7 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
               val ifdsGraph = analyzeMethod(m)
               val resultData = ifdsGraph.toResultRepresentation(squashStatements)
 
-              val correspondingEntity = inputMethodMap.get(buildMethodIdent(m.name, m.returnType.toJVMTypeName, m.parameterTypes.map(_.toJVMTypeName)))
+              val correspondingEntity = inputMethodMap.get(buildMethodIdent(m.name, m.descriptor.toJVMDescriptor))
 
               if(correspondingEntity.isEmpty) throw new IllegalStateException(s"Could not find defined method in input entities: ${m.toJava}")
 

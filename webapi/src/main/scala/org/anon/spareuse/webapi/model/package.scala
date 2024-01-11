@@ -1,7 +1,7 @@
 package org.anon.spareuse.webapi
 
 import org.anon.spareuse.core.formats.json.CustomFormatWriter
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod}
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod, JavaNewInstanceStatement}
 import org.anon.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData}
 import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
 import org.anon.spareuse.core.utils.toHex
@@ -33,8 +33,7 @@ package object model {
     var thisTypeFqnOpt: Option[String] = None
     var superTypeOpt: Option[String] = None
     var interfaceTypesOpt: Option[Array[String]] = None
-    var returnTypeOpt: Option[String] = None
-    var paramTypesOpt: Option[Array[String]] = None
+    var descriptorOpt: Option[String] = None
     var isInterfaceTypeOpt: Option[Boolean] = None
     var isFinalOpt: Option[Boolean] = None
     var isStaticOpt: Option[Boolean] = None
@@ -52,8 +51,7 @@ package object model {
         isFinalOpt = Some(jc.isFinal)
         isAbstractOpt = Some(jc.isAbstract)
       case jm: JavaMethod =>
-        returnTypeOpt = Some(jm.returnType)
-        paramTypesOpt = Some(jm.paramTypes.toArray)
+        descriptorOpt = Some(jm.descriptor)
         isFinalOpt = Some(jm.isFinal)
         isStaticOpt = Some(jm.isStatic)
         isAbstractOpt = Some(jm.isAbstract)
@@ -61,12 +59,14 @@ package object model {
         methodHashOpt = Some(jm.methodHash)
       case jis: JavaInvokeStatement =>
         targetTypeOpt = Some(jis.targetTypeName)
-        returnTypeOpt = Some(jis.returnTypeName)
+        descriptorOpt = Some(jis.targetDescriptor)
         isStaticOpt = Some(jis.isStaticMethod)
-        //IMPROVE: Method Name, Parameter Count, Invocation Types
+        //IMPROVE: Method Name, PC, Invocation Types
       case jfas: JavaFieldAccessStatement =>
         targetTypeOpt = Some(jfas.targetTypeName)
         //IMPROVE: Field Type, Field Name, Access Type
+      case jnis: JavaNewInstanceStatement =>
+        targetTypeOpt = Some(jnis.instantiatedTypeName)
       case _ =>
     }
 
@@ -89,8 +89,7 @@ package object model {
       isStaticOpt,
       isAbstractOpt,
       visibilityOpt,
-      returnTypeOpt,
-      paramTypesOpt,
+      descriptorOpt,
       targetTypeOpt,
       methodHashOpt
     )
@@ -116,6 +115,6 @@ package object model {
 
   def genericEntityToEntityRepr(entity: GenericEntityData): EntityRepr = {
     EntityRepr(entity.name, entity. uid, entity.kind.toString, entity.language, entity.repository, entity.parentUid,
-      entity.binaryHash.map(toHex), None, None, None, None, None, None, None, None, None, None, None, None, None)
+      entity.binaryHash.map(toHex), None, None, None, None, None, None, None, None, None, None, None, None)
   }
 }

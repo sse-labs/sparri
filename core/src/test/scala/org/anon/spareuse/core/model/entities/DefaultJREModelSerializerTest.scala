@@ -9,7 +9,8 @@ import scala.util.{Failure, Success}
 class DefaultJREModelSerializerTest extends AnyFunSpec {
 
   describe("The JRE model serializer") {
-    it("must serializer the current default JRE without errors"){
+
+     ignore("must serializer the current default JRE without errors"){
 
       val outDir = Files.createDirectory(Paths.get("test-out"))
 

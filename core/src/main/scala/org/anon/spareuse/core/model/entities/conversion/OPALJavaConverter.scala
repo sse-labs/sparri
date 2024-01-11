@@ -67,9 +67,8 @@ object OPALJavaConverter {
   }
 
   def addMethod(m: Method, c: JavaClass): JavaMethod = {
-
-    val methodRep = JavaEntities.buildMethodFor(c, m.name, m.returnType.toJVMTypeName, m.parameterTypes.map(_.toJVMTypeName),
-      m.isFinal, m.isStatic, m.isAbstract, m.visibilityModifier.map(_.javaName.get).getOrElse("default"), buildMethodHash(m))
+    val methodRep = JavaEntities.buildMethodFor(c, m.name, m.descriptor.toJVMDescriptor, m.isFinal, m.isStatic,
+      m.isAbstract, m.visibilityModifier.map(_.javaName.get).getOrElse("default"), buildMethodHash(m))
 
     m.body.foreach { code =>
 
@@ -118,29 +117,28 @@ object OPALJavaConverter {
         val invokeInstr = i.asInvocationInstruction
 
         val targetMethodName = invokeInstr.name
-        val paramTypes = invokeInstr.methodDescriptor.parameterTypes.map(_.toJVMTypeName)
-        val returnType = invokeInstr.methodDescriptor.returnType.toJVMTypeName
+        val descriptor = invokeInstr.methodDescriptor.toJVMDescriptor
 
         invokeInstr match {
           case static: INVOKESTATIC =>
-            Some(new JavaInvokeStatement(targetMethodName, static.declaringClass.fqn,
-              paramTypes, returnType, JavaInvocationType.Static, pc, ident, m.repository))
+            Some(new JavaInvokeStatement(targetMethodName, static.declaringClass.fqn, descriptor, JavaInvocationType.Static,
+              pc, ident, m.repository))
 
           case special: INVOKESPECIAL =>
-            Some(new JavaInvokeStatement(targetMethodName, special.declaringClass.fqn,
-              paramTypes, returnType, JavaInvocationType.Special, pc, ident, m.repository))
+            Some(new JavaInvokeStatement(targetMethodName, special.declaringClass.fqn, descriptor, JavaInvocationType.Special,
+              pc, ident, m.repository))
 
           case virtual: INVOKEVIRTUAL =>
-            Some(new JavaInvokeStatement(targetMethodName, virtual.declaringClass.toJVMTypeName,
-              paramTypes, returnType, JavaInvocationType.Virtual, pc, ident, m.repository))
+            Some(new JavaInvokeStatement(targetMethodName, virtual.declaringClass.toJVMTypeName, descriptor, JavaInvocationType.Virtual,
+              pc, ident, m.repository))
 
           case interface: INVOKEINTERFACE =>
-            Some(new JavaInvokeStatement(targetMethodName, interface.declaringClass.fqn,
-              paramTypes, returnType, JavaInvocationType.Interface, pc, ident, m.repository))
+            Some(new JavaInvokeStatement(targetMethodName, interface.declaringClass.fqn, descriptor, JavaInvocationType.Interface,
+              pc, ident, m.repository))
 
           case _: INVOKEDYNAMIC =>
-            Some(new JavaInvokeStatement(targetMethodName, "<DYNAMIC>", paramTypes,
-              "<DYNAMIC>", JavaInvocationType.Dynamic, pc, ident, m.repository))
+            Some(new JavaInvokeStatement(targetMethodName, "<DYNAMIC>", descriptor, JavaInvocationType.Dynamic,
+              pc, ident, m.repository))
         }
 
       case NEW.opcode =>

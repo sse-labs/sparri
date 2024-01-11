@@ -12,8 +12,7 @@ object DefaultJREModelSerializer extends JREModelSerializer {
         new JsObject(Map(
           "methodName" -> JsString(jis.targetMethodName),
           "declaredTypeFqn" -> JsString(jis.targetTypeName),
-          "paramTypeNames" -> JsArray(jis.targetMethodParameterTypeNames.map(n => JsString(n)).toVector),
-          "returnTypeFqn" -> JsString(jis.returnTypeName),
+          "descriptor" -> JsString(jis.targetDescriptor),
           "invocationType" -> JsNumber(jis.invokeStatementType.id),
           "pc" -> JsNumber(jis.instructionPc),
           "uid" -> JsString(jis.uid)
@@ -37,8 +36,7 @@ object DefaultJREModelSerializer extends JREModelSerializer {
 
     def methodToJson(method: JavaMethod): JsObject = new JsObject(Map(
       "methodName" -> JsString(method.name),
-      "returnTypeFqn" -> JsString(method.returnType),
-      "paramTypeNames" -> JsArray(method.paramTypes.map(n => JsString(n)).toVector),
+      "descriptor" -> JsString(method.descriptor),
       "methodUid" -> JsString(method.uid),
       "finalMethod" -> JsBoolean(method.isFinal),
       "staticMethod" -> JsBoolean(method.isStatic),
