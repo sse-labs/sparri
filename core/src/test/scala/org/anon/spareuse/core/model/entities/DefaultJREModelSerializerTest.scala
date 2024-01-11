@@ -6,7 +6,7 @@ import org.scalatest.funspec.AnyFunSpec
 import java.nio.file.{Files, Paths}
 import scala.util.{Failure, Success}
 
-class JREModelSerializerTest extends AnyFunSpec {
+class DefaultJREModelSerializerTest extends AnyFunSpec {
 
   describe("The JRE model serializer") {
     it("must serializer the current default JRE without errors"){
@@ -17,7 +17,7 @@ class JREModelSerializerTest extends AnyFunSpec {
 
       println(jreLocation)
 
-      JREModelSerializer.serializeJreModel(JRELibraryFolder, "0.0.0", outDir.toFile) match {
+      DefaultJREModelSerializer.serializeJreModel(JRELibraryFolder, "0.0.0", outDir.toFile) match {
         case Success(outFile) =>
           assert(outFile.exists())
           assert(outFile.getName.equals(s"jre-0.0.0.json"))
