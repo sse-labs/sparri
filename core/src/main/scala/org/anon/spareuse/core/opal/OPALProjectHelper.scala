@@ -44,7 +44,7 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
 
   private lazy val jreClassFqns: List[String] = jreClasses.map(_._1.fqn)
 
-  private lazy val jreClasses: ClassList = {
+  lazy val jreClasses: ClassList = {
 
     def getJarFilesRecursive(directory: File): List[File] = {
       val directChildJars = directory
@@ -172,7 +172,7 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
       Java16LibraryFramework
   }
 
-  private def readClassesFromJmodFile(jmod: File, loadImplementation: Boolean): Try[ClassList] = Try {
+  def readClassesFromJmodFile(jmod: File, loadImplementation: Boolean): Try[ClassList] = Try {
     val entries = new ListBuffer[(ClassFile, URL)]()
 
     val zipFile = new ZipFile(jmod)

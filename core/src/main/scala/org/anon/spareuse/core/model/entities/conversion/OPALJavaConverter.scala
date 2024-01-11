@@ -18,7 +18,8 @@ object OPALJavaConverter {
 
   def convertProgram(programIdent: String,
                      repositoryIdent: String,
-                     opalClasses: List[ClassFile]): JavaProgram = {
+                     opalClasses: List[ClassFile],
+                     loadClassContents: Boolean = true): JavaProgram = {
 
     val classHashes = opalClasses.map(cf => (cf, hashClass(cf))).toMap
 
@@ -35,16 +36,17 @@ object OPALJavaConverter {
     packages.foreach { p =>
       opalClasses
         .filter(_.thisType.packageName.equals(p.name))
-        .foreach(cf => addClass(cf, p, classHashes(cf)))
+        .foreach(cf => addClass(cf, p, classHashes(cf), loadClassContents))
     }
 
     program
   }
 
-  def addClass(cf: ClassFile, p: JavaPackage, classHash: Array[Byte]): JavaClass = {
+  def addClass(cf: ClassFile, p: JavaPackage, classHash: Array[Byte], loadClassContents: Boolean = true): JavaClass = {
     val classRep = JavaEntities.buildClassFor(p, cf.thisType.simpleName, cf.thisType.fqn, cf.isInterfaceDeclaration, cf.isFinal, cf.isAbstract, cf.superclassType.map(_.fqn), cf.interfaceTypes.map(_.fqn).toSet, classHash)
 
-    cf.methods.foreach(addMethod(_, classRep))
+    if(loadClassContents)
+      cf.methods.foreach(addMethod(_, classRep))
 
     classRep
   }

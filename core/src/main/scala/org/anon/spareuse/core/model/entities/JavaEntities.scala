@@ -69,6 +69,8 @@ object JavaEntities {
   class JavaLibrary(val libraryName: String,
                     repositoryIdent: String) extends PathIdentifiableJavaEntity(libraryName, libraryName, libraryName, repositoryIdent, None){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Library
+
+    def getPrograms: Set[JavaProgram] = getChildren.map(_.asInstanceOf[JavaProgram])
   }
 
   class JavaProgram(val programName: String,
@@ -84,12 +86,22 @@ object JavaEntities {
     val ga: String = if(isGAV) programName.substring(0, programName.lastIndexOf(":")) else programName
     val v: String = if(isGAV) programName.substring(programName.lastIndexOf(":") + 1) else programName
 
+    def getPackages: Set[JavaPackage] = getChildren.map(_.asInstanceOf[JavaPackage])
+
+    def allClasses: Set[JavaClass] = getPackages.flatMap(_.getClasses)
+
+    def allMethods: Set[JavaMethod] = allClasses.flatMap(_.getMethods)
+
   }
 
   class JavaPackage(packageName: String,
                     packageUid: String,
                     repositoryIdent: String) extends PathIdentifiableJavaEntity(packageName, packageName, packageUid, repositoryIdent, None) {
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Package
+
+    def getClasses: Set[JavaClass] = getChildren.map(_.asInstanceOf[JavaClass])
+
+    def allMethods: Set[JavaMethod] = getClasses.flatMap(_.getMethods)
   }
 
   class JavaClass(className: String,
@@ -110,6 +122,8 @@ object JavaEntities {
     val isInterface: Boolean = interfaceType
     val isFinal: Boolean = finalType
     val isAbstract: Boolean = abstractType
+
+    def getMethods: Set[JavaMethod] = getChildren.map(_.asInstanceOf[JavaMethod])
   }
 
   def buildMethodIdent(methodName: String, returnType: String, paramTypes: Seq[String]) =
@@ -136,6 +150,11 @@ object JavaEntities {
     val isAbstract: Boolean = abstractMethod
     val visibility: String = methodVisibility
     val methodHash: Int = hash
+
+    def getStatements: Seq[JavaStatement] = getChildren.map(_.asInstanceOf[JavaStatement]).toSeq.sortBy(_.instructionPc)
+    def getNewStatements: Seq[JavaNewInstanceStatement] = getChildren.collect{ case x: JavaNewInstanceStatement => x }.toSeq.sortBy(_.instructionPc)
+    def getInvocationStatements: Seq[JavaInvokeStatement] = getChildren.collect{ case x: JavaInvokeStatement => x }.toSeq.sortBy(_.instructionPc)
+    def getFieldAccessStatements: Seq[JavaFieldAccessStatement] = getChildren.collect{ case x: JavaFieldAccessStatement => x }.toSeq.sortBy(_.instructionPc)
   }
 
   abstract class JavaStatement(name: String, pc: Int, stmtUid: String, repositoryIdent: String)

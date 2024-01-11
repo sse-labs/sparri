@@ -32,7 +32,7 @@ lazy val core = (project in file("core"))
 		libraryDependencies ++= dependencies.slick,
 		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.akkaStreams,
 			dependencies.apacheHttp, dependencies.postgresql, dependencies.jeka, dependencies.mvnarcheologist,
-			dependencies.sprayJson)
+			dependencies.sprayJson, dependencies.logback)
 	)
 
 lazy val `maven-entity-name-publisher` = (project in file("maven-entity-name-publisher"))
