@@ -1,5 +1,7 @@
 package org.anon.spareuse.execution
 
+import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
+import org.anon.spareuse.core.model.entities.conversion.OPALJavaConverter
 import org.anon.spareuse.execution.analyses.impl.ifds.MethodTACProvider
 import org.opalj.ai.domain
 import org.opalj.ai.fpcf.properties.AIDomainFactoryKey
@@ -30,14 +32,26 @@ package object analyses {
     project.get(ComputeTACAIKey)
   }
 
+  def getCallGraphProject: Project[URL] = {
+    Project(Array(callsFixtureName, interfaceFixtureName, interfaceImplFixtureName).map(loadFixture), Array.empty[File])
+  }
+
+  def toObjectModel(project: Project[URL], ident: String = "org.anon.test:1.0.0", loadClassContents: Boolean = true): JavaProgram = {
+    OPALJavaConverter.convertProgram(ident, "<default>", project.allClassFiles.toList, loadClassContents)
+  }
+
   // Use the following code to refer to java fixtures that are located in the fixtures-java directory and compiled to the
   // resources directory using `sbt compileRunnerFixtures`
 
   val complexCfgFixtureName = "BranchingTaint.class"
   val simpleSelfContainedFixtureName = "StringConcatHelper.class"
   val simpleCfgExternalCallFixtureName = "SimpleStringTaint.class"
+  val callsFixtureName = "Calls.class"
+  val interfaceFixtureName = "CallTarget.class"
+  val interfaceImplFixtureName = "CallTargetImpl.class"
 
-  val allFixtureNames: Seq[String] = Seq(complexCfgFixtureName, simpleCfgExternalCallFixtureName, simpleSelfContainedFixtureName)
+  val allFixtureNames: Seq[String] = Seq(complexCfgFixtureName, simpleCfgExternalCallFixtureName, simpleSelfContainedFixtureName,
+    callsFixtureName, interfaceFixtureName, interfaceImplFixtureName)
 
   def foreachFixture(implicit executor: File => Unit): Unit = allFixtureNames.map(loadFixture).foreach(executor)
 
