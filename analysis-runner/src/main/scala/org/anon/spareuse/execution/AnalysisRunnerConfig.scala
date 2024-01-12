@@ -7,9 +7,10 @@ import org.anon.spareuse.execution.AnalysisRunnerConfig.mqConnectionNameSuffixKe
 
 import scala.util.Try
 
-class AnalysisRunnerConfig private(val mqConnectionName: String,
+class AnalysisRunnerConfig private[execution](val mqConnectionName: String,
                                    val executionPoolSize: Int,
-                                   val exitOnEnter: Boolean) {
+                                   val exitOnEnter: Boolean,
+                                   val jreDataDir: String) {
 
 
   def toReaderConfig: MqConnectionConfiguration = MqConfigurationBuilder.analysisReadConfig(mqConnectionName)
@@ -27,16 +28,20 @@ object AnalysisRunnerConfig {
 
   private final val exitOnEnterKey = prefix + "exit-on-enter"
 
+  private final val jreDataDirKey = prefix + "jre-data-dir"
+
   def fromConfig(c: Config): Try[AnalysisRunnerConfig] = Try {
 
     val mqConnectionName = if (c.hasPath(mqConnectionNameSuffixKey)) "AnalysisRunner-" + c.getString(mqConnectionNameSuffixKey) else "AnalysisRunner"
 
     val exitOnEnter = if (c.hasPath(exitOnEnterKey)) c.getBoolean(exitOnEnterKey) else true
 
+    val jreDir = if(c.hasPath(jreDataDirKey)) c.getString(jreDataDirKey) else throw new IllegalArgumentException(s"Missing required configuration value for jre data dir: $jreDataDirKey")
+
 
     val executionPoolSize = if (c.hasPath(executionPoolSizeKey)) c.getInt(executionPoolSizeKey) else 1
 
-    new AnalysisRunnerConfig(mqConnectionName, executionPoolSize, exitOnEnter)
+    new AnalysisRunnerConfig(mqConnectionName, executionPoolSize, exitOnEnter, jreDir)
   }
 
 }

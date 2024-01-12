@@ -63,7 +63,7 @@ trait JREModelSerializer {
       }
       .flatMap(_.get)
 
-    val jreModel = OPALJavaConverter.convertProgram(s"<JRE>:$jreVersion", "<none>", allJreClasses.map(_._1))
+    val jreModel = OPALJavaConverter.convertProgram(s"<none>:<JRE>:$jreVersion", "<none>", allJreClasses.map(_._1))
     opalHelper.freeOpalResources()
 
     log.info("Done creating object model for JRE. Writing model to file ... ")
@@ -81,7 +81,7 @@ trait JREModelSerializer {
   protected def getJarFilesRecursive(directory: File): List[File] = {
     val directChildJars = directory
       .listFiles
-      .filter(f => f.isFile && f.getName.toLowerCase().endsWith("java.base.jmod") || f.getName.toLowerCase().endsWith("rt.jar"))
+      .filter(f => f.isFile && f.getName.toLowerCase().endsWith("java.base.jmod") || f.getName.toLowerCase().equals("rt.jar"))
       .toList
     directChildJars ++ directory.listFiles.filter(_.isDirectory).flatMap(getJarFilesRecursive).toList
   }
