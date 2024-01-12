@@ -11,12 +11,11 @@ class JreModelLoaderTest extends AnyFunSpec {
 
       JreModelLoader.indexJreData(config) // Would throw exception if there is an error
 
-      assert(JreModelLoader.jreVersionMap.size == 2)
-      assert(JreModelLoader.jreVersionMap.contains("8"))
+      assert(JreModelLoader.jreVersionMap.size == 1)
       assert(JreModelLoader.jreVersionMap.contains("17"))
 
-      assert(JreModelLoader.jreVersionMap("8").representation.isSuccess)
-      assert(JreModelLoader.getDefaultJre.isSuccess && JreModelLoader.getDefaultJre.get.version == "8")
+      assert(JreModelLoader.jreVersionMap("17").representation.isSuccess)
+      assert(JreModelLoader.getDefaultJre.isSuccess && JreModelLoader.getDefaultJre.get.version == "17")
     }
   }
 
