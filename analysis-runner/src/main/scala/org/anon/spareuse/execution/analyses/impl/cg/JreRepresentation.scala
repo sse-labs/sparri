@@ -8,11 +8,34 @@ case class JreRepresentation(version: String, types: Seq[JreType]){
 case class JreType(t: String, s: Option[String], i: Seq[String], iI: Boolean, m: Seq[JreMethod]){
   def allTypesInstantiated: Set[String]= m.flatMap(_.allTypesInstantiated).toSet
 }
-case class JreMethod(name: String, descr: String, n: Seq[JreNew], i: Seq[JreInvoke]){
-  def allTypesInstantiated: Set[String] = n.map(_.t).toSet
+
+/**
+ * Represents a method
+ * @param n Method name
+ * @param d Method descriptor
+ * @param t new instantiations
+ * @param i invocations
+ */
+case class JreMethod(n: String, d: String, t: Seq[JreNew], i: Seq[JreInvoke]){
+  def allTypesInstantiated: Set[String] = t.map(_.t).toSet
 }
-case class JreNew(t: String, pc: Long)
-case class JreInvoke(dT: String, n: String, descr: String, iS: Boolean, pc: Long)
+
+/**
+ * Represents a new instance creation
+ * @param t type that is instantiated
+ * @param p Pc of instruction
+ */
+case class JreNew(t: String, p: Long)
+
+/**
+ * Represents an invocation
+ * @param t Declared type
+ * @param n Method name
+ * @param d Method descriptor
+ * @param p PC
+ * @param k Kind of the invocation, as int
+ */
+case class JreInvoke(t: String, n: String, d: String, p: Long, k: Int)
 
 trait JreRepresentationJsonSupport extends DefaultJsonProtocol {
   implicit val invokeJsonFormat: JsonFormat[JreInvoke] = jsonFormat5(JreInvoke)

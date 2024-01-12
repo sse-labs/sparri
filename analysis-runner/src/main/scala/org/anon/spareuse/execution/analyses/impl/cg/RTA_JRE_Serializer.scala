@@ -10,7 +10,8 @@ object RTA_JRE_Serializer extends JREModelSerializer with JreRepresentationJsonS
     val repr = JreRepresentation(model.v, model.allClasses.map { jc =>
       JreType(jc.thisType, jc.superType, jc.interfaceTypes.toSeq, jc.isInterface, jc.getMethods.map {jm =>
         JreMethod(jm.name, jm.descriptor, jm.getNewStatements.map(jnis => JreNew(jnis.instantiatedTypeName, jnis.instructionPc)), jm.getInvocationStatements.map{jis =>
-          JreInvoke(jis.targetTypeName, jis.targetMethodName, jis.targetDescriptor, jis.isStaticMethod, jis.instructionPc)
+          JreInvoke(jis.targetTypeName, jis.targetMethodName, jis.targetDescriptor, jis.instructionPc, jis.invokeStatementType.id
+          )
         })
       }.toSeq)
     }.toSeq)
