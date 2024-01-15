@@ -154,6 +154,8 @@ object JavaEntities {
     def paramTypes: Seq[String] = opalDescriptor.parameterTypes.map(_.toJVMTypeName)
     def returnType: String = opalDescriptor.returnType.toJVMTypeName
 
+
+    def getEnclosingClass: Option[JavaClass] = getParent.map(_.asInstanceOf[JavaClass])
     def getStatements: Seq[JavaStatement] = getChildren.map(_.asInstanceOf[JavaStatement]).toSeq.sortBy(_.instructionPc)
     def getNewStatements: Seq[JavaNewInstanceStatement] = getChildren.collect{ case x: JavaNewInstanceStatement => x }.toSeq.sortBy(_.instructionPc)
     def getInvocationStatements: Seq[JavaInvokeStatement] = getChildren.collect{ case x: JavaInvokeStatement => x }.toSeq.sortBy(_.instructionPc)

@@ -121,11 +121,11 @@ object OPALJavaConverter {
 
         invokeInstr match {
           case static: INVOKESTATIC =>
-            Some(new JavaInvokeStatement(targetMethodName, static.declaringClass.fqn, descriptor, JavaInvocationType.Static,
+            Some(new JavaInvokeStatement(targetMethodName, static.declaringClass.toJVMTypeName, descriptor, JavaInvocationType.Static,
               pc, ident, m.repository))
 
           case special: INVOKESPECIAL =>
-            Some(new JavaInvokeStatement(targetMethodName, special.declaringClass.fqn, descriptor, JavaInvocationType.Special,
+            Some(new JavaInvokeStatement(targetMethodName, special.declaringClass.toJVMTypeName, descriptor, JavaInvocationType.Special,
               pc, ident, m.repository))
 
           case virtual: INVOKEVIRTUAL =>
@@ -133,7 +133,7 @@ object OPALJavaConverter {
               pc, ident, m.repository))
 
           case interface: INVOKEINTERFACE =>
-            Some(new JavaInvokeStatement(targetMethodName, interface.declaringClass.fqn, descriptor, JavaInvocationType.Interface,
+            Some(new JavaInvokeStatement(targetMethodName, interface.declaringClass.toJVMTypeName, descriptor, JavaInvocationType.Interface,
               pc, ident, m.repository))
 
           case _: INVOKEDYNAMIC =>

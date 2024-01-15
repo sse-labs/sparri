@@ -33,7 +33,7 @@ package object analyses {
   }
 
   def getCallGraphProject: Project[URL] = {
-    Project(Array(callsFixtureName, interfaceFixtureName, interfaceImplFixtureName).map(loadFixture), Array.empty[File])
+    Project(Array(callsFixtureName, interfaceFixtureName, interfaceImplFixtureName, complexCfgFixtureName).map(loadFixture), Array.empty[File])
   }
 
   def toObjectModel(project: Project[URL], ident: String = "org.anon.test:1.0.0", loadClassContents: Boolean = true): JavaProgram = {
