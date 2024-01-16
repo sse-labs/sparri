@@ -10,7 +10,7 @@ paths:
   /entities:
     get:
       tags: ["Entity Related Information"]
-      description: "Returns a paginated list of all program entities index at this point."F
+      description: "Returns a paginated list of all program entities index at this point."
       parameters:
         - name: skip
           description: "Pagination: Number of entities to skip"

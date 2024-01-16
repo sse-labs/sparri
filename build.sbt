@@ -17,7 +17,8 @@ lazy val dockerSettings = docker / dockerfile := {
 	}
 }
 
-lazy val mergeStrategySettings = assemblyMergeStrategy := {
+lazy val mergeStrategySettings = assembly / assemblyMergeStrategy := {
+	case x if x.endsWith("module-info.class") => MergeStrategy.discard
 	case x: String if x.toLowerCase.contains("manifest.mf") => MergeStrategy.discard
 	case x: String if x.toLowerCase.endsWith(".conf") => MergeStrategy.concat
 	case x => MergeStrategy.first
@@ -32,7 +33,8 @@ lazy val core = (project in file("core"))
 		libraryDependencies ++= dependencies.slick,
 		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.rabbitMQ, dependencies.akkaStreams,
 			dependencies.apacheHttp, dependencies.postgresql, dependencies.jeka, dependencies.mvnarcheologist,
-			dependencies.sprayJson, dependencies.logback)
+			dependencies.sprayJson, dependencies.logback),
+		mergeStrategySettings
 	)
 
 lazy val `maven-entity-name-publisher` = (project in file("maven-entity-name-publisher"))
@@ -102,11 +104,7 @@ lazy val webapi = (project in file("webapi"))
 
 		assembly / mainClass := Some("org.anon.spareuse.webapi.Application"),
 		assembly / assemblyJarName := "cf-webapi.jar",
-		assemblyMergeStrategy := {
-			case x: String if x.toLowerCase.contains("manifest.mf") => MergeStrategy.discard
-			case x: String if x.toLowerCase.endsWith(".conf") => MergeStrategy.concat
-			case x => MergeStrategy.first
-		},
+		mergeStrategySettings,
 
 		docker / dockerfile := {
 
@@ -131,11 +129,7 @@ lazy val evaluation = (project in file("evaluation"))
 
 		assembly / mainClass := Some ("org.anon.spareuse.eval.performance.PerformanceEvaluationApp"),
 		assembly / assemblyJarName := "spar-evaluation.jar",
-		assemblyMergeStrategy := {
-			case x: String if x.toLowerCase.contains("manifest.mf") => MergeStrategy.discard
-			case x: String if x.toLowerCase.endsWith(".conf") => MergeStrategy.concat
-			case x => MergeStrategy.first
-		},
+		mergeStrategySettings,
 
 		docker / dockerfile := {
 
