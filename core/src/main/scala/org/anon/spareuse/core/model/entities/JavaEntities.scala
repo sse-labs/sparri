@@ -118,6 +118,10 @@ object JavaEntities {
                   hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(className, thisTypeFqn, classUid, repositoryIdent, Some(hashedBytes)){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Class
 
+    lazy val methodTable: Map[String, Map[String, JavaMethod]] = getMethods.groupBy(_.name).view.mapValues{ jmSet =>
+      jmSet.groupBy(_.descriptor).view.mapValues(_.head).toMap
+    }.toMap
+
     val thisType: String = thisTypeFqn
     val superType: Option[String] = superTypeFqn
     val interfaceTypes: Set[String]= interfaceFqns
@@ -126,6 +130,7 @@ object JavaEntities {
     val isAbstract: Boolean = abstractType
 
     def getMethods: Set[JavaMethod] = getChildren.map(_.asInstanceOf[JavaMethod])
+    def lookupMethod(name: String, descriptor: String): Option[JavaMethod] = methodTable.get(name).flatMap(m => m.get(descriptor))
   }
 
   def buildMethodIdent(methodName: String, jvmDescriptor: String) = s"$methodName: $jvmDescriptor"

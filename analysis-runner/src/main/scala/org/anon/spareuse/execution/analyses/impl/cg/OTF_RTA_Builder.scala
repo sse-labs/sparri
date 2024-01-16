@@ -1,6 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaProgram}
+import org.opalj.tac.fpcf.properties.cg.InstantiatedTypes
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.annotation.tailrec
@@ -47,22 +48,12 @@ class OTF_RTA_Builder(programs: Set[JavaProgram], jreVersionToLoad: Option[Strin
   // ------- Defined Methods and their Caches -------
   // ------------------------------------------------
 
-  private val projectDefMCache = mutable.HashMap[JavaMethod, DefinedMethod]()
-  private val jreDefMCache = mutable.HashMap[String, mutable.HashMap[JreMethod, DefinedMethod]]()
+  private val defMCache = mutable.HashMap[JavaMethod, DefinedMethod]()
   def asDefinedMethod(jm: JavaMethod): DefinedMethod = {
-    if(!projectDefMCache.contains(jm))
-      projectDefMCache(jm) = new DefinedMethod(jm.getEnclosingClass.get.thisType, Some(jm), None)
+    if(!defMCache.contains(jm))
+      defMCache(jm) = new DefinedMethod(jm.getEnclosingClass.get.thisType, Some(jm), None)
 
-    projectDefMCache(jm)
-  }
-  def asDefinedMethod(typeName: String, jreM: JreMethod): DefinedMethod = {
-    if(!jreDefMCache.contains(typeName))
-      jreDefMCache(typeName) = mutable.HashMap[JreMethod, DefinedMethod]()
-
-    if(!jreDefMCache(typeName).contains(jreM))
-      jreDefMCache(typeName)(jreM) = new DefinedMethod(typeName, None, Some(jreM))
-
-    jreDefMCache(typeName)(jreM)
+    defMCache(jm)
   }
 
   class DefinedMethod(declaringType: String, jmOpt: Option[JavaMethod], jreMethodOpt: Option[JreMethod]){
@@ -85,10 +76,10 @@ class OTF_RTA_Builder(programs: Set[JavaProgram], jreVersionToLoad: Option[Strin
   // ------- Helper Classes for storing intermediate resolutions -------
   // -------------------------------------------------------------------
 
-  class MethodCallSiteResolutions(jm: JavaMethod){
+  class MethodCallSiteResolutions(dm: DefinedMethod){
     private[cg] val callSiteResolutions = new mutable.HashMap[Long, mutable.Set[DefinedMethod]]
 
-    val methodInfo: JavaMethod = jm
+    val methodInfo: DefinedMethod = dm
 
     def makeCallSiteTarget(callSitePc: Long, target: DefinedMethod): Unit = {
       if (callSiteResolutions.contains(callSitePc))
@@ -104,36 +95,24 @@ class OTF_RTA_Builder(programs: Set[JavaProgram], jreVersionToLoad: Option[Strin
       callSiteResolutions.get(callSitePc).map(_.toSet)
   }
 
-  class ClassCallSiteResolutions(jc: JavaClass){
-    private[cg] val methodResolutions = new mutable.HashMap[JavaMethod, MethodCallSiteResolutions]
+  class ClassCallSiteResolutions(thisTypeFqn: String){
+    private[cg] val methodResolutions = new mutable.HashMap[DefinedMethod, MethodCallSiteResolutions]
 
-    val classInfo: JavaClass = jc
+    val thisType: String = thisTypeFqn
 
-    def makeCallSiteTarget(jm: JavaMethod, callSitePc: Long, target: DefinedMethod): Unit = {
-      if(!methodResolutions.contains(jm))
-        methodResolutions(jm) = new MethodCallSiteResolutions(jm)
+    def makeCallSiteTarget(dm: DefinedMethod, callSitePc: Long, target: DefinedMethod): Unit = {
+      if(!methodResolutions.contains(dm))
+        methodResolutions(dm) = new MethodCallSiteResolutions(dm)
 
-      methodResolutions(jm).makeCallSiteTarget(callSitePc, target)
+      methodResolutions(dm).makeCallSiteTarget(callSitePc, target)
     }
 
   }
 
   private[cg] final def findMethodOn(jis: JavaInvokeStatement, node: TypeNode): Option[DefinedMethod] = {
-    if(node.isJreType) {
-      val currentType = jreClassLookup(node.thisType)
+    val currentClass = if(node.isJreType) jreClassLookup(node.thisType).asModel else classLookup(node.thisType)
 
-      currentType
-        .m
-        .find(typeMethod => typeMethod.d.equals(jis.targetDescriptor) && typeMethod.n.equals(jis.targetMethodName))
-        .map(m => asDefinedMethod(node.thisType, m))
-    } else {
-      val currentClass = classLookup(node.thisType)
-
-      currentClass
-        .getMethods
-        .find(classMethod => classMethod.descriptor.equals(jis.targetDescriptor) && classMethod.name.equals(jis.targetMethodName))
-        .map(asDefinedMethod)
-    }
+    currentClass.lookupMethod(jis.targetMethodName, jis.targetDescriptor).map(asDefinedMethod)
   }
 
   @tailrec
@@ -148,28 +127,19 @@ class OTF_RTA_Builder(programs: Set[JavaProgram], jreVersionToLoad: Option[Strin
   }
 
   def getPossibleChildNodes(typeNode: TypeNode, instantiatedTypes: Set[String]): Set[TypeNode] = {
-    val childSet = typeNode
-      .getChildren
-      .flatMap(cNode => getPossibleChildNodes(cNode, instantiatedTypes))
-      .filter(cNode => instantiatedTypes.contains(cNode.thisType))
-
-    val currSet = if (instantiatedTypes.contains(typeNode.thisType)) Set(typeNode) else Set.empty[TypeNode]
-
-    childSet ++ currSet
+    typeNode.allChildren.filter(cNode => instantiatedTypes.contains(cNode.thisType))
   }
 
 
   def resolveInvocation(jis: JavaInvokeStatement, declType: TypeNode, instantiatedTypes: Set[String]): Set[DefinedMethod] = jis.invokeStatementType match {
     case JavaInvocationType.Static =>
       // Static methods only need to be looked for at the precise declared type!
-      val targetOpt = findMethodDefinition(jis, declType, recurseParents = false)
+      val targetOpt = findMethodOn(jis, declType)
 
-      if (targetOpt.isDefined)
-        Set(targetOpt.get)
-      else {
-        log.warn(s"Failed to resolve static invocation: $jis")
-        Set.empty
-      }
+      if(targetOpt.isEmpty)
+        log.warn(s"Failed to resolve static invocation on : ${jis.targetTypeName}")
+
+      targetOpt.toSet
 
     case JavaInvocationType.Virtual | JavaInvocationType.Interface =>
       val targets = getPossibleChildNodes(declType, instantiatedTypes)
@@ -188,11 +158,14 @@ class OTF_RTA_Builder(programs: Set[JavaProgram], jreVersionToLoad: Option[Strin
       if(declTypeM.isDefined) declTypeM.toSet
       else if(!declType.isInterface && declType.hasParent){
         findMethodDefinition(jis, declType, recurseParents = true).toSet
-      } else if(declType.isInterface && getMethodOnObjectType(jis).isDefined){
-        getMethodOnObjectType(jis).toSet
       } else {
-        log.warn(s"Failed to resolve INVOKESPECIAL: No implementation found for PC ${jis.invokeStatementType}")
-        Set.empty
+        val dmOnObjOpt = getMethodOnObjectType(jis)
+        if(declType.isInterface && dmOnObjOpt.isDefined){
+          dmOnObjOpt.toSet
+        } else {
+          log.warn(s"Failed to resolve INVOKESPECIAL: No implementation found for ${jis.targetTypeName}->${jis.targetMethodName}")
+          Set.empty
+        }
       }
 
     case _ =>
@@ -216,7 +189,7 @@ class OTF_RTA_Builder(programs: Set[JavaProgram], jreVersionToLoad: Option[Strin
         log.warn(s"Resolution for INVOKEDYNAMIC not supported: $jis")
         Set.empty
       case '[' =>
-        log.warn(s"No method resolution on array types implemented: $jis")
+        log.warn(s"No method resolution on array types implemented: ${jis.targetTypeName}->${jis.targetMethodName}")
         Set.empty
       case 'B' | 'C' | 'D' | 'F' | 'I' | 'J' | 'S' | 'Z' =>
         log.error(s"Unexpected method invocation on primitive type: $jis")
@@ -228,8 +201,6 @@ class OTF_RTA_Builder(programs: Set[JavaProgram], jreVersionToLoad: Option[Strin
   }
 
 
-
-
   def buildNaive(): Try[Any] = {
 
     val allInstantiatedTypes = programs
@@ -237,21 +208,22 @@ class OTF_RTA_Builder(programs: Set[JavaProgram], jreVersionToLoad: Option[Strin
       .flatMap(_.getNewStatements)
       .map(_.instantiatedTypeName) ++ jreOpt.map(_.allTypesInstantiated).getOrElse(Set.empty[String])
 
-    // Resolve program classes first, do jre invocations on demand (?)
-    // TODO: When do we resolve JRE invocations?
-    programs
-      .flatMap(_.allClasses)
+    // Create a sequence in which first all program classes will be resolved, then all JRE classes
+    val toResolve = programs.flatMap(_.allClasses).toSeq ++ jreOpt.map(_.types.map(_.asModel).toSeq).getOrElse(Seq.empty)
+
+    toResolve
       .foreach{ javaClass =>
         if(!callSiteResolutions.contains(javaClass.thisType))
-          callSiteResolutions(javaClass.thisType) = new ClassCallSiteResolutions(javaClass)
+          callSiteResolutions(javaClass.thisType) = new ClassCallSiteResolutions(javaClass.thisType)
 
         val ccsr = callSiteResolutions(javaClass.thisType)
 
         javaClass.getMethods.foreach{ javaMethod =>
+          val currentDefinedMethod = asDefinedMethod(javaMethod)
           javaMethod.getInvocationStatements.foreach { jis =>
 
             resolveInvocation(jis, allInstantiatedTypes)
-              .foreach(declM => ccsr.makeCallSiteTarget(javaMethod, jis.instructionPc, declM))
+              .foreach(targetDefinedMethod => ccsr.makeCallSiteTarget(currentDefinedMethod, jis.instructionPc, targetDefinedMethod))
           }
         }
       }
@@ -315,6 +287,10 @@ class OTF_RTA_Builder(programs: Set[JavaProgram], jreVersionToLoad: Option[Strin
     val isJreType: Boolean = isJre
 
     val isInterface: Boolean = isInterfaceNode
+
+    lazy val allChildren: Set[TypeNode] = {
+      getChildren.flatMap(c => Set(c) ++ c.allChildren)
+    }
 
     def setParent(p: TypeNode): Unit ={
       parent = Some(p)

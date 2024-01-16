@@ -12,7 +12,7 @@ object RTA_JRE_Serializer extends JREModelSerializer with JreRepresentationJsonS
         JreMethod(jm.name, jm.descriptor, jm.getNewStatements.map(jnis => JreNew(jnis.instantiatedTypeName, jnis.instructionPc)), jm.getInvocationStatements.map{jis =>
           JreInvoke(jis.targetTypeName, jis.targetMethodName, jis.targetDescriptor, jis.instructionPc, jis.invokeStatementType.id
           )
-        })
+        }, jm.isAbstract, jm.visibility)
       }.toSeq)
     }.toSeq)
 

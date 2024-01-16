@@ -22,6 +22,7 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
     assert(jreProg.allClasses.exists(_.thisType == objFqn))
     assert(jreProg.allClasses.nonEmpty)
     println(s"Done loading ${jreProg.allClasses.size} JRE classes")
+    theOpalHelper.freeOpalResources()
     jreProg
   }
 
@@ -99,9 +100,9 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
       assert(result.isSuccess)
 
       assert(builder.callSiteResolutions.nonEmpty)
-      assert(builder.callSiteResolutions.contains("Calls") && builder.callSiteResolutions("Calls").methodResolutions.keys.count(_.name == "doStaticCalls") == 1)
+      assert(builder.callSiteResolutions.contains("Calls") && builder.callSiteResolutions("Calls").methodResolutions.keys.count(_.methodName == "doStaticCalls") == 1)
 
-      val methodResolutions =  builder.callSiteResolutions("Calls").methodResolutions.values.find(_.methodInfo.name == "doStaticCalls").get
+      val methodResolutions =  builder.callSiteResolutions("Calls").methodResolutions.values.find(_.methodInfo.methodName == "doStaticCalls").get
 
       assert(methodResolutions.callSiteResolutions.size == 2)
       assert(methodResolutions.callSiteResolutions.contains(0) && methodResolutions.callSiteResolutions.contains(5))
@@ -128,9 +129,9 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
       assert(result.isSuccess)
 
       assert(builder.callSiteResolutions.nonEmpty)
-      assert(builder.callSiteResolutions.contains("Calls") && builder.callSiteResolutions("Calls").methodResolutions.keys.count(_.name == "doVirtualCalls") == 1)
+      assert(builder.callSiteResolutions.contains("Calls") && builder.callSiteResolutions("Calls").methodResolutions.keys.count(_.methodName == "doVirtualCalls") == 1)
 
-      val methodResolutions = builder.callSiteResolutions("Calls").methodResolutions.values.find(_.methodInfo.name == "doVirtualCalls").get
+      val methodResolutions = builder.callSiteResolutions("Calls").methodResolutions.values.find(_.methodInfo.methodName == "doVirtualCalls").get
 
       // Expect four INVOKESPECIAL and three INVOKEVIRTUAL (Object.toString cannot be resolved here!)
       assert(methodResolutions.callSiteResolutions.size == 7)
@@ -161,7 +162,7 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
 
     }
 
-    it("should resolve all virtual calls in naive mode when the JRE is present") {
+    it("should resolve all virtual calls when full JRE summaries are used in naive mode") {
       resetModelLoader()
       val input = getCgFixtureModel
       val builder = new OTF_RTA_Builder(Set(input), Some(JreModelLoader.defaultJre))
@@ -170,9 +171,9 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
       assert(result.isSuccess)
 
       assert(builder.callSiteResolutions.nonEmpty)
-      assert(builder.callSiteResolutions.contains("Calls") && builder.callSiteResolutions("Calls").methodResolutions.keys.count(_.name == "doVirtualCalls") == 1)
+      assert(builder.callSiteResolutions.contains("Calls") && builder.callSiteResolutions("Calls").methodResolutions.keys.count(_.methodName == "doVirtualCalls") == 1)
 
-      val methodResolutions = builder.callSiteResolutions("Calls").methodResolutions.values.find(_.methodInfo.name == "doVirtualCalls").get
+      val methodResolutions = builder.callSiteResolutions("Calls").methodResolutions.values.find(_.methodInfo.methodName == "doVirtualCalls").get
 
       // Expect four INVOKESPECIAL and four INVOKEVIRTUAL - Object.toString must be resolved here!
       assert(methodResolutions.callSiteResolutions.size == 8)
@@ -194,6 +195,11 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
 
       // Assert that all potential targets are instantiated somewhere in the code
       assert(toStringTargets.forall(dm => allInstantiatedTypes.contains(dm.definingTypeName)))
+
+      val allCallSitesCount = builder.callSiteResolutions.values.map(ccsr => ccsr.methodResolutions.values.map(mcsr => mcsr.callSiteResolutions.size).sum).sum
+      val allTargetsCount = builder.callSiteResolutions.values.map(ccsr => ccsr.methodResolutions.values.map(mcsr => mcsr.callSiteResolutions.values.map(_.size).sum).sum).sum
+
+      println(s"Resolved $allCallSitesCount callsites to $allTargetsCount methods")
     }
 
   }

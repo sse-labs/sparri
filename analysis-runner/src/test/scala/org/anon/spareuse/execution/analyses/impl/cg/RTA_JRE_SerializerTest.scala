@@ -13,15 +13,15 @@ class RTA_JRE_SerializerTest extends AnyFunSpec {
     ignore("must serialize the current JRE without error"){
       val outDir = Files.createDirectory(Paths.get("test-out"))
 
-      val jreLocation = new File("C:\\Program Files\\Java\\jre-1.8\\lib")
-      //val jreLocation = JRELibraryFolder
+      //val jreLocation = new File("C:\\Program Files\\Java\\jre-1.8\\lib")
+      val jreLocation = JRELibraryFolder
 
       println(jreLocation)
 
-      RTA_JRE_Serializer.serializeJreModel(jreLocation, "8", outDir.toFile) match {
+      RTA_JRE_Serializer.serializeJreModel(jreLocation, "17", outDir.toFile) match {
         case Success(outFile) =>
           assert(outFile.exists())
-          assert(outFile.getName.equals(s"jre-8.json"))
+          assert(outFile.getName.equals(s"jre-17.json"))
         case Failure(ex) =>
           fail(ex)
       }
