@@ -13,4 +13,9 @@ public class CallTargetImpl extends Calls implements CallTarget {
         return;
     }
 
+    @Override
+    public String toString(){
+        return "foobar";
+    }
+
 }

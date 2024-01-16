@@ -161,6 +161,41 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
 
     }
 
+    it("should resolve all virtual calls in naive mode when the JRE is present") {
+      resetModelLoader()
+      val input = getCgFixtureModel
+      val builder = new OTF_RTA_Builder(Set(input), Some(JreModelLoader.defaultJre))
+
+      val result = builder.buildNaive()
+      assert(result.isSuccess)
+
+      assert(builder.callSiteResolutions.nonEmpty)
+      assert(builder.callSiteResolutions.contains("Calls") && builder.callSiteResolutions("Calls").methodResolutions.keys.count(_.name == "doVirtualCalls") == 1)
+
+      val methodResolutions = builder.callSiteResolutions("Calls").methodResolutions.values.find(_.methodInfo.name == "doVirtualCalls").get
+
+      // Expect four INVOKESPECIAL and four INVOKEVIRTUAL - Object.toString must be resolved here!
+      assert(methodResolutions.callSiteResolutions.size == 8)
+
+      assert(methodResolutions.callSiteResolutions.contains(15)) // Make sure "toString" on "Object" is resolved with JRE
+
+      val toStringTargets = methodResolutions.callSiteResolutions(15)
+
+      assert(toStringTargets.nonEmpty)
+      val allInstantiatedTypes = JreModelLoader.getDefaultJre.get.allTypesInstantiated ++ input.allClasses.flatMap(c => c.getMethods.flatMap(m => m.getNewStatements.map(_.instantiatedTypeName)))
+      assert(toStringTargets.size <= allInstantiatedTypes.size)
+
+      // Check that (of the fixture classes) only the one defining a toString method is invoked
+      assert(toStringTargets.forall(dm => dm.methodName == "toString" && MethodDescriptor(dm.descriptor) == MethodDescriptor.JustReturnsString))
+      assert(toStringTargets.exists(dm => dm.definingTypeName == "CallTargetImpl"))
+      assert(!toStringTargets.exists(dm => dm.definingTypeName == "Calls"))
+      assert(!toStringTargets.exists(dm => dm.definingTypeName == "BranchingTaint"))
+      assert(!toStringTargets.exists(dm => dm.definingTypeName == "CallTarget"))
+
+      // Assert that all potential targets are instantiated somewhere in the code
+      assert(toStringTargets.forall(dm => allInstantiatedTypes.contains(dm.definingTypeName)))
+    }
+
   }
 
 }
