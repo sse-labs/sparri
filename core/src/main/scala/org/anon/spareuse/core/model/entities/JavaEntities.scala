@@ -5,6 +5,8 @@ import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaFieldAccessType.JavaFieldAccessType
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaInvocationType.JavaInvocationType
 import org.anon.spareuse.core.model.SoftwareEntityKind
+import org.opalj.br.MethodDescriptor
+import org.opalj.tac.fpcf.analyses.cg.MethodDesc
 
 object JavaEntities {
 
@@ -43,9 +45,9 @@ object JavaEntities {
     classObj
   }
 
-  def buildMethodFor(jc: JavaClass, methodName: String, returnTypeName: String, paramTypeNames: Seq[String], isFinal: Boolean, isStatic: Boolean, isAbstract: Boolean, visibility: String): JavaMethod = {
-    val ident = jc.uid + "!" + buildMethodIdent(methodName, returnTypeName, paramTypeNames)
-    val methodObj = new JavaMethod(methodName, returnTypeName, paramTypeNames, ident, isFinal, isStatic, isAbstract, visibility, jc.repository)
+  def buildMethodFor(jc: JavaClass, methodName: String, descriptor: String, isFinal: Boolean, isStatic: Boolean, isAbstract: Boolean, visibility: String, hashCode: Int): JavaMethod = {
+    val ident = jc.uid + "!" + buildMethodIdent(methodName, descriptor)
+    val methodObj = new JavaMethod(methodName, descriptor, ident, isFinal, isStatic, isAbstract, visibility, jc.repository, hashCode)
     methodObj.setParent(jc)
     methodObj
   }
@@ -69,6 +71,8 @@ object JavaEntities {
   class JavaLibrary(val libraryName: String,
                     repositoryIdent: String) extends PathIdentifiableJavaEntity(libraryName, libraryName, libraryName, repositoryIdent, None){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Library
+
+    def getPrograms: Set[JavaProgram] = getChildren.map(_.asInstanceOf[JavaProgram])
   }
 
   class JavaProgram(val programName: String,
@@ -79,12 +83,27 @@ object JavaEntities {
 
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Program
 
+    private lazy val isGAV: Boolean = programName.count(_ == ':') == 2
+
+    val ga: String = if(isGAV) programName.substring(0, programName.lastIndexOf(":")) else programName
+    val v: String = if(isGAV) programName.substring(programName.lastIndexOf(":") + 1) else programName
+
+    def getPackages: Set[JavaPackage] = getChildren.map(_.asInstanceOf[JavaPackage])
+
+    def allClasses: Set[JavaClass] = getPackages.flatMap(_.getClasses)
+
+    def allMethods: Set[JavaMethod] = allClasses.flatMap(_.getMethods)
+
   }
 
   class JavaPackage(packageName: String,
                     packageUid: String,
                     repositoryIdent: String) extends PathIdentifiableJavaEntity(packageName, packageName, packageUid, repositoryIdent, None) {
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Package
+
+    def getClasses: Set[JavaClass] = getChildren.map(_.asInstanceOf[JavaClass])
+
+    def allMethods: Set[JavaMethod] = getClasses.flatMap(_.getMethods)
   }
 
   class JavaClass(className: String,
@@ -99,36 +118,53 @@ object JavaEntities {
                   hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(className, thisTypeFqn, classUid, repositoryIdent, Some(hashedBytes)){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Class
 
+    lazy val methodTable: Map[String, Map[String, JavaMethod]] = getMethods.groupBy(_.name).view.mapValues{ jmSet =>
+      jmSet.groupBy(_.descriptor).view.mapValues(_.head).toMap
+    }.toMap
+
     val thisType: String = thisTypeFqn
     val superType: Option[String] = superTypeFqn
     val interfaceTypes: Set[String]= interfaceFqns
     val isInterface: Boolean = interfaceType
     val isFinal: Boolean = finalType
     val isAbstract: Boolean = abstractType
+
+    def getMethods: Set[JavaMethod] = getChildren.map(_.asInstanceOf[JavaMethod])
+    def lookupMethod(name: String, descriptor: String): Option[JavaMethod] = methodTable.get(name).flatMap(m => m.get(descriptor))
   }
 
-  def buildMethodIdent(methodName: String, returnType: String, paramTypes: Seq[String]) =
-    s"$returnType $methodName(${paramTypes.mkString(",")})"
+  def buildMethodIdent(methodName: String, jvmDescriptor: String) = s"$methodName: $jvmDescriptor"
 
   class JavaMethod(methodName: String,
-                   returnTypeFqn: String,
-                   paramTypeNames: Seq[String],
+                   jvmDescriptor: String,
                    methodUid: String,
                    finalMethod: Boolean,
                    staticMethod: Boolean,
                    abstractMethod: Boolean,
                    methodVisibility: String,
-                   repositoryIdent: String) extends PathIdentifiableJavaEntity(methodName, buildMethodIdent(methodName, returnTypeFqn, paramTypeNames), methodUid, repositoryIdent, None){
+                   repositoryIdent: String,
+                   hash: Int) extends PathIdentifiableJavaEntity(methodName, buildMethodIdent(methodName, jvmDescriptor), methodUid, repositoryIdent, None){
 
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Method
 
-    val returnType: String = returnTypeFqn
-    val paramCount: Int = paramTypeNames.size
-    val paramTypes: Seq[String] = paramTypeNames
+    private lazy val opalDescriptor = MethodDescriptor(jvmDescriptor)
+
+    val descriptor: String = jvmDescriptor
     val isFinal: Boolean = finalMethod
     val isStatic: Boolean = staticMethod
     val isAbstract: Boolean = abstractMethod
     val visibility: String = methodVisibility
+    val methodHash: Int = hash
+
+    def paramTypes: Seq[String] = opalDescriptor.parameterTypes.map(_.toJVMTypeName)
+    def returnType: String = opalDescriptor.returnType.toJVMTypeName
+
+
+    def getEnclosingClass: Option[JavaClass] = getParent.map(_.asInstanceOf[JavaClass])
+    def getStatements: Seq[JavaStatement] = getChildren.map(_.asInstanceOf[JavaStatement]).toSeq.sortBy(_.instructionPc)
+    def getNewStatements: Seq[JavaNewInstanceStatement] = getChildren.collect{ case x: JavaNewInstanceStatement => x }.toSeq.sortBy(_.instructionPc)
+    def getInvocationStatements: Seq[JavaInvokeStatement] = getChildren.collect{ case x: JavaInvokeStatement => x }.toSeq.sortBy(_.instructionPc)
+    def getFieldAccessStatements: Seq[JavaFieldAccessStatement] = getChildren.collect{ case x: JavaFieldAccessStatement => x }.toSeq.sortBy(_.instructionPc)
   }
 
   abstract class JavaStatement(name: String, pc: Int, stmtUid: String, repositoryIdent: String)
@@ -138,8 +174,7 @@ object JavaEntities {
 
   class JavaInvokeStatement(methodName: String,
                             declaredTypeFqn: String,
-                            paramCount: Int,
-                            returnTypeFqn: String,
+                            jvmDescriptor: String,
                             invocationType: JavaInvocationType,
                             pc: Int,
                             stmtUid: String,
@@ -147,8 +182,7 @@ object JavaEntities {
     override val kind: SoftwareEntityKind = SoftwareEntityKind.InvocationStatement
 
     val targetMethodName: String = methodName
-    val targetMethodParameterCount: Int = paramCount
-    val returnTypeName: String = returnTypeFqn
+    val targetDescriptor: String = jvmDescriptor
     val targetTypeName: String = declaredTypeFqn
     val isStaticMethod: Boolean = invocationType == JavaInvocationType.Static
     val invokeStatementType: JavaInvocationType = invocationType
@@ -167,6 +201,12 @@ object JavaEntities {
     val targetFieldTypeName: String = fieldTypeFqn
     val targetTypeName: String = declaredTypeFqn
     val fieldAccessType: JavaFieldAccessType = accessType
+  }
+
+  class JavaNewInstanceStatement(typeName: String, pc: Int, stmtUid: String, repositoryIdent: String)
+    extends JavaStatement(typeName, pc, stmtUid, repositoryIdent){
+    override val kind: SoftwareEntityKind = SoftwareEntityKind.NewInstanceStatement
+    val instantiatedTypeName: String = typeName
   }
 
   object JavaInvocationType extends Enumeration {

@@ -11,6 +11,7 @@ import org.anon.spareuse.core.storage.postgresql.ResultFormatPredef.allPredefFor
 import org.anon.spareuse.core.utils.{ObjectCache, fromHex}
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.GenericEntityData
+import org.anon.spareuse.core.model.entities.JavaEntities.JavaNewInstanceStatement
 import org.slf4j.{Logger, LoggerFactory}
 import slick.lifted.TableQuery
 import slick.jdbc.PostgresProfile.api._
@@ -417,6 +418,7 @@ class PostgresDataAccessor extends DataAccessor {
         case SoftwareEntityKind.Method => JavaConverter.toMethod(repr, allMethodsData(repr.id))
         case SoftwareEntityKind.InvocationStatement => JavaConverter.toInvocation(repr, allInvokeStmtData(repr.id))
         case SoftwareEntityKind.FieldAccessStatement => JavaConverter.toFieldAccess(repr, allFieldAccessStmtData(repr.id))
+        case SoftwareEntityKind.NewInstanceStatement => JavaConverter.toNewInstanceCreation(repr)
       }
 
       (repr.id, entityObj)

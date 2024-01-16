@@ -7,10 +7,11 @@ import scala.util.{Failure, Success, Try}
 
 trait DependencyExtractor {
   type Dependencies = Seq[MavenDependencyIdentifier]
+  type DependenciesAndFailures = (Try[Dependencies], Seq[MavenIdentifier])
 
   def resolveDependencies(identifier: MavenIdentifier): Try[Dependencies]
 
-  def resolveAllDependencies(identifier: MavenIdentifier): (Try[Dependencies], Seq[MavenIdentifier]) = {
+  def resolveAllDependencies(identifier: MavenIdentifier): DependenciesAndFailures = {
     resolveDependencies(identifier) match {
       case Success(dependencies) =>
         dependencies
@@ -26,7 +27,7 @@ trait DependencyExtractor {
               (Seq(), Seq())
             }
           })
-          .aggregate((Success(Seq.empty[MavenDependencyIdentifier]), Seq.empty[MavenIdentifier]))((a, b) => (Success((a._1.get ++ b._1).distinct), (a._2 ++ b._2).distinct), (a,b) => (Success((a._1.get ++ b._1.get).distinct), (a._2 ++ b._2).distinct))
+          .foldLeft((Success(Seq.empty[MavenDependencyIdentifier]), Seq.empty[MavenIdentifier]))( (a, b) => (Success((a._1.get ++ b._1).distinct), (a._2 ++ b._2).distinct))
 
       case fail@Failure(_) =>
         (fail, Seq.empty)

@@ -4,7 +4,7 @@ import com.typesafe.config.ConfigValueFactory
 import OPALProjectHelper.ClassList
 import org.opalj.br.analyses.{InconsistentProjectException, Project}
 import org.opalj.br.reader.Java16LibraryFramework
-import org.opalj.br.{BaseConfig, ClassFile}
+import org.opalj.br.{ArrayType, BaseConfig, ClassFile, ObjectType}
 import org.opalj.bytecode.JRELibraryFolder
 import org.opalj.log.{GlobalLogContext, LogContext, OPALLogger, StandardLogContext}
 import org.slf4j.{Logger, LoggerFactory}
@@ -44,7 +44,7 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
 
   private lazy val jreClassFqns: List[String] = jreClasses.map(_._1.fqn)
 
-  private lazy val jreClasses: ClassList = {
+  lazy val jreClasses: ClassList = {
 
     def getJarFilesRecursive(directory: File): List[File] = {
       val directChildJars = directory
@@ -154,9 +154,8 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
    * Frees up resources occupied by OPAL.
    */
   def freeOpalResources(): Unit = {
-    //IMPROVE: Move to OPAL 5.0.0 to allow freeing all memory
-    //ObjectType.clearTypeCache()
-    //ArrayType.clearTypeCache()*/
+    ObjectType.flushTypeCache()
+    ArrayType.flushTypeCache()
   }
 
   /**
@@ -173,7 +172,7 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
       Java16LibraryFramework
   }
 
-  private def readClassesFromJmodFile(jmod: File, loadImplementation: Boolean): Try[ClassList] = Try {
+  def readClassesFromJmodFile(jmod: File, loadImplementation: Boolean): Try[ClassList] = Try {
     val entries = new ListBuffer[(ClassFile, URL)]()
 
     val zipFile = new ZipFile(jmod)

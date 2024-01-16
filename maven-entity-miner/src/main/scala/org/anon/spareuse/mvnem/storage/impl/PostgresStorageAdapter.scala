@@ -1,6 +1,7 @@
 package org.anon.spareuse.mvnem.storage.impl
 
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod, JavaPackage, JavaProgram}
+import kotlin.reflect.jvm.internal.JvmPropertySignature.JavaField
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod, JavaNewInstanceStatement, JavaPackage, JavaProgram, JavaStatement}
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaClasses, JavaFieldAccessRepr, JavaFieldAccessStatements, JavaInvocationRepr, JavaInvocationStatements, JavaMethodRepr, JavaMethods}
 import org.anon.spareuse.core.storage.postgresql.{SoftwareEntities, SoftwareEntityRepr}
@@ -108,10 +109,8 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
     start = System.currentTimeMillis()
     val allInstructions = jp.getChildren.flatMap(jc => jc.getChildren).flatMap(jm => jm.getChildren.map {
-      case jis: JavaInvokeStatement =>
-        toEntityRepr(jis, Some(methodLookup(jm.uid)))
-      case jfas: JavaFieldAccessStatement =>
-        toEntityRepr(jfas, Some(methodLookup(jm.uid)))
+      case js: JavaStatement => // Ensure integrity, only statements should be children of methods
+        toEntityRepr(js, Some(methodLookup(jm.uid)))
     }).toSeq
 
     val statementLookup = Await.result(batchedEntityInsertWithMapReturn(allInstructions, 500), 40.seconds)
@@ -120,6 +119,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
     val allInvocations = allInstructionsRaw.filter(_.isInstanceOf[JavaInvokeStatement]).map { case jis: JavaInvokeStatement => toInvocationRepr(jis, statementLookup(jis.uid))}.toSeq
     val allFieldAccesses = allInstructionsRaw.filter(_.isInstanceOf[JavaFieldAccessStatement]).map { case jfas: JavaFieldAccessStatement => toFieldAccessRepr(jfas, statementLookup(jfas.uid))}.toSeq
+    // Note that JavaNewInstanceStatements do not need an extra table, their only piece of information is the type name, which is stored in the entity's 'Name' field
 
     val result = Future.sequence(Seq(batchedInvocationInsert(allInvocations, 500), batchedFieldAccessInsert(allFieldAccesses, 500)))
 
@@ -135,10 +135,10 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
   private def toClassRepr(jc: JavaClass, parentId: Long): JavaClassRepr = (parentId, jc.thisType, jc.superType, jc.interfaceTypes.mkString(";"), jc.isInterface, jc.isFinal, jc.isAbstract)
 
-  private def toMethodRepr(jm: JavaMethod, parentId: Long): JavaMethodRepr = (parentId, jm.returnType, jm.paramCount, jm.paramTypes.mkString(","), jm.isFinal, jm.isStatic, jm.isAbstract, jm.visibility)
+  private def toMethodRepr(jm: JavaMethod, parentId: Long): JavaMethodRepr = (parentId, jm.descriptor, jm.isFinal, jm.isStatic, jm.isAbstract, jm.visibility, jm.methodHash)
 
   private def toInvocationRepr(jis: JavaInvokeStatement, parentId: Long): JavaInvocationRepr =
-    (parentId, jis.targetTypeName, jis.targetMethodParameterCount, jis.returnTypeName, jis.invokeStatementType.id, jis.instructionPc)
+    (parentId, jis.targetTypeName, jis.targetDescriptor, jis.invokeStatementType.id, jis.instructionPc)
 
   private def toFieldAccessRepr(jfas: JavaFieldAccessStatement, parentId: Long): JavaFieldAccessRepr =
     (parentId, jfas.targetFieldTypeName, jfas.targetTypeName, jfas.fieldAccessType.id, jfas.instructionPc)

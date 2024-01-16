@@ -25,7 +25,7 @@ class BreakingChangeAnalysis {
         jc
           .getChildren
           .map(_.asInstanceOf[JavaMethod])
-          .map(jm => (MethodIdentifier(jc.thisType, jm.name, jm.paramTypes), jm))
+          .map(jm => (MethodIdentifier(jc.thisType, jm), jm))
       }
       .toMap
 
@@ -34,7 +34,7 @@ class BreakingChangeAnalysis {
         jc
           .getChildren
           .map(_.asInstanceOf[JavaMethod])
-          .map(jm => (MethodIdentifier(jc.thisType, jm.name, jm.paramTypes), jm))
+          .map(jm => (MethodIdentifier(jc.thisType, jm), jm))
       }
       .toMap
 

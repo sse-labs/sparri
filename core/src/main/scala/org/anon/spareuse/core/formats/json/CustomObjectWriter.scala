@@ -26,7 +26,7 @@ class CustomObjectWriter(format: AnyValueFormat) extends JsonWriter[Object] {
 
       JsArray(seqLike.map(_.toJson(elemWriter)).toVector)
 
-    case formats.MapResultFormat(keyFormat, valueFormat, _, _) if obj.isInstanceOf[Map[Any, Any]] =>
+    case formats.MapResultFormat(keyFormat, valueFormat, _, _) if obj.isInstanceOf[Map[_, _]] =>
 
       val mapLike = obj.asInstanceOf[Map[Any, Any]]
       val valueWriter = new CustomAnyWriter(valueFormat)

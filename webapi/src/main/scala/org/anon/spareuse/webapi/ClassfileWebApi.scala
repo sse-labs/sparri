@@ -3,6 +3,7 @@ package org.anon.spareuse.webapi
 import akka.actor.ActorSystem
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
+import org.anon.spareuse.core.utils.rabbitmq.MqMessageWriter
 import org.anon.spareuse.webapi.core.RequestHandler
 import org.anon.spareuse.webapi.server.ApiServer
 import org.slf4j.{Logger, LoggerFactory}
@@ -29,7 +30,21 @@ class ClassfileWebApi(private val configuration: WebapiConfig) {
     Try(dataAccessor.initialize()) match {
       case Success(_) =>
         dbInitialized = true
-        true
+
+        Try {
+          val analysisWriter = new MqMessageWriter(configuration.asAnalysisQueuePublishConfig)
+          analysisWriter.initialize()
+          analysisWriter.shutdown()
+          val entityWriter = new MqMessageWriter(configuration.asMinerQueuePublishConfig)
+          entityWriter.initialize()
+          entityWriter.shutdown()
+        } match {
+          case Success(_) => true
+          case Failure(ex) =>
+            log.error("Failed to initialize message queues", ex)
+            false
+        }
+
       case Failure(ex) =>
         log.error("Error during initialization: Failed to establish database connection", ex)
         false
