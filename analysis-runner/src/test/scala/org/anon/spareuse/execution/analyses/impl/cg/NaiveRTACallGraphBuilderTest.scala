@@ -11,7 +11,7 @@ import org.scalatest.funspec.AnyFunSpec
 
 import java.net.URL
 
-class OTF_RTA_BuilderTest extends AnyFunSpec {
+class NaiveRTACallGraphBuilderTest extends AnyFunSpec {
 
   private val objFqn: String = "java/lang/Object"
   private val theOpalHelper: OPALProjectHelper = new OPALProjectHelper(loadJreClassImplementation = false)
@@ -36,7 +36,7 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
   describe("The On-the-Fly RTA CG Builder") {
     it("should correctly stitch the type hierarchy without the JRE present"){
       val input = getCgFixtureModel
-      val builder = new OTF_RTA_Builder(Set(input), None)
+      val builder = new NaiveRTACallGraphBuilder(Set(input), None)
 
       cgOpalProject.allClassFiles.map(_.fqn).foreach { fqn =>
         assert(builder.typeLookup.contains(fqn))
@@ -64,7 +64,7 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
     }
 
     it("should build a type hierarchy for the JRE itself"){
-      val builder = new OTF_RTA_Builder(Set(jreObjectModel), None)
+      val builder = new NaiveRTACallGraphBuilder(Set(jreObjectModel), None)
 
       assert(builder.typeLookup.nonEmpty)
 
@@ -80,7 +80,7 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
       resetModelLoader()
       val input = getCgFixtureModel
 
-      val builder = new OTF_RTA_Builder(Set(input), Some(JreModelLoader.defaultJre))
+      val builder = new NaiveRTACallGraphBuilder(Set(input), Some(JreModelLoader.defaultJre))
 
       cgOpalProject.allClassFiles.map(_.fqn).foreach { fqn =>
         assert(builder.typeLookup.contains(fqn))
@@ -94,20 +94,20 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
 
     it("should work for static calls in naive mode even on incomplete type hierarchies"){
       val input = getCgFixtureModel
-      val builder = new OTF_RTA_Builder(Set(input), None)
+      val builder = new NaiveRTACallGraphBuilder(Set(input), None)
 
       val result = builder.buildNaive()
       assert(result.isSuccess)
 
-      assert(builder.callSiteResolutions.nonEmpty)
-      assert(builder.callSiteResolutions.contains("Calls") && builder.callSiteResolutions("Calls").methodResolutions.keys.count(_.methodName == "doStaticCalls") == 1)
+      val doStaticDMOpt = builder.calleesOf.keys.find(dm => dm.methodName == "doStaticCalls" && dm.definingTypeName == "Calls")
+      assert(doStaticDMOpt.isDefined)
+      val doStaticDM = doStaticDMOpt.get
 
-      val methodResolutions =  builder.callSiteResolutions("Calls").methodResolutions.values.find(_.methodInfo.methodName == "doStaticCalls").get
+      assert(builder.calleesOf(doStaticDM).size == 2)
+      assert(builder.calleesOf(doStaticDM).contains(0) && builder.calleesOf(doStaticDM).contains(5))
 
-      assert(methodResolutions.callSiteResolutions.size == 2)
-      assert(methodResolutions.callSiteResolutions.contains(0) && methodResolutions.callSiteResolutions.contains(5))
-      val res1 = methodResolutions.callSiteResolutions(0)
-      val res2 = methodResolutions.callSiteResolutions(5)
+      val res1 = builder.calleesOf(doStaticDM)(0)
+      val res2 = builder.calleesOf(doStaticDM)(5)
 
       assert(res1.size == 1)
       assert(res2.size == 1)
@@ -123,38 +123,40 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
 
     it("should resolve some virtual calls in naive mode even on incomplete type hierarchies"){
       val input = getCgFixtureModel
-      val builder = new OTF_RTA_Builder(Set(input), None)
+      val builder = new NaiveRTACallGraphBuilder(Set(input), None)
 
       val result = builder.buildNaive()
       assert(result.isSuccess)
 
-      assert(builder.callSiteResolutions.nonEmpty)
-      assert(builder.callSiteResolutions.contains("Calls") && builder.callSiteResolutions("Calls").methodResolutions.keys.count(_.methodName == "doVirtualCalls") == 1)
 
-      val methodResolutions = builder.callSiteResolutions("Calls").methodResolutions.values.find(_.methodInfo.methodName == "doVirtualCalls").get
+      val doVirtDMOpt = builder.calleesOf.keys.find(dm => dm.methodName == "doVirtualCalls" && dm.definingTypeName == "Calls")
+      assert(doVirtDMOpt.isDefined)
+      val doVirtDM = doVirtDMOpt.get
 
       // Expect four INVOKESPECIAL and three INVOKEVIRTUAL (Object.toString cannot be resolved here!)
-      assert(methodResolutions.callSiteResolutions.size == 7)
-
+      assert(builder.calleesOf(doVirtDM).size == 7)
+      assert(!builder.calleesOf(doVirtDM).contains(15)) // Make sure "toString" on "Object" is resolved with JRE
       val expectedCallSitePcs = Set(28, 40, 54)
-      assert(expectedCallSitePcs.forall(pc => methodResolutions.callSiteResolutions.contains(pc)))
-      assert(!methodResolutions.callSiteResolutions.contains(15)) // Make sure "toString" on "Object" is not resolved without JRE
+      assert(expectedCallSitePcs.forall(pc => builder.calleesOf(doVirtDM).contains(pc)))
 
-      val callSite1Targets = methodResolutions.callSiteResolutions(28)
+
+
+
+      val callSite1Targets = builder.calleesOf(doVirtDM)(28)
       assert(callSite1Targets.size == 2)
       assert(callSite1Targets.exists(dm => dm.definingTypeName == "Calls" && dm.methodName == "doStaticCalls" &&
         MethodDescriptor(dm.descriptor) == MethodDescriptor.NoArgsAndReturnVoid))
       assert(callSite1Targets.exists(dm => dm.definingTypeName == "CallTargetImpl" && dm.methodName == "doStaticCalls" &&
         MethodDescriptor(dm.descriptor) == MethodDescriptor.NoArgsAndReturnVoid))
 
-      val callSite2Targets = methodResolutions.callSiteResolutions(40)
+      val callSite2Targets = builder.calleesOf(doVirtDM)(40)
       assert(callSite2Targets.size == 2)
       assert(callSite2Targets.exists(dm => dm.definingTypeName == "Calls" && dm.methodName == "doStaticCalls" &&
         MethodDescriptor(dm.descriptor) == MethodDescriptor.NoArgsAndReturnVoid))
       assert(callSite2Targets.exists(dm => dm.definingTypeName == "CallTargetImpl" && dm.methodName == "doStaticCalls" &&
         MethodDescriptor(dm.descriptor) == MethodDescriptor.NoArgsAndReturnVoid))
 
-      val callSite3Targets = methodResolutions.callSiteResolutions(54)
+      val callSite3Targets = builder.calleesOf(doVirtDM)(54)
       assert(callSite3Targets.size == 1)
       val callSite3 = callSite3Targets.head
       assert(callSite3.definingTypeName == "CallTargetImpl" && callSite3.methodName == "doStaticCalls" &&
@@ -165,22 +167,20 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
     it("should resolve all virtual calls when full JRE summaries are used in naive mode") {
       resetModelLoader()
       val input = getCgFixtureModel
-      val builder = new OTF_RTA_Builder(Set(input), Some(JreModelLoader.defaultJre))
+      val builder = new NaiveRTACallGraphBuilder(Set(input), Some(JreModelLoader.defaultJre))
 
       val result = builder.buildNaive()
       assert(result.isSuccess)
 
-      assert(builder.callSiteResolutions.nonEmpty)
-      assert(builder.callSiteResolutions.contains("Calls") && builder.callSiteResolutions("Calls").methodResolutions.keys.count(_.methodName == "doVirtualCalls") == 1)
-
-      val methodResolutions = builder.callSiteResolutions("Calls").methodResolutions.values.find(_.methodInfo.methodName == "doVirtualCalls").get
+      val doVirtDMOpt = builder.calleesOf.keys.find(dm => dm.methodName == "doVirtualCalls" && dm.definingTypeName == "Calls")
+      assert(doVirtDMOpt.isDefined)
+      val doVirtDM = doVirtDMOpt.get
 
       // Expect four INVOKESPECIAL and four INVOKEVIRTUAL - Object.toString must be resolved here!
-      assert(methodResolutions.callSiteResolutions.size == 8)
+      assert(builder.calleesOf(doVirtDM).size == 8)
+      assert(builder.calleesOf(doVirtDM).contains(15))// Make sure "toString" on "Object" is resolved with JRE
 
-      assert(methodResolutions.callSiteResolutions.contains(15)) // Make sure "toString" on "Object" is resolved with JRE
-
-      val toStringTargets = methodResolutions.callSiteResolutions(15)
+      val toStringTargets = builder.calleesOf(doVirtDM)(15)
 
       assert(toStringTargets.nonEmpty)
       val allInstantiatedTypes = JreModelLoader.getDefaultJre.get.allTypesInstantiated ++ input.allClasses.flatMap(c => c.getMethods.flatMap(m => m.getNewStatements.map(_.instantiatedTypeName)))
@@ -196,8 +196,8 @@ class OTF_RTA_BuilderTest extends AnyFunSpec {
       // Assert that all potential targets are instantiated somewhere in the code
       assert(toStringTargets.forall(dm => allInstantiatedTypes.contains(dm.definingTypeName)))
 
-      val allCallSitesCount = builder.callSiteResolutions.values.map(ccsr => ccsr.methodResolutions.values.map(mcsr => mcsr.callSiteResolutions.size).sum).sum
-      val allTargetsCount = builder.callSiteResolutions.values.map(ccsr => ccsr.methodResolutions.values.map(mcsr => mcsr.callSiteResolutions.values.map(_.size).sum).sum).sum
+      val allCallSitesCount = builder.calleesOf.values.map(callSites => callSites.size).sum
+      val allTargetsCount = builder.calleesOf.values.map(callSites => callSites.values.map(_.size).sum).sum
 
       println(s"Resolved $allCallSitesCount callsites to $allTargetsCount methods")
     }
