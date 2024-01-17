@@ -1,9 +1,10 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaProgram}
+import org.opalj.br.FieldType
 import org.slf4j.{Logger, LoggerFactory}
 
-import scala.annotation.tailrec
+import scala.annotation.{switch, tailrec}
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
@@ -38,6 +39,7 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
     callersOf(to).add(from)
   }
 
+  def reachableMethods(): Set[DefinedMethod] = calleesOf.keySet.toSet ++ callersOf.keySet.toSet
 
   // The object type node (if JRE is available)
   protected[cg] def objectTypeOpt: Option[TypeNode] = typeLookup.get("java/lang/Object")
@@ -45,6 +47,9 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
   // Tries to find a method definition for the given invocation on the object type
   protected[cg] def getMethodOnObjectType(jis: JavaInvokeStatement): Option[DefinedMethod] =
     objectTypeOpt.flatMap { objType => findMethodOn(jis, objType) }
+
+  protected[cg] def getJavaMethod(dm: DefinedMethod): Option[JavaMethod] =
+    classLookup.get(dm.definingTypeName).flatMap(_.lookupMethod(dm.methodName, dm.descriptor))
 
   // Tries to find a method definition for the given invocation on the given type
   protected[cg] def findMethodOn(jis: JavaInvokeStatement, node: TypeNode): Option[DefinedMethod] = {
@@ -145,7 +150,12 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
   protected[cg] def resolveInvocation(jis: JavaInvokeStatement, declType: TypeNode, instantiatedTypes: Set[String]): Set[DefinedMethod] = jis.invokeStatementType match {
     case JavaInvocationType.Static =>
       // Static methods only need to be looked for at the precise declared type!
-      val targetOpt = findMethodOn(jis, declType)
+      var targetOpt = findMethodOn(jis, declType)
+
+      // If the static call is made inside the same class, it may be a reference to a parent's implementation of the method
+      if(targetOpt.isEmpty && jis.getParent.get.asInstanceOf[JavaMethod].getEnclosingClass.get.thisType == declType.thisType){
+        targetOpt = findMethodDefinition(jis, declType, recurseParents = true)
+      }
 
       if (targetOpt.isEmpty)
         log.warn(s"Failed to resolve static invocation on : ${jis.targetTypeName}")
@@ -206,8 +216,31 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
         log.warn(s"Resolution for INVOKEDYNAMIC not supported: $jis")
         Set.empty
       case '[' =>
-        log.warn(s"No method resolution on array types implemented: ${jis.targetTypeName}->${jis.targetMethodName}")
-        Set.empty
+        (jis.targetMethodName: @switch) match {
+          case "clone" =>
+            // Only performs a memory copy, no other method should be invoked
+            Set.empty
+          case "hashCode" | "equals" | "toString" =>
+            var at = FieldType(jis.targetTypeName)
+            while(at.isArrayType) {
+              at = at.asArrayType.componentType
+            }
+
+            if(at.isObjectType){
+              // hashCode, equals and toString on array types involve calling the respective method on their component type!
+              // Hence, we rewrite the invoke statement to point to the component type instead
+              val correctedInvocation = new JavaInvokeStatement(jis.targetMethodName, at.toJVMTypeName, jis.targetDescriptor, jis.invokeStatementType, jis.instructionPc, jis.uid, jis.repository)
+              resolveInvocation(correctedInvocation, instantiatedTypes)
+            } else {
+              // if one of the three methods is invoked on a primitive component type, we refer to object as the declaring type
+              val correctedInvocation = new JavaInvokeStatement(jis.targetMethodName, "java/lang/Object", jis.targetDescriptor, jis.invokeStatementType, jis.instructionPc, jis.uid, jis.repository)
+              resolveInvocation(correctedInvocation, instantiatedTypes)
+            }
+          case _ =>
+            log.warn(s"Unable to resolve method invocation on array type: ${jis.targetTypeName}->${jis.targetMethodName}")
+            Set.empty
+        }
+
       case 'B' | 'C' | 'D' | 'F' | 'I' | 'J' | 'S' | 'Z' =>
         log.error(s"Unexpected method invocation on primitive type: $jis")
         Set.empty

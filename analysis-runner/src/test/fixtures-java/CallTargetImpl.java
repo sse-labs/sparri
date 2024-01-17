@@ -18,4 +18,14 @@ public class CallTargetImpl extends Calls implements CallTarget {
         return "foobar";
     }
 
+    @Override
+    public void recurse(Calls c){
+        return;
+    }
+
+    @Override
+    public void doRecursiveCalls(){
+        return;
+    }
+
 }

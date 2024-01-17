@@ -1,39 +1,11 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
-import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
-import org.anon.spareuse.core.model.entities.conversion.OPALJavaConverter
-import org.anon.spareuse.core.opal.OPALProjectHelper
-import org.anon.spareuse.execution.AnalysisRunnerConfig
-import org.anon.spareuse.execution.analyses.{getCallGraphProject, toObjectModel}
 import org.opalj.br.MethodDescriptor
-import org.opalj.br.analyses.Project
 import org.scalatest.funspec.AnyFunSpec
 
-import java.net.URL
+class NaiveRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSupport {
 
-class NaiveRTACallGraphBuilderTest extends AnyFunSpec {
-
-  private val objFqn: String = "java/lang/Object"
-  private val theOpalHelper: OPALProjectHelper = new OPALProjectHelper(loadJreClassImplementation = false)
-
-  private lazy val jreObjectModel = {
-    println("Loading JRE domain model, this might take some time ... ")
-    val jreProg = OPALJavaConverter.convertProgram("<NONE>:<THE_JRE>", "<default>", theOpalHelper.jreClasses.map(_._1), loadClassContents = false)
-    assert(jreProg.allClasses.exists(_.thisType == objFqn))
-    assert(jreProg.allClasses.nonEmpty)
-    println(s"Done loading ${jreProg.allClasses.size} JRE classes")
-    theOpalHelper.freeOpalResources()
-    jreProg
-  }
-
-  private val cgOpalProject: Project[URL] = getCallGraphProject
-  private def getCgFixtureModel: JavaProgram = toObjectModel(cgOpalProject)
-  private def resetModelLoader(): Unit = {
-    JreModelLoader.clear()
-    JreModelLoader.indexJreData(new AnalysisRunnerConfig("", 3, false, "jre-data"))
-  }
-
-  describe("The On-the-Fly RTA CG Builder") {
+  describe("The naive RTA CG Builder") {
     it("should correctly stitch the type hierarchy without the JRE present"){
       val input = getCgFixtureModel
       val builder = new NaiveRTACallGraphBuilder(Set(input), None)
@@ -199,6 +171,7 @@ class NaiveRTACallGraphBuilderTest extends AnyFunSpec {
       val allCallSitesCount = builder.calleesOf.values.map(callSites => callSites.size).sum
       val allTargetsCount = builder.calleesOf.values.map(callSites => callSites.values.map(_.size).sum).sum
 
+      println(s"Found ${builder.reachableMethods().size} reachable methods.")
       println(s"Resolved $allCallSitesCount callsites to $allTargetsCount methods")
     }
 
