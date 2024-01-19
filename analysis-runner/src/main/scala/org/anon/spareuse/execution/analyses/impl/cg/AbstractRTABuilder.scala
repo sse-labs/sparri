@@ -48,9 +48,6 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
   protected[cg] def getMethodOnObjectType(jis: JavaInvokeStatement): Option[DefinedMethod] =
     objectTypeOpt.flatMap { objType => findMethodOn(jis, objType) }
 
-  protected[cg] def getJavaMethod(dm: DefinedMethod): Option[JavaMethod] =
-    classLookup.get(dm.definingTypeName).flatMap(_.lookupMethod(dm.methodName, dm.descriptor))
-
   // Tries to find a method definition for the given invocation on the given type
   protected[cg] def findMethodOn(jis: JavaInvokeStatement, node: TypeNode): Option[DefinedMethod] = {
     val currentClass = classLookup(node.thisType)
@@ -153,12 +150,12 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
       var targetOpt = findMethodOn(jis, declType)
 
       // If the static call is made inside the same class, it may be a reference to a parent's implementation of the method
-      if(targetOpt.isEmpty && jis.getParent.get.asInstanceOf[JavaMethod].getEnclosingClass.get.thisType == declType.thisType){
+      if(targetOpt.isEmpty && jis.getParent.get.asInstanceOf[JavaMethod].enclosingClass.get.thisType == declType.thisType){
         targetOpt = findMethodDefinition(jis, declType, recurseParents = true)
       }
 
       if (targetOpt.isEmpty)
-        log.warn(s"Failed to resolve static invocation on : ${jis.targetTypeName}")
+        log.warn(s"Failed to resolve static invocation on : ${jis.targetTypeName} -> ${jis.targetMethodName}")
 
       targetOpt.toSet
 
@@ -258,7 +255,7 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
 
   def asDefinedMethod(jm: JavaMethod): DefinedMethod = {
     if (!defMCache.contains(jm))
-      defMCache(jm) = new DefinedMethod(jm.getEnclosingClass.get.thisType, Some(jm), None)
+      defMCache(jm) = new DefinedMethod(jm.enclosingClass.get.thisType, Some(jm), None)
 
     defMCache(jm)
   }
@@ -268,6 +265,12 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
     val definingTypeName: String = declaringType
     val methodName: String = jmOpt.map(_.name).getOrElse(jreMethodOpt.get.n)
     val descriptor: String = jmOpt.map(_.descriptor).getOrElse(jreMethodOpt.get.d)
+
+    lazy val javaMethodOpt: Option[JavaMethod] =
+      classLookup.get(definingTypeName).flatMap(_.lookupMethod(methodName, descriptor))
+
+    lazy val newTypesInstantiated: Set[String] =
+      javaMethodOpt.map(_.newStatements.map(_.instantiatedTypeName).toSet).getOrElse(Set.empty[String])
 
     override def equals(obj: Any): Boolean = obj match {
       case other: DefinedMethod =>

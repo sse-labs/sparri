@@ -155,7 +155,7 @@ class NaiveRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSupport 
       val toStringTargets = builder.calleesOf(doVirtDM)(15)
 
       assert(toStringTargets.nonEmpty)
-      val allInstantiatedTypes = JreModelLoader.getDefaultJre.get.allTypesInstantiated ++ input.allClasses.flatMap(c => c.getMethods.flatMap(m => m.getNewStatements.map(_.instantiatedTypeName)))
+      val allInstantiatedTypes = JreModelLoader.getDefaultJre.get.allTypesInstantiated ++ input.allClasses.flatMap(c => c.getMethods.flatMap(m => m.newStatements.map(_.instantiatedTypeName)))
       assert(toStringTargets.size <= allInstantiatedTypes.size)
 
       // Check that (of the fixture classes) only the one defining a toString method is invoked
@@ -167,6 +167,58 @@ class NaiveRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSupport 
 
       // Assert that all potential targets are instantiated somewhere in the code
       assert(toStringTargets.forall(dm => allInstantiatedTypes.contains(dm.definingTypeName)))
+
+      val allCallSitesCount = builder.calleesOf.values.map(callSites => callSites.size).sum
+      val allTargetsCount = builder.calleesOf.values.map(callSites => callSites.values.map(_.size).sum).sum
+
+      println(s"Found ${builder.reachableMethods().size} reachable methods.")
+      println(s"Resolved $allCallSitesCount callsites to $allTargetsCount methods")
+    }
+
+    it("should resolve recursive calls when starting at an entry point without the JRE"){
+      val input = getCgFixtureModel
+      val builder = new NaiveRTACallGraphBuilder(Set(input), None)
+
+      val sourceDm = builder.asDefinedMethod(input.allMethods.find(dm => dm.name == "doRecursiveCalls" && dm.enclosingClass.get.thisType == "Calls").get)
+
+      val result = builder.buildNaiveFrom(sourceDm)
+
+      assert(result.isSuccess)
+
+      assert(builder.calleesOf.contains(sourceDm))
+      val res1 = builder.calleesOf(sourceDm)
+      assert(res1.contains(4) && res1.contains(10))
+      assert(res1(10).size == 2)
+      assert(res1(10).exists(_.definingTypeName == "Calls"))
+      assert(res1(10).exists(_.definingTypeName == "CallTargetImpl"))
+
+      val recurseSuper = builder.calleesOf.keys.find(dm => dm.methodName == "recurse" && dm.definingTypeName == "Calls").get
+      assert(builder.calleesOf.contains(recurseSuper))
+      val res2 = builder.calleesOf(recurseSuper)
+      assert(res2.size == 3)
+      assert(res2.contains(1) && res2.contains(8) && res2.contains(13))
+      assert(res2(1).size == 2)
+      assert(res2(13).size == 2)
+    }
+
+    it("should resolve all virtual calls when starting at an entry point with the JRE") {
+      resetModelLoader()
+      val input = getCgFixtureModel
+      val builder = new NaiveRTACallGraphBuilder(Set(input), Some(JreModelLoader.defaultJre))
+
+      val sourceDm = builder.asDefinedMethod(input.allMethods.find(_.name == "doVirtualCalls").get)
+
+      val result = builder.buildNaiveFrom(sourceDm)
+      assert(result.isSuccess)
+
+      // There should now be a resolution for Object.toString at PC 15
+      assert(builder.calleesOf.contains(sourceDm) && builder.calleesOf(sourceDm).size == 8)
+      assert(builder.calleesOf(sourceDm).contains(15))
+      val toStringTargets = builder.calleesOf(sourceDm)(15)
+
+      assert(toStringTargets.nonEmpty)
+      val allInstantiatedTypes = JreModelLoader.getDefaultJre.get.allTypesInstantiated ++ input.allClasses.flatMap(c => c.getMethods.flatMap(m => m.newStatements.map(_.instantiatedTypeName)))
+      assert(toStringTargets.size <= allInstantiatedTypes.size)
 
       val allCallSitesCount = builder.calleesOf.values.map(callSites => callSites.size).sum
       val allTargetsCount = builder.calleesOf.values.map(callSites => callSites.values.map(_.size).sum).sum

@@ -38,6 +38,15 @@ public class Calls {
         recurse(c); // [PC 10]
     }
 
+    public void doReturnDependent(){
+        Calls c = buildInstance(); // [PC 1]
+        c.doRecursiveCalls(); // [PC6]
+    }
+
+    public Calls buildInstance(){
+        return new CallTargetImpl();
+    }
+
     public static void doFoo(){
         System.out.println("Foo");
     }

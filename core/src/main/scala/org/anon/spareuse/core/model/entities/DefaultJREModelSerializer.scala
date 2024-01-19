@@ -43,7 +43,7 @@ object DefaultJREModelSerializer extends JREModelSerializer {
       "abstractMethod" -> JsBoolean(method.isAbstract),
       "methodVisibility" -> JsString(method.visibility),
       "hash" -> JsNumber(method.methodHash),
-      "statements" -> JsArray(method.getStatements.map(stmtToJson).toVector)
+      "statements" -> JsArray(method.statements.map(stmtToJson).toVector)
     ))
 
     def classToJson(klass: JavaClass): JsObject = new JsObject(Map(

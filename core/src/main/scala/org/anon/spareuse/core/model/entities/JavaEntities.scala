@@ -149,6 +149,12 @@ object JavaEntities {
 
     private lazy val opalDescriptor = MethodDescriptor(jvmDescriptor)
 
+    lazy val statements: Seq[JavaStatement] = getChildren.map(_.asInstanceOf[JavaStatement]).toSeq.sortBy(_.instructionPc)
+    lazy val newStatements: Seq[JavaNewInstanceStatement] = getChildren.collect { case x: JavaNewInstanceStatement => x }.toSeq.sortBy(_.instructionPc)
+    lazy val invocationStatements: Seq[JavaInvokeStatement] = getChildren.collect { case x: JavaInvokeStatement => x }.toSeq.sortBy(_.instructionPc)
+    lazy val enclosingClass: Option[JavaClass] = getParent.map(_.asInstanceOf[JavaClass])
+    lazy val fieldAccessStatements: Seq[JavaFieldAccessStatement] = getChildren.collect{ case x: JavaFieldAccessStatement => x }.toSeq.sortBy(_.instructionPc)
+
     val descriptor: String = jvmDescriptor
     val isFinal: Boolean = finalMethod
     val isStatic: Boolean = staticMethod
@@ -158,13 +164,6 @@ object JavaEntities {
 
     def paramTypes: Seq[String] = opalDescriptor.parameterTypes.map(_.toJVMTypeName)
     def returnType: String = opalDescriptor.returnType.toJVMTypeName
-
-
-    def getEnclosingClass: Option[JavaClass] = getParent.map(_.asInstanceOf[JavaClass])
-    def getStatements: Seq[JavaStatement] = getChildren.map(_.asInstanceOf[JavaStatement]).toSeq.sortBy(_.instructionPc)
-    def getNewStatements: Seq[JavaNewInstanceStatement] = getChildren.collect{ case x: JavaNewInstanceStatement => x }.toSeq.sortBy(_.instructionPc)
-    def getInvocationStatements: Seq[JavaInvokeStatement] = getChildren.collect{ case x: JavaInvokeStatement => x }.toSeq.sortBy(_.instructionPc)
-    def getFieldAccessStatements: Seq[JavaFieldAccessStatement] = getChildren.collect{ case x: JavaFieldAccessStatement => x }.toSeq.sortBy(_.instructionPc)
   }
 
   abstract class JavaStatement(name: String, pc: Int, stmtUid: String, repositoryIdent: String)

@@ -50,7 +50,8 @@ trait SoftwareEntityData {
   def isMethod: Boolean = kind == SoftwareEntityKind.Method
   def isFieldAccessInstruction: Boolean = kind == SoftwareEntityKind.FieldAccessStatement
   def isMethodInvocationInstruction: Boolean = kind == SoftwareEntityKind.InvocationStatement
-  def isInstruction: Boolean = isFieldAccessInstruction || isMethodInvocationInstruction
+  def isNewInstanceInstruction: Boolean = kind == SoftwareEntityKind.NewInstanceStatement
+  def isInstruction: Boolean = isFieldAccessInstruction || isMethodInvocationInstruction || isNewInstanceInstruction
 
   @tailrec
   final def findFirstParent(pred: SoftwareEntityData => Boolean): Option[SoftwareEntityData] = {
