@@ -115,6 +115,8 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
     classLookup
   }
 
+  val methodDefCache: mutable.Map[TypeNode, mutable.Map[String, Option[DefinedMethod]]] = mutable.HashMap()
+
   /**
    * Find the definition of the given method for the given type node. This method will look for the first applicable definition
    * in the parent hierarchy of the given node.
@@ -123,13 +125,37 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
    * @param recurseParents Flag to enable looking for matching definitions in parent nodes (needed for virtual invocations)
    * @return Optionally the method definition that matches the invocation statement
    */
-  @tailrec
   protected[cg] final def findMethodDefinition(jis: JavaInvokeStatement, currentNode: TypeNode, recurseParents: Boolean): Option[DefinedMethod] = {
 
+    val invocationIdent = jis.targetTypeName + jis.targetMethodName + jis.targetDescriptor
+
+    if(recurseParents && methodDefCache.contains(currentNode)){
+      if(methodDefCache(currentNode).contains(invocationIdent)) return methodDefCache(currentNode)(invocationIdent)
+    }
+
     findMethodOn(jis, currentNode) match {
-      case Some(method) => Some(method)
-      case None if recurseParents && currentNode.hasParent => findMethodDefinition(jis, currentNode.getParent.get, recurseParents)
-      case _ => None
+      case Some(method) =>
+        if(recurseParents){
+          if(!methodDefCache.contains(currentNode)) methodDefCache.put(currentNode, mutable.HashMap(invocationIdent -> Some(method)))
+          else if(!methodDefCache(currentNode).contains(invocationIdent)) methodDefCache(currentNode)(invocationIdent) = Some(method)
+        }
+        Some(method)
+
+      case None if recurseParents && currentNode.hasParent =>
+        val res = findMethodDefinition(jis, currentNode.getParent.get, recurseParents)
+        if (recurseParents) {
+          if (!methodDefCache.contains(currentNode)) methodDefCache.put(currentNode, mutable.HashMap(invocationIdent -> res))
+          else if (!methodDefCache(currentNode).contains(invocationIdent)) methodDefCache(currentNode)(invocationIdent) = res
+        }
+        res
+
+      case _ =>
+        if(recurseParents){
+          if (!methodDefCache.contains(currentNode)) methodDefCache.put(currentNode, mutable.HashMap(invocationIdent -> None))
+          else if (!methodDefCache(currentNode).contains(invocationIdent)) methodDefCache(currentNode)(invocationIdent) = None
+        }
+        None
+
     }
 
   }
@@ -143,6 +169,12 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
   protected[cg]def getPossibleChildNodes(typeNode: TypeNode, instantiatedTypes: Set[String]): Set[TypeNode] = {
     typeNode.allChildren.filter(cNode => instantiatedTypes.contains(cNode.thisType))
   }
+
+  private[cg] def resolveOnObject(jis: JavaInvokeStatement, instantiatedTypes: Set[String]): Set[DefinedMethod] =
+    instantiatedTypes
+      .flatMap(t => classLookup(t).lookupMethod(jis.targetMethodName, jis.targetDescriptor).map(asDefinedMethod)) ++
+      getMethodOnObjectType(jis).toSet
+
 
   protected[cg] def resolveInvocation(jis: JavaInvokeStatement, declType: TypeNode, instantiatedTypes: Set[String]): Set[DefinedMethod] = jis.invokeStatementType match {
     case JavaInvocationType.Static =>
@@ -160,6 +192,8 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
       targetOpt.toSet
 
     case JavaInvocationType.Virtual | JavaInvocationType.Interface =>
+      if(declType.thisType == "java/lang/Object") return resolveOnObject(jis, instantiatedTypes)
+
       val targets = getPossibleChildNodes(declType, instantiatedTypes)
         .flatMap(node => findMethodOn(jis, node))
 
@@ -191,15 +225,26 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
       Set.empty
   }
 
+  val simpleResolutionCache: mutable.Map[String, Set[DefinedMethod]] = mutable.HashMap()
+
   /**
    * Resolves the given invocation with the given set of instantiatable types
    * @param jis Invocation statment to resolve
    * @param instantiatedTypes Set of type names that may be instantiated at this point in time
+   * @param simpleCaching Set to true in order to cache results only per invocation, not considering types. Only applicable
+   *                      if the types considered instantiatable are always the same (ie. in naive RTA).
    * @return Set of defined methods that may be invoked
    */
-  def resolveInvocation(jis: JavaInvokeStatement, instantiatedTypes: Set[String]): Set[DefinedMethod] = {
+  def resolveInvocation(jis: JavaInvokeStatement, instantiatedTypes: Set[String], simpleCaching: Boolean = false): Set[DefinedMethod] = {
 
-    (jis.targetTypeName.charAt(0): @scala.annotation.switch) match {
+
+
+    if(simpleCaching ){
+      val invocationIdent = jis.targetTypeName + jis.targetMethodName + jis.targetDescriptor
+      if(simpleResolutionCache.contains(invocationIdent)) return simpleResolutionCache(invocationIdent)
+    }
+
+    val result: Set[DefinedMethod] = (jis.targetTypeName.charAt(0): @scala.annotation.switch) match {
       case 'L' =>
         val objTypeFqn = jis.targetTypeName.substring(1, jis.targetTypeName.length - 1)
         if (!typeLookup.contains(objTypeFqn)) {
@@ -245,6 +290,12 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
         throw new IllegalArgumentException(s"Not a valid field type: ${jis.targetTypeName}")
     }
 
+    if(simpleCaching){
+      val invocationIdent = jis.targetTypeName + jis.targetMethodName + jis.targetDescriptor
+      if(!simpleResolutionCache.contains(invocationIdent)) simpleResolutionCache(invocationIdent) = result
+    }
+
+    result
   }
 
   // -----------------------------------------------

@@ -24,14 +24,14 @@ class NaiveRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: Opt
           val currentDefinedMethod = asDefinedMethod(javaMethod)
           javaMethod.invocationStatements.foreach { jis =>
 
-            resolveInvocation(jis, allInstantiatedTypes)
+            resolveInvocation(jis, allInstantiatedTypes, simpleCaching = true)
               .foreach(targetDefinedMethod => putCall(currentDefinedMethod, jis.instructionPc, targetDefinedMethod))
           }
         }
       }
   }
 
-  private[cg] val methodsAnalyzed = mutable.Set[DefinedMethod]()
+  private[cg] val methodsAnalyzed = mutable.HashSet[Int]()
 
   def buildNaiveFrom(dm: DefinedMethod): Try[Unit] = Try {
     val workList = mutable.Queue[DefinedMethod](dm)
@@ -39,14 +39,14 @@ class NaiveRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: Opt
     while(workList.nonEmpty){
       val currentMethod = workList.dequeue()
 
-      if(!methodsAnalyzed.contains(currentMethod)){
+      if(!methodsAnalyzed.contains(currentMethod.hashCode())){
 
         currentMethod.javaMethodOpt match {
           case Some(jm) =>
             jm.invocationStatements.foreach{ jis =>
-              resolveInvocation(jis, allInstantiatedTypes).foreach{ target =>
+              resolveInvocation(jis, allInstantiatedTypes, simpleCaching = true).foreach{ target =>
                 putCall(currentMethod, jis.instructionPc, target)
-                if(!methodsAnalyzed.contains(target))
+                if(!methodsAnalyzed.contains(target.hashCode()))
                   workList.enqueue(target)
               }
             }
@@ -55,7 +55,7 @@ class NaiveRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: Opt
         }
 
 
-        methodsAnalyzed.add(currentMethod)
+        methodsAnalyzed.add(currentMethod.hashCode())
       }
     }
   }

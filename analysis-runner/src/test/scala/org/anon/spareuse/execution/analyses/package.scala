@@ -5,7 +5,9 @@ import org.anon.spareuse.core.model.entities.conversion.OPALJavaConverter
 import org.anon.spareuse.execution.analyses.impl.ifds.MethodTACProvider
 import org.opalj.ai.domain
 import org.opalj.ai.fpcf.properties.AIDomainFactoryKey
+import org.opalj.br.ClassFile
 import org.opalj.br.analyses.Project
+import org.opalj.bytecode.JRELibraryFolder
 import org.opalj.tac.ComputeTACAIKey
 
 import java.io.File
@@ -34,6 +36,13 @@ package object analyses {
 
   def getCallGraphProject: Project[URL] = {
     Project(Array(callsFixtureName, interfaceFixtureName, interfaceImplFixtureName, complexCfgFixtureName).map(loadFixture), Array.empty[File])
+  }
+
+  def getCallGraphProjectWithJre: Project[URL] = {
+    val projectClasses: List[(ClassFile, URL)] = Project.JavaClassFileReader()
+      .AllClassFiles(Array(callsFixtureName, interfaceFixtureName, interfaceImplFixtureName, complexCfgFixtureName).map(loadFixture)).toList
+    val libClasses = Project.JavaClassFileReader().AllClassFiles(Array(JRELibraryFolder)).toSeq
+    Project(projectClasses, libClasses, libraryClassFilesAreInterfacesOnly = false, virtualClassFiles = Iterable.empty[ClassFile])
   }
 
   def toObjectModel(project: Project[URL], ident: String = "org.anon.test:1.0.0", loadClassContents: Boolean = true): JavaProgram = {

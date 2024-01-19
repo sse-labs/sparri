@@ -80,9 +80,10 @@ class DefaultRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: O
         val externalTypesPrior = priorInvocations.getOrElse(currTask.method, Set.empty)
         val newExternalTypes = currTask.typesInstantiated.diff(externalTypesPrior)
 
-        rootSet.addAll(currTask.method.newTypesInstantiated)
-
         if (!priorInvocations.contains(currTask.method) || newExternalTypes.nonEmpty) {
+
+          rootSet.addAll(currTask.method.newTypesInstantiated)
+
           // What types do we have to look at?
           val effectiveTypesToResolve = currTask.method.newTypesInstantiated ++ newExternalTypes
 
@@ -94,10 +95,9 @@ class DefaultRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: O
               }
             }
           }
+
+          priorInvocations(currTask.method) = externalTypesPrior ++ effectiveTypesToResolve
         }
-
-        priorInvocations(currTask.method) = externalTypesPrior ++ newExternalTypes ++ currTask.method.newTypesInstantiated
-
       }
 
     } while(rootSet.toSet.diff(priorInvocations(entry)).nonEmpty)
