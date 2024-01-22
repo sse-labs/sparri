@@ -51,7 +51,7 @@ class IFDSTaintFlowSummaryBuilderImplTest extends AnyFunSpec {
         sn.getSuccessors.foreach(s => findSink(s, newFacts))
       }
 
-      val mainGraph = graphs.find(_.method.name == "main").get
+      val mainGraph = graphs.find(_.methodName == "main").get
       assert(mainGraph.hasStatement(0))
       findSink(mainGraph.getStatement(0).get, Set(IFDSZeroFact))
       assert(foundSink)

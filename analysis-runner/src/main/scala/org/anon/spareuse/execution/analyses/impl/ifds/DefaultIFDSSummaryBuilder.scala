@@ -9,11 +9,13 @@ import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.model.entities.conversion.OPALJavaConverter
 import org.anon.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData, SoftwareEntityKind}
 import org.anon.spareuse.core.opal.OPALProjectHelper
+import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.{FactRep, InternalActivationRep, InternalVariableRep, MethodIFDSRep, StatementRep}
 import org.anon.spareuse.execution.analyses.{AnalysisImplementationDescriptor, AnalysisResult, ExistingResult, FreshResult, IncrementalAnalysisImplementation}
 import org.opalj.ai.domain
 import org.opalj.ai.fpcf.properties.AIDomainFactoryKey
 import org.opalj.br.Method
 import org.opalj.tac.ComputeTACAIKey
+import spray.json.{DefaultJsonProtocol, JsonFormat}
 
 import scala.collection.mutable.ListBuffer
 import scala.util.{Failure, Success, Try}
@@ -153,7 +155,7 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
 
     val theTAC = TACAIProvider(method)
     val cfg = theTAC.cfg
-    val graph = new IFDSMethodGraph(method)
+    val graph = IFDSMethodGraph(method)
 
     val firstStmt = cfg.code.instructions(theTAC.pcToIndex(0))
     val firstNode = graph.createStatement(firstStmt, None)
@@ -200,20 +202,14 @@ object DefaultIFDSSummaryBuilder {
     NamedPropertyFormat("defSites", ListResultFormat(formats.NumberFormat), "All definition sites of this local variable")
   ))
 
-  class InternalVariableRep(name: String, defBy: List[Int]){
-    val variableName: String = name
-    val defSites: List[Int] = defBy
-  }
+  case class InternalVariableRep(variableName: String, defSites: List[Int])
 
   private val activationFormat = new ObjectResultFormat(Set(
     NamedPropertyFormat("sourceFactId", formats.NumberFormat, "The uid of the fact that is being activated"),
     NamedPropertyFormat("enablingFactIds", ListResultFormat(formats.NumberFormat, "Id of a fact that may activate the source fact"), "List of facts activating the source fact")
   ))
 
-  class InternalActivationRep(sourceId: Int, factsEnabling: Set[Int]) {
-    val sourceFactId: Int = sourceId
-    val enablingFactIds: List[Int] = factsEnabling.toList
-  }
+  case class InternalActivationRep(sourceFactId: Int, enablingFactIds: List[Int])
 
   private val stmtFormat = new ObjectResultFormat(Set(
     NamedPropertyFormat("pc", formats.NumberFormat, "The program counter of this statement"),
@@ -224,21 +220,20 @@ object DefaultIFDSSummaryBuilder {
     NamedPropertyFormat("calleeDescriptor", formats.StringFormat, "String representation of the descriptor of the method that is called by this statement."),
     NamedPropertyFormat("calleeClassName", formats.StringFormat, "FQN of the declaring class of the method that is called by this statement"),
     NamedPropertyFormat("calleeParameterVariables", ListResultFormat(variableFormat), "The actual variables passed to the method that is called by this statement"),
+    NamedPropertyFormat("callReceiverVar", variableFormat, "The variable representing the receiver of the method that is called by this statement"),
     NamedPropertyFormat("activations", ListResultFormat(activationFormat, "Individual activation for this statement"))
   ))
 
-  class StatementRep(programCounter: Int, isReturnStmt: Boolean, tacStr: String, predPcs: List[Int], calleeName: Option[String], calleeDescr: Option[String], calleeClass: Option[String], calleeParams: Option[List[InternalVariableRep]], callReceiver: Option[InternalVariableRep], stmtActivations: List[InternalActivationRep]) {
-    val pc: Int = programCounter
-    val isReturn: Int = if (isReturnStmt) 1 else 0
-    val TACRepresentation: String = tacStr
-    val predecessors: List[Int] = predPcs
-    val calleeMethodName: String = calleeName.getOrElse("")
-    val calleeDescriptor: String = calleeDescr.getOrElse("")
-    val calleeClassName: String = calleeClass.getOrElse("")
-    val calleeParameterVariables: List[InternalVariableRep] = calleeParams.getOrElse(List.empty[InternalVariableRep])
-    val callReceiverVar: InternalVariableRep = callReceiver.getOrElse(new InternalVariableRep("", List.empty))
-    val activations: List[InternalActivationRep] = stmtActivations
-  }
+  case class StatementRep(pc: Int,
+                          isReturn: Int,
+                          TACRepresentation: String,
+                          predecessors: List[Int],
+                          calleeMethodName: String,
+                          calleeDescriptor: String,
+                          calleeClassName: String,
+                          calleeParameterVariables: List[InternalVariableRep],
+                          callReceiverVar: InternalVariableRep,
+                          activations: List[InternalActivationRep])
 
   private val factFormat = new ObjectResultFormat(Set(
     NamedPropertyFormat("uid", formats.NumberFormat, "Unique id for this fact inside this method"),
@@ -246,11 +241,7 @@ object DefaultIFDSSummaryBuilder {
     NamedPropertyFormat("displayName", formats.StringFormat, "Display name for this fact")
   ))
 
-  class FactRep(numId: Int, identStr: String, name: String) {
-    val uid: Int = numId
-    val identifier: String = identStr
-    val displayName: String = name
-  }
+  case class FactRep(uid: Int, identifier: String, displayName: String)
 
   private val methodFormat = new ObjectResultFormat(Set(
     NamedPropertyFormat("name", formats.StringFormat, "Name of this method"),
@@ -260,13 +251,7 @@ object DefaultIFDSSummaryBuilder {
     NamedPropertyFormat("facts", ListResultFormat(factFormat, "Object representing individual facts occurring in this method"), "List of all facts relevant for this method")
   ))
 
-  class MethodIFDSRep(mName: String, mDeclClass: String, mDescriptor: String, stmts: List[StatementRep], factReps: List[FactRep]) {
-    val name: String = mName
-    val declaringClassName: String = mDeclClass
-    val descriptor: String = mDescriptor
-    val statements: List[StatementRep] = stmts
-    val facts: List[FactRep] = factReps
-  }
+  case class MethodIFDSRep(name: String, declaringClassName: String, descriptor: String, statements: List[StatementRep], facts: List[FactRep])
 
   def buildDescriptor(aName: String, aVersion: String, aDescription: String): AnalysisImplementationDescriptor = new AnalysisImplementationDescriptor {
 
@@ -284,5 +269,14 @@ object DefaultIFDSSummaryBuilder {
       isIncremental = true
     )
   }
+}
+
+trait DefaultIFDSMethodRepJsonFormat extends DefaultJsonProtocol {
+
+  implicit val internalVariableRepFormat: JsonFormat[InternalVariableRep] = jsonFormat2(InternalVariableRep)
+  implicit val internalActivationRepFormat: JsonFormat[InternalActivationRep] = jsonFormat2(InternalActivationRep)
+  implicit val statementRepFormat: JsonFormat[StatementRep] = jsonFormat10(StatementRep)
+  implicit val factRepFormat: JsonFormat[FactRep] = jsonFormat3(FactRep)
+  implicit val methodIFDSRep: JsonFormat[MethodIFDSRep] = jsonFormat5(MethodIFDSRep)
 
 }

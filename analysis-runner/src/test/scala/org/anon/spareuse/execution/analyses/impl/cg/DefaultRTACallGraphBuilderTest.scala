@@ -12,15 +12,15 @@ class DefaultRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSuppor
 
       val sourceDm = builder.asDefinedMethod(input.allMethods.find(_.name == "doVirtualCalls").get)
 
-      val result = builder.resolveFrom(sourceDm)
+      val result = builder.buildFrom(sourceDm)
       assert(result.isSuccess)
-      //assert(result.get.nonEmpty)
+      assert(result.get.reachableMethods().nonEmpty)
 
       val calls_doStatic = builder.asDefinedMethod(input.allMethods.find(m => m.name == "doStaticCalls" && m.enclosingClass.get.thisType == "Calls").get)
       val callTargetImpl_doStatic = builder.asDefinedMethod(input.allMethods.find(m => m.name == "doStaticCalls" && m.enclosingClass.get.thisType == "CallTargetImpl").get)
 
-      assert(builder.calleesOf.contains(sourceDm))
-      val resolutions = builder.calleesOf(sourceDm)
+      assert(builder.calleeMap.contains(sourceDm))
+      val resolutions = builder.calleeMap(sourceDm)
 
       // Three INVOKEVIRTUALs (toString should not resolve here) and four INVOKESPECIALs
       assert(resolutions.size == 7)
@@ -51,20 +51,21 @@ class DefaultRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSuppor
 
       val sourceDm = builder.asDefinedMethod(input.allMethods.find(dm => dm.name == "doRecursiveCalls" && dm.enclosingClass.get.thisType == "Calls").get)
 
-      val result = builder.resolveFrom(sourceDm)
+      val result = builder.buildFrom(sourceDm)
 
       assert(result.isSuccess)
+      assert(result.get.reachableMethods().nonEmpty)
 
-      assert(builder.calleesOf.contains(sourceDm))
-      val res1 = builder.calleesOf(sourceDm)
+      assert(builder.calleeMap.contains(sourceDm))
+      val res1 = builder.calleeMap(sourceDm)
       assert(res1.contains(4) && res1.contains(10))
       assert(res1(10).size == 2)
       assert(res1(10).exists(_.definingTypeName == "Calls"))
       assert(res1(10).exists(_.definingTypeName == "CallTargetImpl"))
 
-      val recurseSuper = builder.calleesOf.keys.find(dm => dm.methodName == "recurse" && dm.definingTypeName == "Calls").get
-      assert(builder.calleesOf.contains(recurseSuper))
-      val res2 = builder.calleesOf(recurseSuper)
+      val recurseSuper = builder.calleeMap.keys.find(dm => dm.methodName == "recurse" && dm.definingTypeName == "Calls").get
+      assert(builder.calleeMap.contains(recurseSuper))
+      val res2 = builder.calleeMap(recurseSuper)
       assert(res2.size == 3)
       assert(res2.contains(1) && res2.contains(8) && res2.contains(13))
       assert(res2(1).size == 2)
@@ -77,11 +78,11 @@ class DefaultRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSuppor
 
       val sourceDm = builder.asDefinedMethod(input.allMethods.find(dm => dm.name == "doReturnDependent" && dm.enclosingClass.get.thisType == "Calls").get)
 
-      assert(builder.resolveFrom(sourceDm).isSuccess)
+      assert(builder.buildFrom(sourceDm).isSuccess)
 
-      assert(builder.calleesOf(sourceDm).size == 2)
+      assert(builder.calleeMap(sourceDm).size == 2)
 
-      val resolutions = builder.calleesOf(sourceDm)
+      val resolutions = builder.calleeMap(sourceDm)
       assert(resolutions.contains(1) && resolutions.contains(6))
       assert(resolutions(1).size == 1 && resolutions(1).head.definingTypeName == "Calls")
       assert(resolutions(6).exists(_.definingTypeName == "Calls"))
@@ -96,21 +97,21 @@ class DefaultRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSuppor
 
       val sourceDm = builder.asDefinedMethod(input.allMethods.find(_.name == "doVirtualCalls").get)
 
-      val result = builder.resolveFrom(sourceDm)
+      val result = builder.buildFrom(sourceDm)
       assert(result.isSuccess)
 
       // There should now be a resolution for Object.toString at PC 15
-      assert(builder.calleesOf.contains(sourceDm) && builder.calleesOf(sourceDm).size == 8)
-      assert(builder.calleesOf(sourceDm).contains(15))
+      assert(builder.calleeMap.contains(sourceDm) && builder.calleeMap(sourceDm).size == 8)
+      assert(builder.calleeMap(sourceDm).contains(15))
 
       // There could be multiple resolutions, but java/lang/Object.toString must be contained
-      val toStringResolutions = builder.calleesOf(sourceDm)(15)
+      val toStringResolutions = builder.calleeMap(sourceDm)(15)
       assert(toStringResolutions.nonEmpty && toStringResolutions.exists(_.definingTypeName == objFqn))
 
-      val allCallSitesCount = builder.calleesOf.values.map(callSites => callSites.size).sum
-      val allTargetsCount = builder.calleesOf.values.map(callSites => callSites.values.map(_.size).sum).sum
+      val allCallSitesCount = builder.calleeMap.values.map(callSites => callSites.size).sum
+      val allTargetsCount = builder.calleeMap.values.map(callSites => callSites.values.map(_.size).sum).sum
 
-      println(s"Found ${builder.reachableMethods().size} reachable methods.")
+      println(s"Found ${result.get.reachableMethods().size} reachable methods.")
       println(s"Resolved $allCallSitesCount callsites to $allTargetsCount methods")
     }
 

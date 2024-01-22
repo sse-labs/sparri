@@ -4,11 +4,11 @@ import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaInvoca
 import org.opalj.br.FieldType
 import org.slf4j.{Logger, LoggerFactory}
 
-import scala.annotation.{switch, tailrec}
+import scala.annotation.switch
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
-abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: Option[String]) {
+abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: Option[String]) extends CallGraphBuilder {
 
   protected final val log: Logger = LoggerFactory.getLogger(getClass)
 
@@ -16,30 +16,9 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
   protected[cg] final val typeLookup: Map[String, TypeNode] = buildTypeHierarchy()
 
   // Lookup for Java classes based on their FQN
-  protected[cg] final val classLookup: Map[String, JavaClass] =
+  protected[cg] override val classLookup: Map[String, JavaClass] =
     programs.flatMap(_.allClasses).map(jc => (jc.thisType, jc)).toMap ++
       jreOpt.map { jreRep => jreRep.types.map { javaType => (javaType.t, javaType.asModel) }.toMap }.getOrElse(Map.empty)
-
-
-  protected[cg] val callersOf: mutable.Map[DefinedMethod, mutable.Set[DefinedMethod]] = mutable.Map()
-  protected[cg] val calleesOf: mutable.Map[DefinedMethod, mutable.Map[Int, mutable.Set[DefinedMethod]]] = mutable.Map()
-
-  protected[cg] def putCall(from: DefinedMethod, pc: Int, to:DefinedMethod): Unit = {
-    if(!calleesOf.contains(from))
-      calleesOf(from) = mutable.Map()
-
-    if(!calleesOf(from).contains(pc))
-      calleesOf(from)(pc) = mutable.HashSet()
-
-    calleesOf(from)(pc).add(to)
-
-    if(!callersOf.contains(to))
-      callersOf(to) = mutable.HashSet()
-
-    callersOf(to).add(from)
-  }
-
-  def reachableMethods(): Set[DefinedMethod] = calleesOf.keySet.toSet ++ callersOf.keySet.toSet
 
   // The object type node (if JRE is available)
   protected[cg] def objectTypeOpt: Option[TypeNode] = typeLookup.get("java/lang/Object")
@@ -298,40 +277,7 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
     result
   }
 
-  // -----------------------------------------------
-  // ------- Defined Methods and their Cache -------
-  // -----------------------------------------------
 
-  private val defMCache = mutable.HashMap[JavaMethod, DefinedMethod]()
-
-  def asDefinedMethod(jm: JavaMethod): DefinedMethod = {
-    if (!defMCache.contains(jm))
-      defMCache(jm) = new DefinedMethod(jm.enclosingClass.get.thisType, Some(jm), None)
-
-    defMCache(jm)
-  }
-
-  class DefinedMethod(declaringType: String, jmOpt: Option[JavaMethod], jreMethodOpt: Option[JreMethod]) {
-
-    val definingTypeName: String = declaringType
-    val methodName: String = jmOpt.map(_.name).getOrElse(jreMethodOpt.get.n)
-    val descriptor: String = jmOpt.map(_.descriptor).getOrElse(jreMethodOpt.get.d)
-
-    lazy val javaMethodOpt: Option[JavaMethod] =
-      classLookup.get(definingTypeName).flatMap(_.lookupMethod(methodName, descriptor))
-
-    lazy val newTypesInstantiated: Set[String] =
-      javaMethodOpt.map(_.newStatements.map(_.instantiatedTypeName).toSet).getOrElse(Set.empty[String])
-
-    override def equals(obj: Any): Boolean = obj match {
-      case other: DefinedMethod =>
-        other.definingTypeName.equals(definingTypeName) && other.descriptor.equals(descriptor) && other.methodName.equals(methodName)
-      case _ => false
-    }
-
-    override def hashCode(): Int = 31 * definingTypeName.hashCode + 11 * methodName.hashCode + 5 * descriptor.hashCode
-
-  }
 
 
   // --------------------------------------------------

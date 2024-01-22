@@ -1,15 +1,17 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.core.formats.json.CustomObjectWriter
+import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
 import org.anon.spareuse.execution.analyses.{buildProject, foreachFixture, getTACProvider}
 import org.scalatest.funspec.AnyFunSpec
 import spray.json.JsObject
 
 import java.io.File
 import scala.collection.immutable.ArraySeq
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
+import spray.json._
 
-class IFDSMethodGraphTest extends AnyFunSpec{
+class IFDSMethodGraphTest extends AnyFunSpec with DefaultIFDSMethodRepJsonFormat{
 
   private val theBuilder = new IFDSTaintFlowSummaryBuilderImpl (None)
 
@@ -70,15 +72,44 @@ class IFDSMethodGraphTest extends AnyFunSpec{
 
         val jsonTries = graphResults.map(res => Try(writer.write(res)))
 
-        assert(jsonTries.forall(_.isSuccess))
-
-        val jsonStrings = jsonTries.map { jsTry =>
-          val content = jsTry.get
-          assert(content.isInstanceOf[JsObject])
-          content.toString()
+        val jsonStrings = jsonTries.map {
+          case Failure(ex) =>
+            fail(ex)
+          case Success(content) =>
+            assert(content.isInstanceOf[JsObject])
+            content.toString()
         }
 
         jsonStrings.foreach(println)
+      }
+    }
+
+    it("should be able to deserialize the results using the defined result format") {
+
+      foreachFixture { fixture =>
+
+        val graphs = buildMethodSummariesForFile(fixture)
+        val graphResults = graphs.map(_.toResultRepresentation(squashIdentityStmts = false))
+        val writer = new CustomObjectWriter(theBuilder.descriptor.analysisData.resultFormat)
+
+        val jsonTries = graphResults.map(res => Try(writer.write(res)))
+
+        val jsonStrings = jsonTries.map {
+          case Failure(ex) =>
+            fail(ex)
+          case Success(content) =>
+            assert(content.isInstanceOf[JsObject])
+            content.toString()
+        }
+
+        jsonStrings.map { jsString =>
+          Try(jsString.parseJson.convertTo[MethodIFDSRep])
+        }.foreach {
+          case Failure(ex) =>
+            fail(ex)
+          case Success(methodRep) =>
+            assert(graphResults.contains(methodRep))
+        }
       }
     }
 

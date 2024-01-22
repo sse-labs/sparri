@@ -6,7 +6,11 @@ import org.opalj.tac.{Call, FunctionCall, InstanceFunctionCall, ReturnValue}
 
 import scala.collection.mutable
 
-class IFDSMethodGraph(val method: Method) {
+class IFDSMethodGraph(mName: String, mDeclaringClassFqn: String, mDescriptor: String) {
+
+  val methodName: String = mName
+  val methodDescriptor: String = mDescriptor
+  val methodDeclaringClassFqn: String = mDeclaringClassFqn
 
   private val pcToStmtMap: mutable.Map[Int, StatementNode] = new mutable.HashMap[Int, StatementNode]()
 
@@ -129,6 +133,9 @@ class IFDSMethodGraph(val method: Method) {
   }
 
   def toResultRepresentation(squashIdentityStmts: Boolean): DefaultIFDSSummaryBuilder.MethodIFDSRep = {
+
+    implicit def boolToInt: Boolean => Int = x => if(x) 1 else 0
+
     var factId: Int = 0
     val factIdMap = allFacts
       .map { f =>
@@ -140,7 +147,7 @@ class IFDSMethodGraph(val method: Method) {
 
     val factReps = allFacts.map{currFact =>
       val currId = factIdMap(currFact.uniqueIdent)
-      new FactRep(currId, currFact.uniqueIdent, currFact.displayName)
+      FactRep(currId, currFact.uniqueIdent, currFact.displayName)
     }.toList
 
     val stmts = if(squashIdentityStmts) relevantStatementNodes else statementNodes
@@ -154,24 +161,31 @@ class IFDSMethodGraph(val method: Method) {
         val activations = s.allActivations.map{ a =>
           val sourceId = factIdMap(a._1.uniqueIdent)
           val targetIds = a._2.map( f => factIdMap(f.uniqueIdent))
-          new InternalActivationRep(sourceId, targetIds)
+          InternalActivationRep(sourceId, targetIds.toList)
         }.toList
 
         s match {
           case csn: CallStatementNode =>
             val parameterReps = csn.parameterVariables.map{ v =>
-              new InternalVariableRep(TaintVariableFacts.normalizeVarName(v), v.definedBy.toList)
+              InternalVariableRep(TaintVariableFacts.normalizeVarName(v), v.definedBy.toList)
             }.toList
-            val receiverOpt = csn.receiver.map(v => new InternalVariableRep(TaintVariableFacts.normalizeVarName(v), v.definedBy.toList))
-            new StatementRep(csn.stmt.pc, isReturn, csn.stmt.toString, predecessors, Some(csn.functionName), Some(csn.descriptor.toJVMDescriptor), Some(csn.declaringClassFqn), Some(parameterReps), receiverOpt, activations)
+            val receiverOpt = csn.receiver.map(v => InternalVariableRep(TaintVariableFacts.normalizeVarName(v), v.definedBy.toList))
+            StatementRep(csn.stmt.pc, isReturn, csn.stmt.toString, predecessors, csn.functionName, csn.descriptor.toJVMDescriptor, csn.declaringClassFqn, parameterReps, receiverOpt.getOrElse(InternalVariableRep("", List.empty)), activations)
           case sn: StatementNode =>
-            new StatementRep(sn.stmt.pc, isReturn, sn.stmt.toString, predecessors, None, None, None, None, None, activations)
+            StatementRep(sn.stmt.pc, isReturn, sn.stmt.toString, predecessors, "", "", "", List.empty, InternalVariableRep("", List.empty), activations)
         }
 
       }
       .toList
 
-    new MethodIFDSRep(method.name, method.classFile.thisType.fqn, method.descriptor.toJVMDescriptor, stmtReps, factReps)
+    MethodIFDSRep(methodName, methodDeclaringClassFqn, methodDescriptor, stmtReps, factReps)
+  }
+
+}
+
+object IFDSMethodGraph {
+  def apply(method: Method): IFDSMethodGraph = {
+    new IFDSMethodGraph(method.name, method.classFile.thisType.fqn, method.descriptor.toJVMDescriptor)
   }
 
 }

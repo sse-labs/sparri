@@ -164,6 +164,8 @@ object JavaEntities {
 
     def paramTypes: Seq[String] = opalDescriptor.parameterTypes.map(_.toJVMTypeName)
     def returnType: String = opalDescriptor.returnType.toJVMTypeName
+
+    override def toString: String = enclosingClass.map(_.thisType).getOrElse("<no-class>") + "->" + methodName + jvmDescriptor
   }
 
   abstract class JavaStatement(name: String, pc: Int, stmtUid: String, repositoryIdent: String)

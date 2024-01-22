@@ -84,4 +84,6 @@ object TaintVariableFacts {
       fact
     }
   }
+
+  def parseFact(uniqueIdet: String): TaintVariable = ???
 }

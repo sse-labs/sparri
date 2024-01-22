@@ -71,15 +71,15 @@ class NaiveRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSupport 
       val result = builder.buildNaive()
       assert(result.isSuccess)
 
-      val doStaticDMOpt = builder.calleesOf.keys.find(dm => dm.methodName == "doStaticCalls" && dm.definingTypeName == "Calls")
+      val doStaticDMOpt = builder.calleeMap.keys.find(dm => dm.methodName == "doStaticCalls" && dm.definingTypeName == "Calls")
       assert(doStaticDMOpt.isDefined)
       val doStaticDM = doStaticDMOpt.get
 
-      assert(builder.calleesOf(doStaticDM).size == 2)
-      assert(builder.calleesOf(doStaticDM).contains(0) && builder.calleesOf(doStaticDM).contains(5))
+      assert(builder.calleeMap(doStaticDM).size == 2)
+      assert(builder.calleeMap(doStaticDM).contains(0) && builder.calleeMap(doStaticDM).contains(5))
 
-      val res1 = builder.calleesOf(doStaticDM)(0)
-      val res2 = builder.calleesOf(doStaticDM)(5)
+      val res1 = builder.calleeMap(doStaticDM)(0)
+      val res2 = builder.calleeMap(doStaticDM)(5)
 
       assert(res1.size == 1)
       assert(res2.size == 1)
@@ -101,34 +101,34 @@ class NaiveRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSupport 
       assert(result.isSuccess)
 
 
-      val doVirtDMOpt = builder.calleesOf.keys.find(dm => dm.methodName == "doVirtualCalls" && dm.definingTypeName == "Calls")
+      val doVirtDMOpt = builder.calleeMap.keys.find(dm => dm.methodName == "doVirtualCalls" && dm.definingTypeName == "Calls")
       assert(doVirtDMOpt.isDefined)
       val doVirtDM = doVirtDMOpt.get
 
       // Expect four INVOKESPECIAL and three INVOKEVIRTUAL (Object.toString cannot be resolved here!)
-      assert(builder.calleesOf(doVirtDM).size == 7)
-      assert(!builder.calleesOf(doVirtDM).contains(15)) // Make sure "toString" on "Object" is resolved with JRE
+      assert(builder.calleeMap(doVirtDM).size == 7)
+      assert(!builder.calleeMap(doVirtDM).contains(15)) // Make sure "toString" on "Object" is resolved with JRE
       val expectedCallSitePcs = Set(28, 40, 54)
-      assert(expectedCallSitePcs.forall(pc => builder.calleesOf(doVirtDM).contains(pc)))
+      assert(expectedCallSitePcs.forall(pc => builder.calleeMap(doVirtDM).contains(pc)))
 
 
 
 
-      val callSite1Targets = builder.calleesOf(doVirtDM)(28)
+      val callSite1Targets = builder.calleeMap(doVirtDM)(28)
       assert(callSite1Targets.size == 2)
       assert(callSite1Targets.exists(dm => dm.definingTypeName == "Calls" && dm.methodName == "doStaticCalls" &&
         MethodDescriptor(dm.descriptor) == MethodDescriptor.NoArgsAndReturnVoid))
       assert(callSite1Targets.exists(dm => dm.definingTypeName == "CallTargetImpl" && dm.methodName == "doStaticCalls" &&
         MethodDescriptor(dm.descriptor) == MethodDescriptor.NoArgsAndReturnVoid))
 
-      val callSite2Targets = builder.calleesOf(doVirtDM)(40)
+      val callSite2Targets = builder.calleeMap(doVirtDM)(40)
       assert(callSite2Targets.size == 2)
       assert(callSite2Targets.exists(dm => dm.definingTypeName == "Calls" && dm.methodName == "doStaticCalls" &&
         MethodDescriptor(dm.descriptor) == MethodDescriptor.NoArgsAndReturnVoid))
       assert(callSite2Targets.exists(dm => dm.definingTypeName == "CallTargetImpl" && dm.methodName == "doStaticCalls" &&
         MethodDescriptor(dm.descriptor) == MethodDescriptor.NoArgsAndReturnVoid))
 
-      val callSite3Targets = builder.calleesOf(doVirtDM)(54)
+      val callSite3Targets = builder.calleeMap(doVirtDM)(54)
       assert(callSite3Targets.size == 1)
       val callSite3 = callSite3Targets.head
       assert(callSite3.definingTypeName == "CallTargetImpl" && callSite3.methodName == "doStaticCalls" &&
@@ -144,15 +144,15 @@ class NaiveRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSupport 
       val result = builder.buildNaive()
       assert(result.isSuccess)
 
-      val doVirtDMOpt = builder.calleesOf.keys.find(dm => dm.methodName == "doVirtualCalls" && dm.definingTypeName == "Calls")
+      val doVirtDMOpt = builder.calleeMap.keys.find(dm => dm.methodName == "doVirtualCalls" && dm.definingTypeName == "Calls")
       assert(doVirtDMOpt.isDefined)
       val doVirtDM = doVirtDMOpt.get
 
       // Expect four INVOKESPECIAL and four INVOKEVIRTUAL - Object.toString must be resolved here!
-      assert(builder.calleesOf(doVirtDM).size == 8)
-      assert(builder.calleesOf(doVirtDM).contains(15))// Make sure "toString" on "Object" is resolved with JRE
+      assert(builder.calleeMap(doVirtDM).size == 8)
+      assert(builder.calleeMap(doVirtDM).contains(15))// Make sure "toString" on "Object" is resolved with JRE
 
-      val toStringTargets = builder.calleesOf(doVirtDM)(15)
+      val toStringTargets = builder.calleeMap(doVirtDM)(15)
 
       assert(toStringTargets.nonEmpty)
       val allInstantiatedTypes = JreModelLoader.getDefaultJre.get.allTypesInstantiated ++ input.allClasses.flatMap(c => c.getMethods.flatMap(m => m.newStatements.map(_.instantiatedTypeName)))
@@ -168,10 +168,10 @@ class NaiveRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSupport 
       // Assert that all potential targets are instantiated somewhere in the code
       assert(toStringTargets.forall(dm => allInstantiatedTypes.contains(dm.definingTypeName)))
 
-      val allCallSitesCount = builder.calleesOf.values.map(callSites => callSites.size).sum
-      val allTargetsCount = builder.calleesOf.values.map(callSites => callSites.values.map(_.size).sum).sum
+      val allCallSitesCount = builder.calleeMap.values.map(callSites => callSites.size).sum
+      val allTargetsCount = builder.calleeMap.values.map(callSites => callSites.values.map(_.size).sum).sum
 
-      println(s"Found ${builder.reachableMethods().size} reachable methods.")
+      println(s"Found ${result.get.reachableMethods().size} reachable methods.")
       println(s"Resolved $allCallSitesCount callsites to $allTargetsCount methods")
     }
 
@@ -181,20 +181,20 @@ class NaiveRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSupport 
 
       val sourceDm = builder.asDefinedMethod(input.allMethods.find(dm => dm.name == "doRecursiveCalls" && dm.enclosingClass.get.thisType == "Calls").get)
 
-      val result = builder.buildNaiveFrom(sourceDm)
+      val result = builder.buildFrom(sourceDm)
 
       assert(result.isSuccess)
 
-      assert(builder.calleesOf.contains(sourceDm))
-      val res1 = builder.calleesOf(sourceDm)
+      assert(builder.calleeMap.contains(sourceDm))
+      val res1 = builder.calleeMap(sourceDm)
       assert(res1.contains(4) && res1.contains(10))
       assert(res1(10).size == 2)
       assert(res1(10).exists(_.definingTypeName == "Calls"))
       assert(res1(10).exists(_.definingTypeName == "CallTargetImpl"))
 
-      val recurseSuper = builder.calleesOf.keys.find(dm => dm.methodName == "recurse" && dm.definingTypeName == "Calls").get
-      assert(builder.calleesOf.contains(recurseSuper))
-      val res2 = builder.calleesOf(recurseSuper)
+      val recurseSuper = builder.calleeMap.keys.find(dm => dm.methodName == "recurse" && dm.definingTypeName == "Calls").get
+      assert(builder.calleeMap.contains(recurseSuper))
+      val res2 = builder.calleeMap(recurseSuper)
       assert(res2.size == 3)
       assert(res2.contains(1) && res2.contains(8) && res2.contains(13))
       assert(res2(1).size == 2)
@@ -208,22 +208,22 @@ class NaiveRTACallGraphBuilderTest extends AnyFunSpec with CallGraphTestSupport 
 
       val sourceDm = builder.asDefinedMethod(input.allMethods.find(_.name == "doVirtualCalls").get)
 
-      val result = builder.buildNaiveFrom(sourceDm)
+      val result = builder.buildFrom(sourceDm)
       assert(result.isSuccess)
 
       // There should now be a resolution for Object.toString at PC 15
-      assert(builder.calleesOf.contains(sourceDm) && builder.calleesOf(sourceDm).size == 8)
-      assert(builder.calleesOf(sourceDm).contains(15))
-      val toStringTargets = builder.calleesOf(sourceDm)(15)
+      assert(builder.calleeMap.contains(sourceDm) && builder.calleeMap(sourceDm).size == 8)
+      assert(builder.calleeMap(sourceDm).contains(15))
+      val toStringTargets = builder.calleeMap(sourceDm)(15)
 
       assert(toStringTargets.nonEmpty)
       val allInstantiatedTypes = JreModelLoader.getDefaultJre.get.allTypesInstantiated ++ input.allClasses.flatMap(c => c.getMethods.flatMap(m => m.newStatements.map(_.instantiatedTypeName)))
       assert(toStringTargets.size <= allInstantiatedTypes.size)
 
-      val allCallSitesCount = builder.calleesOf.values.map(callSites => callSites.size).sum
-      val allTargetsCount = builder.calleesOf.values.map(callSites => callSites.values.map(_.size).sum).sum
+      val allCallSitesCount = builder.calleeMap.values.map(callSites => callSites.size).sum
+      val allTargetsCount = builder.calleeMap.values.map(callSites => callSites.values.map(_.size).sum).sum
 
-      println(s"Found ${builder.reachableMethods().size} reachable methods.")
+      println(s"Found ${result.get.reachableMethods().size} reachable methods.")
       println(s"Resolved $allCallSitesCount callsites to $allTargetsCount methods")
     }
 

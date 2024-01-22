@@ -12,7 +12,7 @@ class NaiveRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: Opt
     .flatMap(_.newStatements)
     .map(_.instantiatedTypeName) ++ jreOpt.map(_.allTypesInstantiated).getOrElse(Set.empty[String])
 
-  def buildNaive(): Try[Unit] = Try {
+  def buildNaive(): Try[CallGraphView] = Try {
 
     // Create a sequence in which first all program classes will be resolved, then all JRE classes
     val toResolve = programs.flatMap(_.allClasses).toSeq ++ jreOpt.map(_.types.map(_.asModel).toSeq).getOrElse(Seq.empty)
@@ -29,11 +29,13 @@ class NaiveRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: Opt
           }
         }
       }
+
+    getGraph
   }
 
   private[cg] val methodsAnalyzed = mutable.HashSet[Int]()
 
-  def buildNaiveFrom(dm: DefinedMethod): Try[Unit] = Try {
+  override def buildFrom(dm: DefinedMethod): Try[CallGraphView] = Try {
     val workList = mutable.Queue[DefinedMethod](dm)
 
     while(workList.nonEmpty){
@@ -58,6 +60,8 @@ class NaiveRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: Opt
         methodsAnalyzed.add(currentMethod.hashCode())
       }
     }
+
+    getGraph
   }
 
 }

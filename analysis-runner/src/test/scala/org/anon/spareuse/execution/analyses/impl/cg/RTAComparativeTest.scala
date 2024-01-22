@@ -1,12 +1,10 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.execution.analyses.getCallGraphProjectWithJre
-import org.opalj.br.DeclaredMethod
 import org.opalj.tac.cg.RTACallGraphKey
 import org.scalatest.funspec.AnyFunSpec
 
-import scala.collection.mutable
-import scala.util.Failure
+import scala.util.{Failure, Success}
 
 class RTAComparativeTest extends AnyFunSpec with CallGraphTestSupport {
 
@@ -20,12 +18,12 @@ class RTAComparativeTest extends AnyFunSpec with CallGraphTestSupport {
       val sourceDm = builder.asDefinedMethod(input.allMethods.find(dm => dm.name == "main" && dm.enclosingClass.get.thisType == "BranchingTaint").get)
 
       val start = System.currentTimeMillis()
-      builder.buildNaiveFrom(sourceDm) match {
+      builder.buildFrom(sourceDm) match {
         case Failure(ex) => fail(ex)
-        case _ =>
+        case Success(cg) =>
           val time = (System.currentTimeMillis() - start) / 1000
 
-          println(s"Found ${builder.reachableMethods().size} reachable methods in $time seconds.")
+          println(s"Found ${cg.reachableMethods().size} reachable methods in $time seconds.")
       }
 
     }
@@ -43,12 +41,12 @@ class RTAComparativeTest extends AnyFunSpec with CallGraphTestSupport {
       val sourceDm = builder.asDefinedMethod(input.allMethods.find(dm => dm.name == "main" && dm.enclosingClass.get.thisType == "BranchingTaint").get)
 
       val start = System.currentTimeMillis()
-      builder.resolveFrom(sourceDm) match {
+      builder.buildFrom(sourceDm) match {
         case Failure(ex) => fail(ex)
-        case _ =>
+        case Success(cg) =>
           val time = (System.currentTimeMillis() - start) / 1000
 
-          println(s"Found ${builder.reachableMethods().size} reachable methods in $time seconds.")
+          println(s"Found ${cg.reachableMethods().size} reachable methods in $time seconds.")
       }
     }
 

@@ -7,6 +7,8 @@ import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import spray.json.{DeserializationException, JsArray, JsBoolean, JsNumber, JsObject, JsString, JsValue, JsonWriter, enrichAny}
 
+import scala.reflect.runtime.universe.runtimeMirror
+
 class CustomObjectWriter(format: AnyValueFormat) extends JsonWriter[Object] {
 
   override def write(obj: Object): JsValue = format match {
@@ -47,7 +49,7 @@ class CustomObjectWriter(format: AnyValueFormat) extends JsonWriter[Object] {
       JsObject(Map("nodes" -> nodesSerialized, "edges" -> edgesSerialized))
 
     case formats.ObjectResultFormat(props) =>
-      val objectFieldValues = getObjectFieldMap(obj).filter( t => props.exists( p => p.propertyName.equalsIgnoreCase(t._1)))
+      val objectFieldValues = getObjectFieldMap(obj, props.map(_.propertyName)).filter( t => props.exists( p => p.propertyName.equalsIgnoreCase(t._1)))
 
       JsObject(objectFieldValues.map { case (name, value) =>
         val customWriter = new CustomAnyWriter(props.find(p => p.propertyName.equalsIgnoreCase(name)).get.propertyFormat)
@@ -72,14 +74,20 @@ class CustomObjectWriter(format: AnyValueFormat) extends JsonWriter[Object] {
    * @param obj Object to extract fields from
    * @return Map of field names to values
    */
-  private def getObjectFieldMap(obj: Object) :Map[String, Any] = {
+  private def getObjectFieldMap(obj: Object, expectedFields: Set[String]) :Map[String, Any] = {
+
+    val typeMirror = runtimeMirror(obj.getClass.getClassLoader)
+    val typeInstanceMirror = typeMirror.reflect(obj)
+    val symbol = typeInstanceMirror.symbol
+    val isCaseClass = symbol.isCaseClass
+
     val rm = scala.reflect.runtime.currentMirror
 
     val cs = rm.classSymbol(obj.getClass)
     val tm = cs.toType.members
 
 
-    val accessors = tm.filter( s => s.isTerm && s.asTerm.isGetter).map(_.asTerm)
+    val accessors = tm.filter( s => expectedFields.contains(s.name.toString.trim) && s.isTerm  && (s.asTerm.isGetter || s.asTerm.isVal)).map(_.asTerm)
 
     val instanceMirror = rm.reflect(obj)
 

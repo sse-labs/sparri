@@ -35,7 +35,7 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
       assert(graphs.forall(g => g.statementNodes.nonEmpty))
 
       // Main method graph must be present
-      val mainMethodOpt = graphs.find(g => g.method.name == "main")
+      val mainMethodOpt = graphs.find(g => g.methodName == "main")
       assert(mainMethodOpt.isDefined)
 
       // Main method graph must have 7 statements
@@ -69,7 +69,7 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
       assert(concatCall.parameterVariables.size == 2)
 
       // The source method of this fixture must result in a graph
-      val sourceMethodOpt = graphs.find(g => g.method.name == "source")
+      val sourceMethodOpt = graphs.find(g => g.methodName == "source")
       assert(sourceMethodOpt.isDefined)
 
       // The source method has two statements, one is a assignment and one a value return
@@ -169,7 +169,7 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
 
       val graphs = allMethods.map(m => ifdsBuilder.analyzeMethod(m)(tacProvider))
 
-      val mainGraph = graphs.find(_.method.name == "main").get
+      val mainGraph = graphs.find(_.methodName == "main").get
       mainGraph.print()
 
       assert(mainGraph.allFacts.size == 8)
