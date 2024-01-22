@@ -30,7 +30,7 @@ class IFDSSuperGraphStitcher(dataAccessor: DataAccessor,
     log.info(s"Stitching IFDS graph for entrypoint: ${entryPoint.toString}")
 
     // Update the current CallGraphView with the latest entrypoint
-    timedOp(s"Update underlying callgraph for entrypoint ${entryPoint.toString}", () => cgBuilder.buildFrom(entryPoint) match {
+    timedOp(s"Update underlying callgraph for entrypoint ${entryPoint.toString}", () => cgBuilder.buildFrom(entryPoint)) match {
       case Success(callGraph) =>
         var currentMethod = cgBuilder.asDefinedMethod(entryPoint)
 
