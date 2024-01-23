@@ -43,19 +43,13 @@ class NaiveRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: Opt
 
       if(!methodsAnalyzed.contains(currentMethod.hashCode())){
 
-        currentMethod.javaMethodOpt match {
-          case Some(jm) =>
-            jm.invocationStatements.foreach{ jis =>
-              resolveInvocation(jis, allInstantiatedTypes, simpleCaching = true).foreach{ target =>
-                putCall(currentMethod, jis.instructionPc, target)
-                if(!methodsAnalyzed.contains(target.hashCode()))
-                  workList.enqueue(target)
-              }
-            }
-          case None =>
-            log.error(s"Failed to lookup actual definition site of defined method: ${currentMethod.definingTypeName}->${currentMethod.methodName}")
+        currentMethod.javaMethod.invocationStatements.foreach { jis =>
+          resolveInvocation(jis, allInstantiatedTypes, simpleCaching = true).foreach { target =>
+            putCall(currentMethod, jis.instructionPc, target)
+            if (!methodsAnalyzed.contains(target.hashCode()))
+              workList.enqueue(target)
+          }
         }
-
 
         methodsAnalyzed.add(currentMethod.hashCode())
       }

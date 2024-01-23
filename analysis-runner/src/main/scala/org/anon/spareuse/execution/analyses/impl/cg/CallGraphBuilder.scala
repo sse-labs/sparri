@@ -44,22 +44,20 @@ trait CallGraphBuilder {
 
   def asDefinedMethod(jm: JavaMethod): DefinedMethod = {
     if (!defMCache.contains(jm))
-      defMCache(jm) = new DefinedMethod(jm.enclosingClass.get.thisType, Some(jm), None)
+      defMCache(jm) = new DefinedMethod(jm.enclosingClass.get.thisType, jm)
 
     defMCache(jm)
   }
 
-  class DefinedMethod(declaringType: String, jmOpt: Option[JavaMethod], jreMethodOpt: Option[JreMethod]) {
+  class DefinedMethod(declaringType: String, jm: JavaMethod) {
 
     val definingTypeName: String = declaringType
-    val methodName: String = jmOpt.map(_.name).getOrElse(jreMethodOpt.get.n)
-    val descriptor: String = jmOpt.map(_.descriptor).getOrElse(jreMethodOpt.get.d)
+    val methodName: String = jm.name
+    val descriptor: String = jm.descriptor
 
-    lazy val javaMethodOpt: Option[JavaMethod] =
-      classLookup.get(definingTypeName).flatMap(_.lookupMethod(methodName, descriptor))
+    lazy val javaMethod: JavaMethod = jm
 
-    lazy val newTypesInstantiated: Set[String] =
-      javaMethodOpt.map(_.newStatements.map(_.instantiatedTypeName).toSet).getOrElse(Set.empty[String])
+    lazy val newTypesInstantiated: Set[String] = jm.newStatements.map(_.instantiatedTypeName).toSet
 
     override def equals(obj: Any): Boolean = obj match {
       case other: DefinedMethod =>
@@ -68,6 +66,8 @@ trait CallGraphBuilder {
     }
 
     override def hashCode(): Int = 31 * definingTypeName.hashCode + 11 * methodName.hashCode + 5 * descriptor.hashCode
+
+    override def toString: String = definingTypeName + "->" + methodName + descriptor
 
   }
 

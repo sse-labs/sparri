@@ -1,6 +1,6 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaInvokeStatement, JavaMethod, JavaNewInstanceStatement, JavaProgram}
+import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
 
 import scala.collection.mutable
 import scala.util.Try
@@ -38,12 +38,10 @@ class DefaultRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: O
           // What types do we have to look at?
           val effectiveTypesToResolve = currTask.method.newTypesInstantiated ++ newExternalTypes
 
-          currTask.method.javaMethodOpt.foreach { jm =>
-            jm.invocationStatements.foreach { jis =>
-              resolveInvocation(jis, effectiveTypesToResolve).foreach { target =>
-                putCall(currTask.method, jis.instructionPc, target)
-                workStack.push(ResolverTask(target, effectiveTypesToResolve, rootSet))
-              }
+          currTask.method.javaMethod.invocationStatements.foreach { jis =>
+            resolveInvocation(jis, effectiveTypesToResolve).foreach { target =>
+              putCall(currTask.method, jis.instructionPc, target)
+              workStack.push(ResolverTask(target, effectiveTypesToResolve, rootSet))
             }
           }
 
