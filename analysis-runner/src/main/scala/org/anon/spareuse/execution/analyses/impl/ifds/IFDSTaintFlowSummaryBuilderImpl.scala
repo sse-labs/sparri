@@ -3,7 +3,6 @@ package org.anon.spareuse.execution.analyses.impl.ifds
 import org.anon.spareuse.core.model.AnalysisRunData
 import org.opalj.br.{Method, ObjectType}
 import org.opalj.tac.{Assignment, BinaryExpr, Const, Expr, FunctionCall, GetField, GetStatic, InstanceFunctionCall, PutField, PutStatic}
-import org.opalj.value.IsStringValue
 
 class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) extends DefaultIFDSSummaryBuilder(baselineRunOpt) {
   override protected val analysisName: String = "TaintFlowSummaryBuilder"
@@ -18,7 +17,7 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
     result
   }
 
-  override protected[ifds] def analyzeStatement(currentNode: StatementNode, currentMethod: Method, graph: IFDSMethodGraph): Unit = currentNode.stmt match {
+  override protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStatement: TACStmt, currentMethod: Method, graph: IFDSMethodGraph): Unit = currentStatement match {
     case Assignment(_, targetVar: TACDVar, assignedExpr) =>
       val targetFact = TaintVariableFacts.buildFact(targetVar)
       analyzeExpression(currentNode, targetFact, assignedExpr, currentMethod)
@@ -50,6 +49,13 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
       currentNode.setGeneratesOn(targetFact, Set(enablingFact))
     case local: TACVar =>
       // If another local variable is assigned, our current variable's taint is equal to the other variable's taint
+      val definingParameterIdx = local.definedBy.filter( _ < -1).toList.map( defIdx => -1 * defIdx - 2)
+
+      if(definingParameterIdx.nonEmpty){
+        log.info(s"Variable ${local.name} is defined by parameter with index: ${definingParameterIdx.mkString(",")}")
+        //TODO: Mark variables that originate from parameters here and in function calls!
+      }
+
       val enablingFact = TaintVariableFacts.buildFact(local)
       currentNode.setGeneratesOn(targetFact, Set(enablingFact))
     case BinaryExpr(_, _, _, left, right) =>
@@ -75,7 +81,7 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
     case fc: FunctionCall[TACVar] =>
       // For the general function call: Create artificial return node to represent taint of the target variable
       // TODO: Special calls to sanatizers should be handled differently
-      val sourceFact = TaintVariableFacts.buildFact(currentMethod, currentNode.asCallNode)
+      val sourceFact = TaintVariableFacts.buildFact(currentNode.asCallNode)
       currentNode.setGeneratesOn(targetFact, Set(sourceFact))
 
 

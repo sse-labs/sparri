@@ -19,7 +19,7 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
       var stmtCnt = 0
 
       val ifdsBuilder = createDummyBuilder(None){ (node, _, _) =>
-        println(node.stmt.toString)
+        println(node.stmtRep)
         stmtCnt += 1
       }
 
@@ -45,11 +45,11 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
 
       // First statement of this fixture's main method is a assignment
       val firstStmt = mainGraph.getStatement(0).get
-      assert(firstStmt.stmt.isAssignment)
+      assert(firstStmt.stmtRep.startsWith("Assignment("))
 
       // The main method has no branches at all, so all statements have exactly one successor and one / zero predecessors
       var currNode = firstStmt
-      while(!currNode.stmt.isInstanceOf[Return]){
+      while(!currNode.stmtRep.startsWith("Return(")){
         assert(currNode.getSuccessors.size == 1)
         assert(currNode.getPredecessors.size <= 1)
         currNode = currNode.getSuccessors.head
@@ -76,11 +76,12 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
       val sourceGraph = sourceMethodOpt.get
       assert(sourceGraph.statementNodes.size == 2)
       assert(sourceGraph.hasStatement(0))
-      assert(sourceGraph.getStatement(0).get.getPredecessors.isEmpty && sourceGraph.getStatement(0).get.getSuccessors.size == 1 && sourceGraph.getStatement(0).get.stmt.isAssignment)
+      assert(sourceGraph.getStatement(0).get.getPredecessors.isEmpty && sourceGraph.getStatement(0).get.getSuccessors.size == 1 )//&& sourceGraph.getStatement(0).get.stmt.isAssignment)
       val secondStmt = sourceGraph.getStatement(0).get.getSuccessors.head
-      assert(secondStmt.getPredecessors.size == 1 && secondStmt.getSuccessors.isEmpty && secondStmt.stmt.isReturnValue)
+      assert(secondStmt.getPredecessors.size == 1 && secondStmt.getSuccessors.isEmpty && secondStmt.isReturnValue)
+      assert(secondStmt.asInstanceOf[ReturnValueStatementNode].variableReturned.isDefined)
       // Graphs must correctly keep track of value returns
-      assert(sourceGraph.isReturnNode(secondStmt.stmt.pc))
+      assert(sourceGraph.isReturnNode(secondStmt.stmtPc))
     }
 
     it("should build valid cfgs for code containing branches and loops"){
@@ -91,27 +92,27 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
       assert(allMethods.size == 3)
 
       val ifdsBuilder = createDummyBuilder(None) { (node, _, _) =>
-        println(node.stmt.toString)
+        println(node.stmtRep)
       }
 
       val mainGraph = ifdsBuilder.analyzeMethod(allMethods.find(_.name == "main").get)(tacProvider)
       assert(mainGraph.hasStatement(0))
       val firstStmt = mainGraph.getStatement(0).get
-      assert(firstStmt.stmt.isAssignment)
+      assert(firstStmt.stmtRep.startsWith("Assignment("))
 
       var currNode = firstStmt
-      while(currNode.stmt.pc != 14){
+      while(currNode.stmtPc != 14){
         assert(currNode.getPredecessors.size <= 1)
         assert(currNode.getSuccessors.size == 1)
         currNode = currNode.getSuccessors.head
       }
 
       // Make sure there is an if statement at PC 14
-      assert(currNode.stmt.isInstanceOf[If[TACVar]])
+      assert(currNode.stmtRep.startsWith("If("))
       // An IF must have two successors
       assert(currNode.getSuccessors.size == 2)
-      assert(currNode.getSuccessors.exists(_.stmt.pc == 17))
-      assert(currNode.getSuccessors.exists(_.stmt.pc == 23))
+      assert(currNode.getSuccessors.exists(_.stmtPc == 17))
+      assert(currNode.getSuccessors.exists(_.stmtPc == 23))
 
       // Make sure that both branches have two statements each, and then merge back into the same statement
       val b1 = mainGraph.getStatement(17).get
@@ -125,19 +126,19 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
 
       // Move to start of loop
       currNode = s1.getSuccessors.head
-      while(currNode.stmt.pc != 31){
+      while(currNode.stmtPc != 31){
         assert(currNode.getPredecessors.nonEmpty)
         assert(currNode.getSuccessors.size == 1)
         currNode = currNode.getSuccessors.head
       }
 
       // Make sure there is an if statement at PC 31, ie start of the loop
-      assert(currNode.stmt.isInstanceOf[If[TACVar]])
+      assert(currNode.stmtRep.startsWith("If("))
       // An IF must have two successors
       assert(currNode.getSuccessors.size == 2)
       assert(currNode.getPredecessors.head.getPredecessors.size == 2) // Two statements lead to the loop head
-      assert(currNode.getSuccessors.exists(_.stmt.pc == 37))
-      assert(currNode.getSuccessors.exists(_.stmt.pc == 44))
+      assert(currNode.getSuccessors.exists(_.stmtPc == 37))
+      assert(currNode.getSuccessors.exists(_.stmtPc == 44))
     }
 
     it("should keep track of facts and their activations"){
@@ -156,14 +157,14 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
 
       // Nonsensical way to create some dummy facts
       val ifdsBuilder = createDummyBuilder(None) { (node, _, graph) =>
-        if(node.stmt.pc % 2 == 0){
-          node.setGeneratesFact(new PcFact(node.stmt.pc))
+        if(node.stmtPc % 2 == 0){
+          node.setGeneratesFact(new PcFact(node.stmtPc))
         }
 
         val allFacts = graph.allFacts
 
         if (allFacts.nonEmpty) {
-          node.setGeneratesOn(new PcFact(node.stmt.pc), Set(allFacts.head))
+          node.setGeneratesOn(new PcFact(node.stmtPc), Set(allFacts.head))
         }
       }
 
@@ -175,13 +176,13 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
       assert(mainGraph.allFacts.size == 8)
       mainGraph
         .statementNodes
-        .filter(_.stmt.pc % 2 == 0)
+        .filter(_.stmtPc % 2 == 0)
         .foreach{ sn =>
-          val key = new PcFact(sn.stmt.pc)
+          val key = new PcFact(sn.stmtPc)
           val activatesOn = sn.activatesOn(key)
           assert(activatesOn.nonEmpty && activatesOn.contains(IFDSZeroFact))
 
-          if(activatesOn.size == 2 || sn.stmt.pc % 2 == 1) assert(activatesOn.contains(new PcFact(0)))
+          if(activatesOn.size == 2 || sn.stmtPc % 2 == 1) assert(activatesOn.contains(new PcFact(0)))
         }
     }
 
@@ -201,7 +202,7 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
     override protected val analysisVersion: String = aVersion
     override protected val analysisDescription: String = "Demo builder for test purposes"
 
-    override protected[ifds] def analyzeStatement(currentNode: StatementNode, currentMethod: Method, graph: IFDSMethodGraph): Unit = impl(currentNode, currentMethod, graph)
+    override protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStmt: TACStmt, currentMethod: Method, graph: IFDSMethodGraph): Unit = impl(currentNode, currentMethod, graph)
   }
 
 }

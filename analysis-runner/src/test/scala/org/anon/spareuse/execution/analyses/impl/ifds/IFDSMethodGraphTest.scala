@@ -28,7 +28,7 @@ class IFDSMethodGraphTest extends AnyFunSpec with DefaultIFDSMethodRepJsonFormat
 
           // Check that all real statements are contained in the result representation, and are linked to the correct predecessors
           graph.statementNodes.foreach { stmtNode =>
-            assert(graphResult.statements.exists(stmtRep => stmtRep.pc == stmtNode.stmt.pc && stmtRep.predecessors.equals(stmtNode.getPredecessors.map(_.stmt.pc).toSeq)))
+            assert(graphResult.statements.exists(stmtRep => stmtRep.pc == stmtNode.stmtPc && stmtRep.predecessors.equals(stmtNode.getPredecessors.map(_.stmtPc).toSeq)))
           }
 
           // Assert that the actual graph and the result have the same number of statements
@@ -49,7 +49,7 @@ class IFDSMethodGraphTest extends AnyFunSpec with DefaultIFDSMethodRepJsonFormat
 
           graph.statementNodes.foreach{ stmtNode =>
             val activations = stmtNode.allActivations
-            val resultActivations = graphResult.statements.find(stmtRep => stmtRep.pc == stmtNode.stmt.pc).get.activations
+            val resultActivations = graphResult.statements.find(stmtRep => stmtRep.pc == stmtNode.stmtPc).get.activations
 
             activations.foreach { a =>
               val realTargetId = factIdMap(a._1.uniqueIdent)

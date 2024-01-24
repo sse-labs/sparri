@@ -27,24 +27,26 @@ class IFDSTaintFlowSummaryBuilderImplTest extends AnyFunSpec {
             assert(csn.parameterVariables.size == 1)
             val theParam = csn.parameterVariables.head
             val paramFact = TaintVariableFacts.buildFact(theParam)
-            assert(!currentFacts.contains(paramFact)) // Param cannot be tainted here, as it is dependent on an (unknown) function return
+            assert(!currentFacts.exists(f => f.uniqueIdent == paramFact.uniqueIdent)) // Param cannot be tainted here, as it is dependent on an (unknown) function return
           case _ =>
         }
 
         val newFacts = sn.getFactsAfter(currentFacts)
 
-        sn.stmt.pc match {
+        sn.stmtPc match {
           case 0 =>
-            val targetFact = TaintVariableFacts.buildFact(sn.stmt.asAssignment.targetVar)
-            assert(newFacts.contains(targetFact)) //PC=0 taints the first local variable, as it assigns "source" to it
             assert(newFacts.size == 2)
+            val newFact = newFacts.diff(currentFacts).head
+            assert(newFact.displayName == "lv0")
           case 4 =>
             assert(newFacts.size == 2)
           case 9 =>
-            val targetFact = TaintVariableFacts.buildFact(sn.stmt.asAssignment.targetVar)
-            assert(sn.hasActivation(targetFact))
-            val a = sn.activatesOn(targetFact)
-            assert(a.size == 1 && a.head.isInstanceOf[TaintFunctionReturn]) // Assert that the graph holds an artificial method return fact
+            assert(sn.allActivations.size == 1)
+            val activation = sn.allActivations.head
+            assert(activation._1.displayName == "lv2")
+            assert(activation._2.size == 1)
+            val activatesOn = activation._2.head
+            assert(activatesOn.isInstanceOf[TaintFunctionReturn]) // Assert that the graph holds an artificial method return fact
           case _ =>
         }
 

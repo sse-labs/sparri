@@ -166,9 +166,10 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
     while (workList.nonEmpty) {
 
       val currentNode = workList.remove(0)
-      val stmtIdx = theTAC.pcToIndex(currentNode.stmt.pc)
+      val stmtIdx = theTAC.pcToIndex(currentNode.stmtPc)
+      val stmt = cfg.code.instructions(stmtIdx)
 
-      analyzeStatement(currentNode, method, graph)
+      analyzeStatement(currentNode, stmt, method, graph)
 
       cfg
         .foreachSuccessor(stmtIdx) { successorIdx =>
@@ -191,7 +192,7 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
     graph
   }
 
-  protected[ifds] def analyzeStatement(currentNode: StatementNode, currentMethod: Method, graph: IFDSMethodGraph): Unit
+  protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStatement: TACStmt, currentMethod: Method, graph: IFDSMethodGraph): Unit
 
 }
 
@@ -221,6 +222,7 @@ object DefaultIFDSSummaryBuilder {
     NamedPropertyFormat("calleeClassName", formats.StringFormat, "FQN of the declaring class of the method that is called by this statement"),
     NamedPropertyFormat("calleeParameterVariables", ListResultFormat(variableFormat), "The actual variables passed to the method that is called by this statement"),
     NamedPropertyFormat("callReceiverVar", variableFormat, "The variable representing the receiver of the method that is called by this statement"),
+    NamedPropertyFormat("returnVariable", variableFormat, "The variable representing the value that is being returned if this statement is a return statement"),
     NamedPropertyFormat("activations", ListResultFormat(activationFormat, "Individual activation for this statement"))
   ))
 
@@ -233,6 +235,7 @@ object DefaultIFDSSummaryBuilder {
                           calleeClassName: String,
                           calleeParameterVariables: List[InternalVariableRep],
                           callReceiverVar: InternalVariableRep,
+                          returnVariable: InternalVariableRep,
                           activations: List[InternalActivationRep])
 
   private val factFormat = new ObjectResultFormat(Set(
@@ -275,7 +278,7 @@ trait DefaultIFDSMethodRepJsonFormat extends DefaultJsonProtocol {
 
   implicit val internalVariableRepFormat: JsonFormat[InternalVariableRep] = jsonFormat2(InternalVariableRep)
   implicit val internalActivationRepFormat: JsonFormat[InternalActivationRep] = jsonFormat2(InternalActivationRep)
-  implicit val statementRepFormat: JsonFormat[StatementRep] = jsonFormat10(StatementRep)
+  implicit val statementRepFormat: JsonFormat[StatementRep] = jsonFormat11(StatementRep)
   implicit val factRepFormat: JsonFormat[FactRep] = jsonFormat3(FactRep)
   implicit val methodIFDSRep: JsonFormat[MethodIFDSRep] = jsonFormat5(MethodIFDSRep)
 
