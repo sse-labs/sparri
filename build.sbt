@@ -79,7 +79,21 @@ lazy val `analysis-runner` = (project in file("analysis-runner"))
 		assembly / assemblyJarName := "analysis-runner.jar",
 
 		mergeStrategySettings,
-		dockerSettings,
+		docker / dockerfile := {
+
+			val artifact: File = assembly.value
+			val jreData: File = baseDirectory.value / ".." / "jre-data"
+			println(artifact)
+			println(jreData)
+			val artifactTargetPath = s"/app/${artifact.name}"
+
+			new Dockerfile {
+				from("openjdk:16-jdk")
+				add(artifact, artifactTargetPath)
+				add(jreData, "/jre-data/")
+				entryPoint("java", "-jar", "-Xmx8G", "-Xss128m", artifactTargetPath)
+			}
+		},
 
 		docker / imageNames := Seq(ImageName(s"spar-analysis-runner:latest"))
 	)
