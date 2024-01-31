@@ -12,6 +12,8 @@ trait EntityMinerStorageAdapter {
 
   def storeJavaProgram(data: JavaProgram): Try[Unit]
 
+  def ensureNotPresent(programUid: String): Unit
+
   def hasEntityQualifier(fq: String): Boolean
 
   def hasProgram(gav: String): Boolean = {

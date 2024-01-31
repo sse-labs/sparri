@@ -30,6 +30,33 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   private implicit def toHexOpt(byteOpt: Option[Array[Byte]]): Option[String] = byteOpt.map(toHex)
 
 
+  override def ensureNotPresent(programUid: String): Unit = {
+    if(hasEntityQualifier(programUid)){
+
+      Try{
+        val programId = getIdForQualifier(programUid)
+        val packageIds = Await.result(db.run(entitiesTable.filter(e => e.parentID === programId).map(_.id).result), 30.seconds).toSet
+        val classIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet packageIds).map(_.id).result), 60.seconds).toSet
+        val methodIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet classIds).map(_.id).result), 80.seconds).toSet
+        val statementIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet methodIds).map(_.id).result), 120.seconds).toSet
+
+        val deleteActions = DBIO.sequence(Seq(
+          javaInvocationsTable.filter(i => i.id inSet statementIds).delete,
+          javaFieldAccessesTable.filter(f => f.id inSet statementIds).delete,
+          javaMethodsTable.filter(m => m.id inSet methodIds).delete,
+          javaClassesTable.filter(c => c.id inSet classIds).delete,
+          entitiesTable.filter(e => e.id inSet statementIds).delete,
+          entitiesTable.filter(e => e.id inSet methodIds).delete,
+          entitiesTable.filter(e => e.id inSet classIds).delete,
+          entitiesTable.filter(e => e.id inSet packageIds).delete,
+          entitiesTable.filter(e => e.id === programId).delete)
+        )
+
+        Await.ready(db.run(deleteActions), 300.seconds)
+      }
+    }
+  }
+
   override def storeJavaProgram(jp: JavaProgram): Try[Unit] = Try {
 
     // Create parent if it does not already exist, get uid of parent entity
@@ -88,7 +115,6 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   private def storeDataAndGetId(data: SoftwareEntityData, parentIdOpt: Option[Long]): Long = {
     val res = idReturningEntitiesTable +=
       SoftwareEntityRepr(0, data.name, data.uid, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash)
-
     Await.result(db.run(res), 10.seconds)
   }
 

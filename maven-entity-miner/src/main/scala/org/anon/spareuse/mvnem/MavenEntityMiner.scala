@@ -77,20 +77,6 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
       log.info(s"All programs already indexed for message $message")
 
     allNewIdentifiers
-
-    /*val allJars = allNewIdentifiers.flatMap { ident =>
-      downloader.downloadJar(ident) match {
-        case Success(jarFile) => Some(jarFile)
-        case Failure(HttpDownloadException(404, _, _)) =>
-          // Do nothing when JAR does not exist
-          None
-        case Failure(ex) =>
-          log.error(s"Failed to download JAR file for ${ident.toUniqueString}", ex)
-          None
-      }
-    }
-
-    ResolvedMinerCommand(command, allJars)*/
   }
 
   def downloadJar(identifier: MavenIdentifier): Option[MavenOnlineJar] = {
@@ -129,6 +115,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
             cnt += 1
           case Failure(ex) =>
             log.error(s"[$cnt/${identifiers.size}] Failed to handle identifier ${identifier.toString}", ex)
+            storageAdapter.ensureNotPresent(s"${identifier.toGA}!${identifier.toString}")
             cnt += 1
             err += 1
         }
