@@ -1,7 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.core.model.AnalysisRunData
-import org.anon.spareuse.execution.analyses.{buildProject, getTACProvider, loadFixture}
+import org.anon.spareuse.execution.analyses.{AnalysisImplementationDescriptor, buildProject, getTACProvider, loadFixture}
 import org.opalj.br.Method
 import org.opalj.tac.{If, Return}
 import org.scalatest.funspec.AnyFunSpec
@@ -198,9 +198,11 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
                                  aVersion: String = "1.0.0")(impl: (StatementNode, Method, IFDSMethodGraph) => Unit): DefaultIFDSSummaryBuilder =
 
   new DefaultIFDSSummaryBuilder(brOpt) {
-    override protected val analysisName: String = aName
-    override protected val analysisVersion: String = aVersion
-    override protected val analysisDescription: String = "Demo builder for test purposes"
+    protected val analysisName: String = aName
+    protected val analysisVersion: String = aVersion
+    protected val analysisDescription: String = "Demo builder for test purposes"
+
+    override val descriptor: AnalysisImplementationDescriptor = DefaultIFDSSummaryBuilder.buildDescriptor(analysisName, analysisVersion, analysisDescription)
 
     override protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStmt: TACStmt, currentMethod: Method, graph: IFDSMethodGraph): Unit = impl(currentNode, currentMethod, graph)
   }

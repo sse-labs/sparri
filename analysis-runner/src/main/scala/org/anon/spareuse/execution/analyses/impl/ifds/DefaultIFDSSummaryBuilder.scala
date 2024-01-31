@@ -22,17 +22,9 @@ import scala.util.{Failure, Success, Try}
 
 abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]) extends IncrementalAnalysisImplementation(baselineRunOpt) {
 
-  // Information to customize analysis descriptor for concrete IFDS Summary Builders
-  protected val analysisName: String
-  protected val analysisVersion: String
-  protected val analysisDescription: String
-
   protected val opalHelper = new OPALProjectHelper(loadJreClassImplementation = false)
 
   private var squashStatements = true
-
-
-  override val descriptor: AnalysisImplementationDescriptor = DefaultIFDSSummaryBuilder.buildDescriptor(analysisName, analysisVersion, analysisDescription)
 
   override def executionPossible(inputs: Seq[SoftwareEntityData], rawConfig: String): Boolean = {
     if (inputs.exists(e => !e.isInstanceOf[JavaProgram])) {
@@ -120,7 +112,8 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
 
               val correspondingEntity = inputMethodMap.get(buildMethodIdent(m.name, m.descriptor.toJVMDescriptor))
 
-              if(correspondingEntity.isEmpty) throw new IllegalStateException(s"Could not find defined method in input entities: ${m.toJava}")
+              if(correspondingEntity.isEmpty)
+                throw new IllegalStateException(s"Could not find defined method in input entities: ${m.toJava}")
 
               FreshResult(resultData, Set(correspondingEntity.get))
             }
@@ -264,7 +257,7 @@ object DefaultIFDSSummaryBuilder {
       aName,
       aVersion,
       aDescription,
-      "OPAL 4.0.0",
+      "OPAL 5.0.0",
       Set("java", "scala"),
       methodFormat,
       SoftwareEntityKind.Program,

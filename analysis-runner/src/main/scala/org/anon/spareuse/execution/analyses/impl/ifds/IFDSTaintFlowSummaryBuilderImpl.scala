@@ -1,15 +1,13 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.core.model.AnalysisRunData
+import org.anon.spareuse.execution.analyses.AnalysisImplementationDescriptor
 import org.opalj.br.{Method, ObjectType}
 import org.opalj.tac.{Assignment, BinaryExpr, Const, Expr, FunctionCall, GetField, GetStatic, InstanceFunctionCall, PutField, PutStatic}
 
 class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) extends DefaultIFDSSummaryBuilder(baselineRunOpt) {
-  override protected val analysisName: String = "TaintFlowSummaryBuilder"
-  override protected val analysisVersion: String = "0.0.1"
-  override protected val analysisDescription: String = "This analysis builds IFDS taint flow summaries for hardcoded sources and sinks tracking only strings"
 
-
+  override val descriptor: AnalysisImplementationDescriptor =  IFDSTaintFlowSummaryBuilderImpl.descriptor
   override protected[ifds] def analyzeMethod(method: Method)(implicit TACAIProvider: MethodTACProvider): IFDSMethodGraph = {
     // Make sure local variable fact cache is cleared after method has been processed
     val result = super.analyzeMethod(method)
@@ -90,4 +88,14 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
 
 
   }
+}
+
+object IFDSTaintFlowSummaryBuilderImpl {
+
+  val analysisName: String = "TaintFlowSummaryBuilder"
+  val analysisVersion: String = "0.0.1"
+  val analysisDescription: String = "This analysis builds IFDS taint flow summaries for hardcoded sources and sinks tracking only strings"
+
+  val descriptor: AnalysisImplementationDescriptor = DefaultIFDSSummaryBuilder.buildDescriptor(analysisName, analysisVersion, analysisDescription)
+
 }

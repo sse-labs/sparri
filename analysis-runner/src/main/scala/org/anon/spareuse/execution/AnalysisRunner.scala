@@ -15,6 +15,7 @@ import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
 import org.anon.spareuse.core.utils.http
 import org.anon.spareuse.core.utils.streaming.AsyncStreamWorker
 import org.anon.spareuse.execution.analyses.impl.cg.JreModelLoader
+import org.anon.spareuse.execution.analyses.impl.ifds.{DefaultIFDSSummaryBuilder, IFDSTaintFlowSummaryBuilderImpl}
 import org.anon.spareuse.execution.analyses.impl.{MvnConstantClassAnalysisImpl, MvnDependencyAnalysisImpl, MvnPartialCallgraphAnalysisImpl}
 import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisRegistry, ExistingResult, FreshResult}
 import spray.json.{enrichAny, enrichString}
@@ -42,6 +43,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
     AnalysisRegistry.registerRegularAnalysis(MvnConstantClassAnalysisImpl, () => new MvnConstantClassAnalysisImpl)
     AnalysisRegistry.registerRegularAnalysis(MvnDependencyAnalysisImpl, () => new MvnDependencyAnalysisImpl)
     AnalysisRegistry.registerRegularAnalysis(MvnPartialCallgraphAnalysisImpl, () => new MvnPartialCallgraphAnalysisImpl)
+    AnalysisRegistry.registerIncrementalAnalysis(IFDSTaintFlowSummaryBuilderImpl.descriptor, opt => new IFDSTaintFlowSummaryBuilderImpl(opt))
 
     entityQueueWriter.initialize()
 
