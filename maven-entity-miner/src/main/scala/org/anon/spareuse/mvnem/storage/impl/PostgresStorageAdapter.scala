@@ -91,7 +91,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   }
 
   private[storage] def insertEntitiesBatchedWithMapReturn(entities: Set[SoftwareEntityData], parentIdLookup: Map[String, Long], batchSize: Int): Future[Map[String, Long]] = {
-    val entityReprs = entities.map(e => toEntityRepr(e, parentIdLookup.get(e.uid)))
+    val entityReprs = entities.map(e => toEntityRepr(e, e.getParent.flatMap(eP => parentIdLookup.get(eP.uid))))
 
     batchedEntityInsertWithMapReturn(entityReprs, batchSize).flatMap { theMap =>
       entities.headOption match {
@@ -107,7 +107,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
           batchedInvocationInsert(allInvocations, batchSize).andThen(_ => batchedFieldAccessInsert(allFieldAccesses, batchSize)).map(_ => theMap)
         case _ =>
           // Do nothing if there are no entities to insert or the entity kind does not need an extra table insert
-          Future.successful(Map.empty[String, Long])
+          Future.successful(theMap)
       }
     }
   }
