@@ -4,12 +4,13 @@ import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.concurrent.Future
+import scala.util.Try
 
 trait EntityMinerStorageAdapter {
 
   protected val log: Logger = LoggerFactory.getLogger(getClass)
 
-  def storeJavaProgram(data: JavaProgram): Future[_]
+  def storeJavaProgram(data: JavaProgram): Try[Unit]
 
   def hasEntityQualifier(fq: String): Boolean
 
