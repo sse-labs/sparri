@@ -15,7 +15,8 @@ import org.anon.spareuse.mvnem.storage.EntityMinerStorageAdapter
 import org.anon.spareuse.mvnem.storage.impl.PostgresStorageAdapter
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 import scala.language.implicitConversions
 import scala.util.{Failure, Success, Try}
 
@@ -50,12 +51,11 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
   override protected def buildStreamPipeline(source: Source[String, NotUsed]): Future[Done] = {
     source
-      .map(getJarsForMessage)
-      .map(extractEntities)
-      .runWith(buildStorageSink())(streamMaterializer)
+      .map(getIdentifiersForMessage)
+      .runWith(storeAllEntitiesSink)(streamMaterializer)
   }
 
-  private def getJarsForMessage(message: String): ResolvedMinerCommand = {
+  private def getIdentifiersForMessage(message: String): Set[MavenIdentifier] = {
 
     val command = Try(message.parseJson.convertTo[MinerCommand]) match {
       case Success(mc) => mc
@@ -76,41 +76,54 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     if(allIdentifiers.nonEmpty && allNewIdentifiers.isEmpty)
       log.info(s"All programs already indexed for message $message")
 
-    val allJars = allNewIdentifiers.flatMap { ident =>
-      downloader.downloadJar(ident) match {
-        case Success(jarFile) => Some(jarFile)
-        case Failure(HttpDownloadException(404, _, _)) =>
-          // Do nothing when JAR does not exist
-          None
-        case Failure(ex) =>
-          log.error(s"Failed to download JAR file for ${ident.toUniqueString}", ex)
-          None
-      }
+    allNewIdentifiers
+  }
+
+  def downloadJar(identifier: MavenIdentifier): Option[MavenOnlineJar] = {
+    downloader.downloadJar(identifier) match {
+      case Success(jarFile) => Some(jarFile)
+      case Failure(HttpDownloadException(404, _, _)) =>
+        // Do nothing when JAR does not exist
+        None
+      case Failure(ex) =>
+        throw ex
     }
-
-    ResolvedMinerCommand(command, allJars)
   }
 
-  def extractEntities(command: ResolvedMinerCommand): TransformedMinerCommand = {
-    val entities = command.jars.flatMap(transform)
+  def storeAllEntitiesSink: Sink[Set[MavenIdentifier], Future[Done]] = {
+    Sink.foreach { identifiers =>
 
-    TransformedMinerCommand(command.cmd, entities)
-  }
+      var cnt = 0
+      var err = 0
 
-  def storeEntities(command: TransformedMinerCommand): Future[Unit] = {
-    val f: Future[Unit] = Future.sequence(command.entities.map(store)).map( _ => {})
+      identifiers.foreach { identifier =>
 
-    f.onComplete { _ =>
-      if(command.cmd.analysisToTrigger.isDefined){
-        val analysisCommand = command.cmd.analysisToTrigger.get
-        log.info(s"Rescheduling analysis ${analysisCommand.analysisName} after mining of ${analysisCommand.inputEntityNames.size} input(s) has been completed.")
-        analysisQueueWriter.appendToQueue(analysisCommand.toJson.compactPrint)
+        log.info(s"[$cnt/${identifiers.size}] Start processing ${identifier.toString} ... ")
+
+        Try{
+          downloadJar(identifier) match {
+            case Some(jarFile) =>
+              val representation = transform(jarFile)
+              log.info(s"[$cnt/${identifiers.size}] Starting to store program for ${identifier.toString} ... ")
+              storageAdapter.storeJavaProgram(representation).get
+            case None =>
+              // Do nothing, this is a GAV without a JAR
+          }
+        } match {
+          case Success(_) =>
+            log.info(s"[$cnt/${identifiers.size}] Done storing program for ${identifier.toString}.")
+            cnt += 1
+          case Failure(ex) =>
+            log.error(s"[$cnt/${identifiers.size}] Failed to handle identifier ${identifier.toString}", ex)
+            storageAdapter.ensureNotPresent(s"${identifier.toGA}!${identifier.toString}")
+            cnt += 1
+            err += 1
+        }
       }
+
+      log.info(s"Processed $cnt identifiers for message, got $err errors")
     }
-
-    f
   }
-
 
   /**
    * Method that extracts the program identifiers to process for a given message. The miner processes plain string messages,
@@ -163,7 +176,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
    * @param jarFile JAR file with an open input stream
    * @return Data on Software Entity. Result will be of 'Program' Kind, and may have children that also need to be stored
    */
-  private def transform(jarFile: MavenOnlineJar): Option[JavaProgram] = {
+  private def transform(jarFile: MavenOnlineJar): JavaProgram = {
 
     val start = System.currentTimeMillis()
     val classesTry = opalProjectHelper.readClassesFromJarStream(jarFile.content, jarFile.url, loadImplementation = true)
@@ -171,7 +184,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
     log.debug(s"OPAL init took $duration ms for ${jarFile.identifier.toString}")
 
-    var result: Option[JavaProgram] = None
+    var result: JavaProgram = null
 
     classesTry match {
       case Success(classes) =>
@@ -182,43 +195,23 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
           case Success(programRep) =>
             programRep.setParent(new JavaLibrary(jarFile.identifier.toGA, "central"))
             log.info(s"Processing ${classes.size} classes in ${programRep.getChildren.size} packages @  ${jarFile.url.toString}")
-            result = Some(programRep)
+            result = programRep
           case Failure(ex) =>
             log.error(s"Failed to extract program entities @ ${jarFile.url.toString}", ex)
-
+            throw ex
         }
 
       case Failure(ex) =>
-        log.error(s"Failed to process ${jarFile.identifier.toString}", ex)
+        log.error(s"Failed to read classes from JAR file @ ${jarFile.identifier.toString}", ex)
+        throw ex
     }
 
     jarFile.content.close()
+    opalProjectHelper.freeOpalResources()
 
     result
   }
 
-  private def store(data: JavaProgram): Future[Unit] = {
-    log.info("Storing program " + data.name + " ...")
-    storageAdapter.storeJavaProgram(data).map(_ => ())(streamMaterializer.executionContext)
-  }
-
-  private[mvnem] def buildStorageSink(): Sink[TransformedMinerCommand, Future[Done]] = {
-    Sink.foreachAsync(configuration.storageParallel) { data =>
-
-      storeEntities(data).andThen {
-        case Success(_) =>
-          val label = if (data.entities.size == 1) data.entities.head.name else s"${data.entities.size} program(s)"
-          log.info(s"Successfully stored $label for command")
-        case Failure(ex) =>
-          log.error(s"Failed to store ${data.entities.size} program(s) for command ${data.cmd}", ex)
-      }(streamMaterializer.executionContext)
-
-    }
-  }
-
-
-  case class ResolvedMinerCommand(cmd: MinerCommand, jars: Set[MavenOnlineJar])
-  case class TransformedMinerCommand(cmd:MinerCommand, entities: Set[JavaProgram])
 
 
 }

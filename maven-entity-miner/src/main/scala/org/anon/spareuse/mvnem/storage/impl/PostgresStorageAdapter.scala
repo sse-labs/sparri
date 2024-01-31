@@ -1,6 +1,5 @@
 package org.anon.spareuse.mvnem.storage.impl
 
-import kotlin.reflect.jvm.internal.JvmPropertySignature.JavaField
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod, JavaNewInstanceStatement, JavaPackage, JavaProgram, JavaStatement}
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaClasses, JavaFieldAccessRepr, JavaFieldAccessStatements, JavaInvocationRepr, JavaInvocationStatements, JavaMethodRepr, JavaMethods}
@@ -8,7 +7,7 @@ import org.anon.spareuse.core.storage.postgresql.{SoftwareEntities, SoftwareEnti
 import org.anon.spareuse.core.utils.toHex
 import org.anon.spareuse.mvnem.storage.EntityMinerStorageAdapter
 
-import scala.util.{Failure, Success, Try}
+import scala.util.Try
 import slick.jdbc.PostgresProfile.api._
 
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -30,104 +29,98 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   // Converts representations of binary hashes in the core model (byte-array) to database-representations (hex-strings)
   private implicit def toHexOpt(byteOpt: Option[Array[Byte]]): Option[String] = byteOpt.map(toHex)
 
-  override def storeJavaProgram(data: JavaProgram): Future[_] =  {
 
-    Try{
-      data.getParent.map(p => {
-        if (hasEntityQualifier(p.uid)) {
-          getIdForQualifier(p.uid)
-        } else {
-          storeDataAndGetId(p, None)
-        }
-      })
-    } match {
-      case Success(parentIdOpt) =>
-        storeInternal(data, parentIdOpt)
-      case Failure(ex) =>
-        log.error(s"Failed to prepare storage of program: ${data.name}", ex)
-        Future.failed(ex)
+  override def ensureNotPresent(programUid: String): Unit = {
+    if(hasEntityQualifier(programUid)){
+
+      Try{
+        val programId = getIdForQualifier(programUid)
+        val packageIds = Await.result(db.run(entitiesTable.filter(e => e.parentID === programId).map(_.id).result), 30.seconds).toSet
+        val classIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet packageIds).map(_.id).result), 60.seconds).toSet
+        val methodIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet classIds).map(_.id).result), 80.seconds).toSet
+        val statementIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet methodIds).map(_.id).result), 120.seconds).toSet
+
+        val deleteActions = DBIO.sequence(Seq(
+          javaInvocationsTable.filter(i => i.id inSet statementIds).delete,
+          javaFieldAccessesTable.filter(f => f.id inSet statementIds).delete,
+          javaMethodsTable.filter(m => m.id inSet methodIds).delete,
+          javaClassesTable.filter(c => c.id inSet classIds).delete,
+          entitiesTable.filter(e => e.id inSet statementIds).delete,
+          entitiesTable.filter(e => e.id inSet methodIds).delete,
+          entitiesTable.filter(e => e.id inSet classIds).delete,
+          entitiesTable.filter(e => e.id inSet packageIds).delete,
+          entitiesTable.filter(e => e.id === programId).delete)
+        )
+
+        Await.ready(db.run(deleteActions), 300.seconds)
+      }
     }
   }
 
-  private def storeInternal(data: JavaProgram, parentIdOpt: Option[Long]): Future[_] = {
-    val currentId = storeDataAndGetId(data, parentIdOpt)
-    log.debug(s"Storing java program ${data.name}")
-    storeProgram(data, currentId)
+  override def storeJavaProgram(jp: JavaProgram): Try[Unit] = Try {
+
+    // Create parent if it does not already exist, get uid of parent entity
+    val parentIdOpt = jp.getParent.map(p => {
+      if (hasEntityQualifier(p.uid)) {
+        getIdForQualifier(p.uid)
+      } else {
+        storeDataAndGetId(p, None)
+      }
+    })
+
+    // Programs don't have a separate additional table, so they only need this one insert
+    val programId = storeDataAndGetId(jp, parentIdOpt)
+
+    def storeEntitiesTimed(entities: Set[SoftwareEntityData], parentIdLookup: Map[String, Long], batchSize: Int, kindName: String): Map[String, Long] = {
+      val timeout = Math.max((entities.size / 100) * 10, 30).seconds // 10 seconds for every 100 entities, at least 30 seconds
+      val start = System.currentTimeMillis()
+      val result = Await.result(insertEntitiesBatchedWithMapReturn(entities, parentIdLookup, batchSize), timeout)
+      val time = System.currentTimeMillis() - start
+      log.debug(s"Successfully stored ${entities.size} entities of kind $kindName for program ${jp.name} in $time ms.")
+      result
+    }
+
+    val packageLookup = storeEntitiesTimed(jp.getChildren, Map(jp.uid -> programId), 30, "Package")
+    val allClasses = jp.getChildren.flatMap(_.getChildren)
+    val classLookup = storeEntitiesTimed(allClasses, packageLookup, 50, "Class")
+    val allMethods = allClasses.flatMap(_.getChildren)
+    val methodLookup = storeEntitiesTimed(allMethods, classLookup, 50, "Methods")
+    val allStatements = allMethods.flatMap(_.getChildren)
+    storeEntitiesTimed(allStatements, methodLookup, 100, "Statements")
+
+  }
+
+  private[storage] def insertEntitiesBatchedWithMapReturn(entities: Set[SoftwareEntityData], parentIdLookup: Map[String, Long], batchSize: Int): Future[Map[String, Long]] = {
+    val entityReprs = entities.map(e => toEntityRepr(e, parentIdLookup.get(e.uid)))
+
+    batchedEntityInsertWithMapReturn(entityReprs, batchSize).flatMap { theMap =>
+      entities.headOption match {
+        case Some(_: JavaClass) =>
+          val allClasses = entities.filter(_.isInstanceOf[JavaClass]).map{ case jc: JavaClass => toClassRepr(jc, theMap(jc.uid)) }.toSeq
+          batchedClassInsert(allClasses, batchSize).map(_ => theMap)
+        case Some(_: JavaMethod) =>
+          val allMethods = entities.filter(_.isInstanceOf[JavaMethod]).map{ case jm: JavaMethod => toMethodRepr(jm, theMap(jm.uid)) }.toSeq
+          batchedMethodInsert(allMethods, batchSize).map(_ => theMap)
+        case Some(_: JavaStatement) =>
+          val allInvocations = entities.filter(_.isInstanceOf[JavaInvokeStatement]).map { case jis: JavaInvokeStatement => toInvocationRepr(jis, theMap(jis.uid)) }.toSeq
+          val allFieldAccesses = entities.filter(_.isInstanceOf[JavaFieldAccessStatement]).map { case jfas: JavaFieldAccessStatement => toFieldAccessRepr(jfas, theMap(jfas.uid)) }.toSeq
+          batchedInvocationInsert(allInvocations, batchSize).andThen(_ => batchedFieldAccessInsert(allFieldAccesses, batchSize)).map(_ => theMap)
+        case _ =>
+          // Do nothing if there are no entities to insert or the entity kind does not need an extra table insert
+          Future.successful(Map.empty[String, Long])
+      }
+    }
   }
 
   private def storeDataAndGetId(data: SoftwareEntityData, parentIdOpt: Option[Long]): Long = {
-    //IMPROVE: More batching for performance improvement
     val res = idReturningEntitiesTable +=
       SoftwareEntityRepr(0, data.name, data.uid, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash)
-
     Await.result(db.run(res), 10.seconds)
   }
 
   private def getIdForQualifier(fq: String): Long = {
     val queryFuture = db.run(entitiesTable.filter( row => row.qualifier === fq).take(1).map(_.id).result)
     Await.result(queryFuture, 10.seconds).head
-  }
-
-  private def storeProgram(jp: JavaProgram, programDbId: Long): Future[_] = {
-    val batch = jp.getChildren.map {
-      case jm: JavaPackage =>
-        toEntityRepr(jm, Some(programDbId))
-    }.toSeq
-
-    val insertAction = batchedEntityInsertWithMapReturn(batch, 100)
-
-    val insertResult = Await.result(insertAction, 10.seconds)
-
-    val classLookup = jp.getChildren.map(m => (m.uid, m.asInstanceOf[JavaPackage])).toMap
-
-    Future.sequence(insertResult.map( tuple => storePackage(classLookup(tuple._1), tuple._2)).toSeq)
-  }
-
-  private def storePackage(jp: JavaPackage, packageDbId: Long): Future[Unit] = {
-
-    var start = System.currentTimeMillis()
-    val allClasses = jp.getChildren.map { case jc: JavaClass => toEntityRepr(jc, Some(packageDbId))}.toSeq
-    val classLookup = Await.result(batchedEntityInsertWithMapReturn(allClasses, 500), 20.seconds)
-
-    Await.ready(batchedClassInsert(jp.getChildren.map { case jc: JavaClass =>
-      toClassRepr(jc, classLookup(jc.uid))}.toSeq, 500), 20.seconds)
-
-    var duration = System.currentTimeMillis() - start
-
-    log.debug(s"Stored all classes for package ${jp.uid} in $duration ms.")
-
-    start = System.currentTimeMillis()
-    val allMethods = jp.getChildren.flatMap( jc => jc.getChildren.map{ case jm: JavaMethod => toEntityRepr(jm, Some(classLookup(jc.uid)))}).toSeq
-    val methodLookup = Await.result(batchedEntityInsertWithMapReturn(allMethods, 500), 30.seconds)
-
-    Await.ready(batchedMethodInsert(jp.getChildren.flatMap(_.getChildren).map { case jm: JavaMethod =>
-      toMethodRepr(jm, methodLookup(jm.uid))}.toSeq, 500), 30.seconds)
-
-    duration = System.currentTimeMillis() - start
-
-    log.debug(s"Stored all methods for package ${jp.uid} in $duration ms.")
-
-    start = System.currentTimeMillis()
-    val allInstructions = jp.getChildren.flatMap(jc => jc.getChildren).flatMap(jm => jm.getChildren.map {
-      case js: JavaStatement => // Ensure integrity, only statements should be children of methods
-        toEntityRepr(js, Some(methodLookup(jm.uid)))
-    }).toSeq
-
-    val statementLookup = Await.result(batchedEntityInsertWithMapReturn(allInstructions, 500), 40.seconds)
-
-    val allInstructionsRaw = jp.getChildren.flatMap(_.getChildren).flatMap(_.getChildren)
-
-    val allInvocations = allInstructionsRaw.filter(_.isInstanceOf[JavaInvokeStatement]).map { case jis: JavaInvokeStatement => toInvocationRepr(jis, statementLookup(jis.uid))}.toSeq
-    val allFieldAccesses = allInstructionsRaw.filter(_.isInstanceOf[JavaFieldAccessStatement]).map { case jfas: JavaFieldAccessStatement => toFieldAccessRepr(jfas, statementLookup(jfas.uid))}.toSeq
-    // Note that JavaNewInstanceStatements do not need an extra table, their only piece of information is the type name, which is stored in the entity's 'Name' field
-
-    val result = Future.sequence(Seq(batchedInvocationInsert(allInvocations, 500), batchedFieldAccessInsert(allFieldAccesses, 500)))
-
-    duration = System.currentTimeMillis() - start
-
-    log.debug(s"Stored all instructions for package ${jp.uid} in $duration ms.")
-
-    result.map( _ => () )
   }
 
   private def toEntityRepr(data: SoftwareEntityData, parentIdOpt: Option[Long]): SoftwareEntityRepr = SoftwareEntityRepr(0, data.name,
@@ -143,15 +136,15 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   private def toFieldAccessRepr(jfas: JavaFieldAccessStatement, parentId: Long): JavaFieldAccessRepr =
     (parentId, jfas.targetFieldTypeName, jfas.targetTypeName, jfas.fieldAccessType.id, jfas.instructionPc)
 
-  private def batchedEntityInsertWithMapReturn(entityReprs: Seq[SoftwareEntityRepr], batchSize: Int): Future[Map[String, Long]] = {
+  private def batchedEntityInsertWithMapReturn(entityReprs: Iterable[SoftwareEntityRepr], batchSize: Int): Future[Map[String, Long]] = {
 
-    Future.sequence(
-      entityReprs.grouped(batchSize).map { batch => db.run(qualifierAndIdReturningEntitiesTable ++= batch).map( resultObj => resultObj.toMap)}.toSeq)
+    Future
+      .sequence(
+        entityReprs
+          .grouped(batchSize)
+          .map { batch => db.run(qualifierAndIdReturningEntitiesTable ++= batch).map( resultObj => resultObj.toMap)}
+      )
       .map(seqOfMaps => seqOfMaps.flatten.toMap)
-  }
-
-  private def batchedEntityInsert(entityReprs: Seq[SoftwareEntityRepr], batchSize: Int): Future[Unit] = {
-    Future.sequence(entityReprs.grouped(batchSize).map { batch => db.run(entitiesTable ++= batch)}.toSeq).map( _ => ())
   }
 
   private def batchedClassInsert(data: Seq[JavaClassRepr], batchSize: Int): Future[Unit] = {
@@ -180,6 +173,12 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
     val setupFuture = db.run(setupAction)
 
     Await.ready(setupFuture, 20.seconds)
+
+    val s = db.createSession()
+    val autoCommit = s.conn.getAutoCommit
+    s.close()
+
+    log.info(s"Database setup complete, auto-commit value: $autoCommit")
   }
 
   override def shutdown(): Unit = db.close()
