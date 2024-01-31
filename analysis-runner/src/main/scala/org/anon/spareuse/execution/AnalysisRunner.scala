@@ -125,13 +125,14 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
                     val theRun = dataAccessor
                       .getAnalysisRun(analysisName, analysisVersion, baselineRunId, includeResults = true)
                       .get
-                      .withResolvedGenerics( uid => dataAccessor.getEntity(uid).get , forceResolve = true)
+                      .withResolvedGenerics( entityData => dataAccessor.getEntity(entityData.uid, entityData.kind, entityData.kind).get)
 
                     Some(theRun)
                   } else
                     throw new AnalysisRunNotPossibleException(s"Baseline run ID invalid: " + baselineRunId, command)
                 }
 
+                log.info(s"Done resolving baseline for run $baselineRunId.")
                 Some(AnalysisRegistry.getIncrementalAnalysisImplementation(analysisName, analysisVersion, baselineRun))
               } else None
 
@@ -211,9 +212,12 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
               return None
             }
 
+            log.info(s"Starting to download entity information from DB: ${namesToProcess.mkString(",")}")
+
             // Download entity information for the analysis from the DB
             Try(namesToProcess.map(name => dataAccessor.getEntity(name, theAnalysisImpl.descriptor.inputEntityKind, theAnalysisImpl.descriptor.requiredInputResolutionLevel).get)) match {
               case Success(entities) =>
+                log.info(s"Done downloading entity information for ${entities.size} entities")
                 // Finally check that the analysis can in fact be executed with those parameters
                 if (theAnalysisImpl.executionPossible(entities.toSeq, command.configurationRaw)) {
                   log.info(s"Command successfully validated, analysis $analysisName:$analysisVersion will be started shortly.")

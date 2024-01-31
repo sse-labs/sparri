@@ -117,7 +117,7 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
 
               FreshResult(resultData, Set(correspondingEntity.get))
             }
-            .toSet[AnalysisResult]
+            .toSet[AnalysisResult] ++ previousResultsToLink.toSet
 
           log.info(s"Done building $methodCnt IFDS summaries. Freeing OPAL resources ..")
           opalHelper.freeOpalResources()

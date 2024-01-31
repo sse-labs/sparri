@@ -4,13 +4,13 @@ import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityD
 
 case class AnalysisResultData(uid: String, isRevoked: Boolean, originRunUid: String, content: Object, affectedEntities: Set[SoftwareEntityData]){
 
-  def withResolvedGenerics(resolver: String => SoftwareEntityData, forceResolve: Boolean = false): AnalysisResultData = {
+  def withResolvedGenerics(resolver: SoftwareEntityData => SoftwareEntityData, forceResolve: Boolean = false): AnalysisResultData = {
 
     def resolveIfNeeded(sed: SoftwareEntityData) = sed match {
       case g: GenericEntityData =>
-        resolver(g.uid)
-      case s: SoftwareEntityData if (!s.hasParent && s.getChildren.isEmpty) || forceResolve =>
-        resolver(s.uid)
+        resolver(g)
+      case s: SoftwareEntityData if (!s.hasParent && !s.isLibrary) || forceResolve =>
+        resolver(s)
       case s@_ =>
         s
     }

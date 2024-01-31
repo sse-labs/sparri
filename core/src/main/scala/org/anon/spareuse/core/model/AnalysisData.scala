@@ -20,16 +20,7 @@ object AnalysisData {
 
 case class AnalysisRunData(uid: String, timestamp: LocalDateTime, logs: Array[String], configuration: String, state: RunState, isRevoked: Boolean,
                            inputs: Set[SoftwareEntityData], results: Set[AnalysisResultData], parentAnalysisName: String, parentAnalysisVersion: String){
-  def withResolvedGenerics(resolver: String => SoftwareEntityData, forceResolve: Boolean = false): AnalysisRunData = {
-
-    def resolveIfNeeded(sed: SoftwareEntityData) = sed match {
-      case g: GenericEntityData =>
-        resolver(g.uid)
-      case s: SoftwareEntityData if (!s.hasParent && s.getChildren.isEmpty) || forceResolve =>
-        resolver(s.uid)
-      case s@_ =>
-        s
-    }
+  def withResolvedGenerics(resolver: SoftwareEntityData => SoftwareEntityData, forceResolve: Boolean = false): AnalysisRunData = {
 
     val resolvedResults = results.map { _.withResolvedGenerics(resolver, forceResolve) }
 
@@ -41,7 +32,7 @@ case class AnalysisRunData(uid: String, timestamp: LocalDateTime, logs: Array[St
       configuration,
       state,
       isRevoked,
-      inputs.map(resolveIfNeeded),
+      inputs,
       resolvedResults,
       parentAnalysisName,
       parentAnalysisVersion

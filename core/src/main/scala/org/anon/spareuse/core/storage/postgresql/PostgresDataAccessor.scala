@@ -30,8 +30,8 @@ class PostgresDataAccessor extends DataAccessor {
 
   private val idToIdentifierCache = new ObjectCache[Long,String](maxEntries = 10000)
 
-  private val simpleQueryTimeout = 5.seconds
-  private val longActionTimeout = 20.seconds
+  private val simpleQueryTimeout = 200.seconds
+  private val longActionTimeout = 600.seconds
 
   private lazy val db = Database.forConfig("spa-reuse.postgres")
 
@@ -639,7 +639,7 @@ class PostgresDataAccessor extends DataAccessor {
     }
   }
 
-  override def getRunResultsAsJSON(runUid: String, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]] = Try {
+  override def getRunResultsAsJSON(runUid: String, skip: Int = 0, limit: Int = 1000): Try[Set[AnalysisResultData]] = Try {
 
     val runRepr: SoftwareAnalysisRunRepr = getRunRepr(runUid)
 
