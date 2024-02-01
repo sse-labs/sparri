@@ -330,8 +330,21 @@ paths:
               $ref: "#/components/schemas/TriggerAnalysisRequest"
        
       responses:
-        '201':
+        '202':
           description: "New analysis run has been queued"
+          headers:
+            Location:
+              description: Full URL that can be used to query the run that has been triggered by this request.
+              schema:
+                type: string
+                example: localhost:9090/api/analses/mvn-dependencies/1.0.0/runs/a0928f80-cc49-4b4e-bff9-a364e4b50f25
+                
+          content:
+            text/plain:
+              schema:
+                description: The UID of the analysis run that is being triggered
+                example: a0928f80-cc49-4b4e-bff9-a364e4b50f25
+
           
         '404':
           description: "If the analysis is not found, 404 is returned."
@@ -498,7 +511,13 @@ paths:
             default: 50
       responses:
         '200':
-          description: ""
+          description: "List of results produced by this run"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnalysisResultInformation"
         '404':
           description: "If the analysis or the analysis run are not found, 404 is returned."
   
@@ -532,87 +551,191 @@ components:
         
     AnalysisInformation:
       type: object
-      required: ['Name', 'Description', 'Version', 'IsRevoked', 'User', 'InputEntityKind', 'InputLanguages', 'ResultSchema', 'RunIds']
+      required: [Name, Description, Version, IsRevoked, User, InputEntityKind, InputLanguages, ResultSchema, RunIds]
       properties:
-        'Name':
+        Name:
           type: string
-        'Description':
+        Description:
           type: string
-        'Version':
+        Version:
           type: string
-        'TechnologyInformation':
+        TechnologyInformation:
           type: string
-        'IsRevoked':
+        IsRevoked:
           type: boolean
-        'InputEntityKind':
+        InputEntityKind:
           type: string
-        'InputLanguages':
+        InputLanguages:
           $ref: '#/components/schemas/StringList'
-        'ResultSchema':
-          type: object
-        'User':
+        ResultSchema:
           type: string
-        'RunIds':
+        User:
+          type: string
+        RunIds:
           $ref: '#/components/schemas/StringList'
     
     AnalysisFormatInformation:
       type: object
-      required: ['Description', "FormatDefinition"]
+      required: [Description, FormatDefinition]
       properties:
-        'Description':
+        Description:
           type: string
-        'FormatDefinition':
+          example: "This analysis counts the number of times the constant '42' is used in a given program."
+        FormatDefinition:
           type: string
+          example: "{\"Properties\": [{\"PropertyDescription\":\"Number of times 42 was used.\",\"PropertyFormat\":{\"Type\":\"NumberFormat\"},\"PropertyName\":\"numberOfTimes\",\"Type\":\"NamedPropertyFormat\"}]}"
     
     AnalysisRunInformation:
       type: object
-      required: ['Id', 'AnalysisName']
+      required: [UID, TimeStamp, Logs, Configuration, State, IsRevoked, AnalysisName]
       properties:
-        'Id':
+        UID:
           type: string
-        'Configuration':
-          type: object
-        'Logs':
+          example: a0928f80-cc49-4b4e-bff9-a364e4b50f25
+        TimeStamp:
+          type: string
+          example: "2024-02-01T08:21:47.757713347"
+        Logs:
           $ref: '#/components/schemas/StringList'
-        'AnalysisName':
+        Configuration:
           type: string
+          example: --something
+        State:
+          type: string
+          example: Finished
+        IsRevoked:
+          type: boolean
+          example: False
+        AnalysisName:
+          type: string
+          example: mvn-constant-classes
+        AnalysisVersion:
+          type: string
+          example: 1.0.0
+        Inputs:
+          type: array
+          items:
+            $ref: "#/components/schemas/ProgramEntity"
+    
+    AnalysisResultInformation:
+      type: object
+      required: [UID, IsRevoked, JsonContent, AffectedEntityIds]
+      properties:
+        UID:
+          type: string
+          example: acbd43aa-8642-44b4-a757-28fdb355d2c0
+        IsRevoked:
+          type: boolean
+          example: false
+        JsonContent:
+          type: string
+          example: {\"numberOfTimes\": 42}
+        AffectedEntityIds:
+          $ref: '#/components/schemas/StringList'
+          
     
     ProgramEntity:
       type: object
       required: ['Name', 'Identifier', 'Language', 'Kind', 'Repository']
       properties:
-        'Name':
+        Name:
           type: string
-        'Identifier':
+        Identifier:
           type: string
-        'Kind':
+        Kind:
           type: string
-        'Language':
+        Language:
           type: string
-        'Repository':
+        Repository:
           type: string
-        'ParentId':
+        ParentId:
           type: string
-        'Hash':
+        Hash:
           type: string
-    
+        Children:
+          type: array
+          description: An optional array of child entity objects
+          items:
+            $ref: "#/components/schemas/ProgramEntity"
+        ThisTypeFqn:
+          type: string
+        SuperTypeFqn:
+          type: string
+        InterfaceTypeFqns:
+          type: array
+          items:
+            type: string
+        IsInterface:
+          type: boolean
+        IsFinal:
+          type: boolean
+        IsStatic:
+          type: boolean
+        IsAbstract:
+          type: boolean
+        Visibility:
+          type: string
+        Descriptor:
+          type: string
+        TargetType:
+          type: string
+        MethodHash:
+          type: integer
+      example:
+        Name: setLength
+        Identifier: "commons-io:commons-io!commons-io:commons-io:2.2!org/apache/commons/io/monitor!org/apache/commons/io/monitor/FileEntry!setLength: (J)V"
+        Kind: Method
+        Language: java
+        Repository: central
+        ParentId: "commons-io:commons-io!commons-io:commons-io:2.2!org/apache/commons/io/monitor!org/apache/commons/io/monitor/FileEntry"
+        Children:
+          - Name: setLength
+            Identifier: "commons-io:commons-io!commons-io:commons-io:2.2!org/apache/commons/io/monitor!org/apache/commons/io/monitor/FileEntry!setLength: (J)V!2"
+            Kind: FieldAccessStatement
+            Language: java
+            Repository: central
+            ParentId: "commons-io:commons-io!commons-io:commons-io:2.2!org/apache/commons/io/monitor!org/apache/commons/io/monitor/FileEntry!setLength: (J)V"
+            TargetType: org/apache/commons/io/monitor/FileEntry
+        IsFinal: false
+        IsStatic: false
+        IsAbstract: false
+        Visibility: public
+        Descriptor: (J)V
+        MethodHash: 234772383
+        
+
     TriggerAnalysisRequest:
       type: object
-      required: ['Inputs', 'Configuration']
+      required: [Inputs, Configuration]
       properties:
-        'Inputs':
+        Inputs:
           $ref: '#/components/schemas/StringList'
-        'Configuration':
+          description: List of full entity identifiers to be used as inputs for the analysis
+        Configuration:
           type: string
-        'User':
+        User:
           type: string
+          description: Name of the user triggering this analysis
+        BaselineRun:
+          type: string
+          description: UID of the run to use as a baseline (only works for incremental analyses)
+
+      example:
+        Inputs:
+          - org.json:json!org.json:json:20070829
+          - org.json:json!org.json:json:20080701
+        Configuration: --be-fancy -use-algo Foo
+        User: Ron Swanson
+        BaselineRun: a0928f80-cc49-4b4e-bff9-a364e4b50f25
     
     TriggerMinerRequest:
       type: object
-      required: ['Identifier']
+      required: [Identifier]
       properties:
-        'Identifier':
+        Identifier:
           type: string
+          description: Full name of the entity that is to be indexed. Supports GA-Tuple, GAV-Triple or any more specific identifier (the miner will always index the entire program the entity is part of).
+          example: org.json:json!org.json:json:20070829
     
           
         
