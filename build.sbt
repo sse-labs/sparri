@@ -25,7 +25,7 @@ lazy val mergeStrategySettings = assembly / assemblyMergeStrategy := {
 }
 
 lazy val root = (project in file("."))
-	.aggregate(core, `maven-entity-name-publisher`, `maven-entity-miner`, webapi, `analysis-runner`, evaluation)
+	.aggregate(core, `maven-entity-name-publisher`, `maven-entity-miner`, webapi, `analysis-runner`, evaluation, `client-analyses`)
 
 lazy val core = (project in file("core"))
 	.settings(
@@ -104,6 +104,18 @@ compileRunnerFixtures := {
 	import scala.sys.process._
 	"javac -d ./analysis-runner/src/test/resources/ ./analysis-runner/src/test/fixtures-java/*.java" !
 }
+
+lazy val `client-analyses` = (project in file("client-analyses"))
+	.dependsOn( core % "test->test;compile->compile", `analysis-runner` % "test->test;compile->compile")
+	.enablePlugins(DockerPlugin)
+	.settings(
+
+		assembly / assemblyJarName := "client-analyses.jar",
+		mergeStrategySettings,
+		dockerSettings,
+
+		docker / imageNames := Seq(ImageName("spar-analyses"))
+	)
 
 lazy val playground = (project in file("playground"))
 	.dependsOn(core, evaluation)
