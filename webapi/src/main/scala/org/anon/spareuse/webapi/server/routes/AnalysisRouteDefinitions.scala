@@ -180,7 +180,7 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
   }
 
   private def allRunInputsRouteImpl(analysisName: String, analysisVersion: String, runId: String)(implicit request:HttpRequest): Route = {
-    requestHandler.getRun(analysisName, analysisVersion, runId).map(_.inputs) match {
+    requestHandler.getRun(analysisName, analysisVersion, runId).map(_.Inputs) match {
       case Success(runInputs) => complete(runInputs.toJson)
       case Failure(ex) =>
         log.error(s"Failed to retrieve inputs for analysis run $runId", ex)
