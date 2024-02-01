@@ -59,7 +59,9 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
         .find{ r =>
           r.affectedEntities.exists{
             case jm: JavaMethod =>
-              methodHash == jm.methodHash
+              methodHash == jm.methodHash &&
+                method.descriptor.toJVMDescriptor == jm.descriptor &&
+                method.name == jm.name
             case _ => false
           }
         }
