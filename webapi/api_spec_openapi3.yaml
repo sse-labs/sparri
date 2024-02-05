@@ -364,6 +364,12 @@ paths:
           required: true
           schema:
             type: string
+        - name: input
+          description: "Input-Entity to filter for"
+          in: query
+          required: false
+          schema:
+            type: string
         - name: skip
           description: "Pagination: Number of analysis runs to skip"
           in: header

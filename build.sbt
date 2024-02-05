@@ -1,4 +1,4 @@
-name := "opal-callgraph-miner"
+name := "sparri"
 
 ThisBuild / organization := "org.anon"
 ThisBuild / version      := "0.1.0-SNAPSHOT"
@@ -106,10 +106,11 @@ compileRunnerFixtures := {
 }
 
 lazy val `client-analyses` = (project in file("client-analyses"))
-	.dependsOn( core % "test->test;compile->compile", `analysis-runner` % "test->test;compile->compile")
+	.dependsOn( core % "test->test;compile->compile", `analysis-runner` % "test->test;compile->compile", webapi % "test->test;compile->compile")
 	.enablePlugins(DockerPlugin)
 	.settings(
 
+		assembly / mainClass := Some("org.anon.spareuse.client.ClientAnalysisApplication"),
 		assembly / assemblyJarName := "client-analyses.jar",
 		mergeStrategySettings,
 		dockerSettings,

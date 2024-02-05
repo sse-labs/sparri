@@ -20,7 +20,7 @@ trait AnalysisAccessor {
 
   def getAnalysisRuns(analysisName: String, analysisVersion: String, includeResults: Boolean = false, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisRunData]]
 
-  def getAnalysisRunsForEntity(entityName: String, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisRunData]]
+  def getAnalysisRunsForEntity(entityName: String, analysisFilter: Option[(String, String)], skip: Int = 0, limit: Int = 100): Try[Set[AnalysisRunData]]
 
   def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false): Try[AnalysisRunData]
 

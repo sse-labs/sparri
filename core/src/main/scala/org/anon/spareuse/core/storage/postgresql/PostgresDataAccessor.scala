@@ -537,12 +537,25 @@ class PostgresDataAccessor extends DataAccessor {
     getAnalysisRuns(analysisId, analysisName, analysisVersion, includeResults, skip, limit)
   }
 
-  override def getAnalysisRunsForEntity(entityName: String, skip: Int, limit: Int): Try[Set[AnalysisRunData]] = Try {
+  override def getAnalysisRunsForEntity(entityName: String, analysisFilter: Option[(String, String)], skip: Int, limit: Int): Try[Set[AnalysisRunData]] = Try {
     val entityId = getEntityId(entityName)
+
+    val allRunsQuery = for (((_, run), analysis) <- analysisRunInputsTable.filter(_.inputEntityID === entityId) join analysisRunsTable on (_.analysisRunID === _.id) join analysesTable on (_._2.parentID === _.id))
+      yield (run, analysis)
+
+    val theQuery = if(analysisFilter.isDefined){
+      val analysisRepr = getAnalysisRepr(analysisFilter.get._1, analysisFilter.get._2)
+
+      allRunsQuery filter (_._2.id === analysisRepr.id) drop skip take limit
+    } else {
+      allRunsQuery drop skip take limit
+    }
+
+
     val runIdsQuery = analysisRunInputsTable.filter(_.inputEntityID === entityId).map(_.analysisRunID).result
     val runIds = Await.result(db.run(runIdsQuery), simpleQueryTimeout).distinct.sorted.slice(skip, skip + limit).toSet
 
-    val resultF = db.run((analysisRunsTable.filter(_.id inSet runIds ) join analysesTable on (_.parentID === _.id)).result)
+    val resultF = db.run(theQuery.result)
       .map { allResults =>
         allResults.map {
           case (run, analysis) =>
@@ -721,26 +734,24 @@ class PostgresDataAccessor extends DataAccessor {
     val eid = getEntityId(entityName)
 
     // Get all results associated with this entity
-    val entityResultsF = db.run{
-      val join = for { (_, result) <- resultValiditiesTable.filter(v => v.entityId === eid) join analysisResultsTable on (_.resultId === _.id)}
+    val allEntityResultsQuery =
+      for { (_, result) <- resultValiditiesTable.filter(v => v.entityId === eid) join analysisResultsTable on (_.resultId === _.id)}
         yield result
-      join.sortBy(_.id).drop(skip).take(limit).result
-    }
+      //join.sortBy(_.id).drop(skip).take(limit).result
 
-    var allEntityResults = Await.result(entityResultsF, longActionTimeout)
 
-    // Apply analysis filter
-    if(analysisFilter.isDefined) {
-      val analysisRepr = getAnalysisRepr(analysisFilter.get._1, analysisFilter.get._2)
+    val allEntityResults = {
+      if (analysisFilter.isDefined) {
+        val analysisRepr = getAnalysisRepr(analysisFilter.get._1, analysisFilter.get._2)
 
-      allEntityResults = allEntityResults.filter{ result =>
-        val analysisId = Await.result(db.run{ analysisRunsTable.filter(run => run.id === result.runId).map(run => run.parentID).take(1).result }, simpleQueryTimeout).head
+        val filteredResultsQuery = for {(result, _) <- allEntityResultsQuery join analysisRunsTable on (_.runID === _.id) filter (_._2.parentID === analysisRepr.id)}
+          yield result
 
-        analysisId == analysisRepr.id
+        Await.result(db.run(filteredResultsQuery.drop(skip).take(limit).result), longActionTimeout)
+      } else {
+        Await.result(db.run(allEntityResultsQuery.drop(skip).take(limit).result), longActionTimeout)
       }
     }
-
-
 
     // Results may be associated with more than one entity, therefore: Collect mapping of results to entities for all results
     val resultEntitiesF = db.run {

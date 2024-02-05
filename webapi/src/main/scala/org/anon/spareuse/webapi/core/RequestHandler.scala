@@ -50,15 +50,22 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
       .map(toAnalysisFormatRepr)
   }
 
-  def getAnalysisRuns(analysisName: String, analysisVersion: String, limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
-    dataAccessor
-      .getAnalysisRuns(analysisName, analysisVersion, includeResults = false, skip, limit)
-      .map(allRuns => allRuns.map(toRunRepr))
+  def getAnalysisRuns(analysisName: String, analysisVersion: String, inputFilter: Option[String], limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
+
+    if(inputFilter.isDefined){
+      dataAccessor
+        .getAnalysisRunsForEntity(inputFilter.get, Some(analysisName, analysisVersion), skip, limit)
+        .map(allRuns => allRuns.map(toRunRepr))
+    } else {
+      dataAccessor
+        .getAnalysisRuns(analysisName, analysisVersion, includeResults = false, skip, limit)
+        .map(allRuns => allRuns.map(toRunRepr))
+    }
   }
 
   def getAnalysisRunsForEntity(entityName: String, limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
     dataAccessor
-      .getAnalysisRunsForEntity(entityName, skip, limit)
+      .getAnalysisRunsForEntity(entityName, None, skip, limit)
       .map(allRuns => allRuns.map(toRunRepr))
   }
 
