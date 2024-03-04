@@ -1,6 +1,9 @@
 package org.anon.spareuse.execution.commands
 
 import org.anon.spareuse.core.model.analysis.{AnalysisCommand, IncrementalAnalysisCommand, RunnerCommand, RunnerCommandJsonSupport}
+import org.anon.spareuse.core.storage.DataAccessor
+import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
+import org.anon.spareuse.core.utils.rabbitmq.{MqConfigurationBuilder, MqMessageWriter}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.must
 import spray.json._
@@ -31,6 +34,28 @@ class RunnerCommandTest extends AnyFlatSpec with must.Matchers with RunnerComman
 
     assert(cmd.isInstanceOf[IncrementalAnalysisCommand])
     assert(cmd.equals(startCmd))
+  }
+
+  "Runner commands" must "be published" in {
+    val analysisName = "name"
+    val analysisVersion = "version"
+    val config = ""
+    val inputs = Set("input-ident")
+    val dataAccessor: DataAccessor = new PostgresDataAccessor
+
+    // Create new empty record for analysis run
+    val newId = dataAccessor.storeEmptyAnalysisRun(analysisName, analysisVersion, config).get
+
+    // Queue run execution
+    val name = s"$analysisName:$analysisVersion"
+    val command = AnalysisCommand(name, newId, "Test-Runner", inputs, config)
+    val commandJson = command.toJson.compactPrint
+
+
+    val writer = new MqMessageWriter(MqConfigurationBuilder.analysisWriteConfig("Test-Runner-Conn"))
+    writer.initialize()
+    writer.appendToQueue(commandJson)
+    writer.shutdown()
   }
 
 }
