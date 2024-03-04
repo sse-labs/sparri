@@ -110,6 +110,8 @@ lazy val `client-analyses` = (project in file("client-analyses"))
 	.enablePlugins(DockerPlugin)
 	.settings(
 
+		libraryDependencies += dependencies.logback,
+
 		assembly / mainClass := Some("org.anon.spareuse.client.ClientAnalysisApplication"),
 		assembly / assemblyJarName := "client-analyses.jar",
 		mergeStrategySettings,

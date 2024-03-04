@@ -21,9 +21,9 @@ trait EnhancedLogging {
 
     val time = System.nanoTime() - start
 
-    val timeString = if (time < 5000) s"${time}ns"
-    else if (time < 5000000) s"${time / 1000}ms"
-    else s"${time / 1000000}s"
+    val timeString = if (time < 5000000L) s"${time}ns"
+    else if (time < 5000000000L) s"${time / 1000000L}ms"
+    else s"${time / 1000000000L}s"
 
     if(result.isSuccess)
       log.debug(s"$opId finished successfully in $timeString")

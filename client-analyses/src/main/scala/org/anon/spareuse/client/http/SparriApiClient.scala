@@ -73,9 +73,9 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
 
   private[http] def buildUri(relPath: String, queryParams: Map[String, String] = Map.empty): URI = {
     val builder = new URIBuilder()
-      .setScheme("http")
       .setHost(ConfigReader.getSparriHost)
       .setPort(ConfigReader.getSparriPort)
+      .setScheme("http")
       .setPath(relPath)
 
     queryParams.foreach{ case (key, value) => builder.setParameter(key, value)}
@@ -93,12 +93,17 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
     getRaw(relPath, queryParams, rawHeader)
       .map{ response =>
         val code = response.getStatusLine.getStatusCode
+        val entity = response.getEntity
 
-        val entityInputStream = response.getEntity.getContent
-        val entityCharSet = response.getEntity.getContentEncoding.getValue
+        val entityInputStream = entity.getContent
+        var charSetOpt: Option[String] = None
+        if(entity.getContentEncoding != null){
+          charSetOpt = Some(entity.getContentEncoding.getValue)
+        }
+
         val entityBytes = LazyList.continually(entityInputStream.read).takeWhile(_ != -1).map(_.toByte).toArray
 
-        val stringEntity = new String(entityBytes, entityCharSet)
+        val stringEntity = if(charSetOpt.isDefined) new String(entityBytes, charSetOpt.get) else new String(entityBytes)
 
         entityInputStream.close()
         response.close()
