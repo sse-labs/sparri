@@ -1,7 +1,7 @@
 package org.anon.spareuse.webapi
 
 import org.anon.spareuse.core.formats.json.CustomFormatWriter
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod, JavaNewInstanceStatement}
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod, JavaNewInstanceStatement, JavaProgram}
 import org.anon.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData}
 import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
 import org.anon.spareuse.core.utils.toHex
@@ -41,8 +41,11 @@ package object model {
     var visibilityOpt: Option[String] = None
     var targetTypeOpt: Option[String] = None
     var methodHashOpt: Option[Int] = None
+    var publicationDateOpt: Option[String] = None
 
     entity match {
+      case jp: JavaProgram =>
+        publicationDateOpt = Some(jp.publishedAt)
       case jc: JavaClass =>
         thisTypeFqnOpt = Some(jc.thisType)
         superTypeOpt = jc.superType
@@ -91,7 +94,8 @@ package object model {
       visibilityOpt,
       descriptorOpt,
       targetTypeOpt,
-      methodHashOpt
+      methodHashOpt,
+      publicationDateOpt
     )
   }
 
@@ -115,6 +119,6 @@ package object model {
 
   def genericEntityToEntityRepr(entity: GenericEntityData): EntityRepr = {
     EntityRepr(entity.name, entity. uid, entity.kind.toString, entity.language, entity.repository, entity.parentUid,
-      entity.binaryHash.map(toHex), None, None, None, None, None, None, None, None, None, None, None, None)
+      entity.binaryHash.map(toHex), None, None, None, None, None, None, None, None, None, None, None, None, None)
   }
 }

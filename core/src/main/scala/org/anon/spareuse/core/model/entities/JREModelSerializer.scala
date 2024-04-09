@@ -63,7 +63,7 @@ trait JREModelSerializer {
       }
       .flatMap(_.get)
 
-    val jreModel = OPALJavaConverter.convertProgram(s"<none>:<JRE>:$jreVersion", "<none>", allJreClasses.map(_._1))
+    val jreModel = OPALJavaConverter.convertProgram(s"<none>:<JRE>:$jreVersion", "<none>", allJreClasses.map(_._1), "<NONE>")
     opalHelper.freeOpalResources()
 
     log.info("Done creating object model for JRE. Writing model to file ... ")

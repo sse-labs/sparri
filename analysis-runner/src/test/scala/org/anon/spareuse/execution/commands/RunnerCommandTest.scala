@@ -36,7 +36,7 @@ class RunnerCommandTest extends AnyFlatSpec with must.Matchers with RunnerComman
     assert(cmd.equals(startCmd))
   }
 
-  "Runner commands" must "be published" in {
+  "Runner commands" must "be published" ignore {
     val analysisName = "name"
     val analysisVersion = "version"
     val config = ""

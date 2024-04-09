@@ -189,7 +189,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     classesTry match {
       case Success(classes) =>
         val programTry: Try[JavaProgram] =
-          Try(OPALJavaConverter.convertProgram(jarFile.identifier.toString, "central", classes.map(_._1)))
+          Try(OPALJavaConverter.convertProgram(jarFile.identifier.toString, "central", classes.map(_._1), jarFile.timeOfUpload))
 
         programTry match {
           case Success(programRep) =>

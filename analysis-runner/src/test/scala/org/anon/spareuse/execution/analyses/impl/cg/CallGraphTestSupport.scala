@@ -16,7 +16,7 @@ trait CallGraphTestSupport {
 
   protected lazy val jreObjectModel: JavaProgram = {
     println("Loading JRE domain model, this might take some time ... ")
-    val jreProg = OPALJavaConverter.convertProgram("<NONE>:<THE_JRE>", "<default>", theOpalHelper.jreClasses.map(_._1), loadClassContents = false)
+    val jreProg = OPALJavaConverter.convertProgram("<NONE>:<THE_JRE>", "<default>", theOpalHelper.jreClasses.map(_._1), "<NONE>", loadClassContents = false)
     assert(jreProg.allClasses.exists(_.thisType == objFqn))
     assert(jreProg.allClasses.nonEmpty)
     println(s"Done loading ${jreProg.allClasses.size} JRE classes")
