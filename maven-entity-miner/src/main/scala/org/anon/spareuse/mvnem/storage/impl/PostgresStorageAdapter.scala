@@ -2,7 +2,7 @@ package org.anon.spareuse.mvnem.storage.impl
 
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod, JavaNewInstanceStatement, JavaPackage, JavaProgram, JavaStatement}
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
-import org.anon.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaClasses, JavaFieldAccessRepr, JavaFieldAccessStatements, JavaInvocationRepr, JavaInvocationStatements, JavaMethodRepr, JavaMethods}
+import org.anon.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaClasses, JavaFieldAccessRepr, JavaFieldAccessStatements, JavaInvocationRepr, JavaInvocationStatements, JavaMethodRepr, JavaMethods, JavaPrograms}
 import org.anon.spareuse.core.storage.postgresql.{SoftwareEntities, SoftwareEntityRepr}
 import org.anon.spareuse.core.utils.toHex
 import org.anon.spareuse.mvnem.storage.EntityMinerStorageAdapter
@@ -18,6 +18,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
   lazy val db = Database.forConfig("spa-reuse.postgres")
   val entitiesTable = TableQuery[SoftwareEntities]
+  val javaProgramsTable = TableQuery[JavaPrograms]
   val javaClassesTable = TableQuery[JavaClasses]
   val javaMethodsTable = TableQuery[JavaMethods]
   val javaInvocationsTable = TableQuery[JavaInvocationStatements]
@@ -45,11 +46,13 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
           javaFieldAccessesTable.filter(f => f.id inSet statementIds).delete,
           javaMethodsTable.filter(m => m.id inSet methodIds).delete,
           javaClassesTable.filter(c => c.id inSet classIds).delete,
+          javaProgramsTable.filter(p => p.id === programId).delete,
           entitiesTable.filter(e => e.id inSet statementIds).delete,
           entitiesTable.filter(e => e.id inSet methodIds).delete,
           entitiesTable.filter(e => e.id inSet classIds).delete,
           entitiesTable.filter(e => e.id inSet packageIds).delete,
           entitiesTable.filter(e => e.id === programId).delete)
+
         )
 
         Await.ready(db.run(deleteActions), 300.seconds)
@@ -68,8 +71,9 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
       }
     })
 
-    // Programs don't have a separate additional table, so they only need this one insert
+    // Programs now have a separate additional table, so they need two inserts
     val programId = storeDataAndGetId(jp, parentIdOpt)
+    Await.result(db.run(javaProgramsTable += (programId, jp.publishedAt)), 10.seconds)
 
     def storeEntitiesTimed(entities: Set[SoftwareEntityData], parentIdLookup: Map[String, Long], batchSize: Int, kindName: String): Map[String, Long] = {
       val timeout = Math.max((entities.size / 100) * 10, 30).seconds // 10 seconds for every 100 entities, at least 30 seconds
@@ -167,7 +171,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
 
   override def initialize(): Unit = {
-    val setupAction = DBIO.seq(entitiesTable.schema.createIfNotExists, javaClassesTable.schema.createIfNotExists,
+    val setupAction = DBIO.seq(entitiesTable.schema.createIfNotExists, javaProgramsTable.schema.createIfNotExists, javaClassesTable.schema.createIfNotExists,
       javaMethodsTable.schema.createIfNotExists, javaInvocationsTable.schema.createIfNotExists, javaFieldAccessesTable.schema.createIfNotExists)
 
     val setupFuture = db.run(setupAction)

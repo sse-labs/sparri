@@ -5,6 +5,19 @@ import slick.jdbc.PostgresProfile.api._
 
 object JavaDefinitions {
 
+  type JavaProgramRepr = (Long, String)
+
+  class JavaPrograms(tag: Tag) extends Table[JavaProgramRepr](tag, "javaprograms"){
+    def id: Rep[Long] = column[Long]("ID", O.PrimaryKey)
+
+    def publicationDate: Rep[String] = column[String]("PUB_DATE")
+
+    override def * : ProvenShape[JavaProgramRepr] = (id, publicationDate)
+
+    def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
+      foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
+  }
+
   type JavaClassRepr = (Long, String, Option[String], String, Boolean, Boolean, Boolean)
 
   class JavaClasses(tag: Tag) extends Table[JavaClassRepr](tag, "javaclasses"){

@@ -46,7 +46,7 @@ package object analyses {
   }
 
   def toObjectModel(project: Project[URL], ident: String = "org.anon.test:1.0.0", loadClassContents: Boolean = true): JavaProgram = {
-    OPALJavaConverter.convertProgram(ident, "<default>", project.allClassFiles.toList, loadClassContents)
+    OPALJavaConverter.convertProgram(ident, "<default>", project.allClassFiles.toList, "<NONE>", loadClassContents)
   }
 
   // Use the following code to refer to java fixtures that are located in the fixtures-java directory and compiled to the

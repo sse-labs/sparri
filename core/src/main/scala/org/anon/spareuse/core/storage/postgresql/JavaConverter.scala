@@ -1,7 +1,7 @@
 package org.anon.spareuse.core.storage.postgresql
 
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaLibrary, JavaMethod, JavaNewInstanceStatement, JavaPackage, JavaProgram}
-import org.anon.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaFieldAccessRepr, JavaInvocationRepr, JavaMethodRepr}
+import org.anon.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaFieldAccessRepr, JavaInvocationRepr, JavaMethodRepr, JavaProgramRepr}
 import org.anon.spareuse.core.utils.fromHex
 
 object JavaConverter {
@@ -10,9 +10,9 @@ object JavaConverter {
 
   def toLib(repr: SoftwareEntityRepr): JavaLibrary = new JavaLibrary(repr.name, repr.repository)
 
-  def toProgram(repr: SoftwareEntityRepr): JavaProgram = {
+  def toProgram(repr: SoftwareEntityRepr, programData: JavaProgramRepr): JavaProgram = {
     val hashedBytes: Array[Byte] = repr.hexHash.map(fromHex).getOrElse(Array.empty)
-    new JavaProgram(repr.name, repr.name, repr.fqn, repr.repository, hashedBytes)
+    new JavaProgram(repr.name, repr.name, repr.fqn, repr.repository, programData._2, hashedBytes)
   }
 
   def toPackage(repr: SoftwareEntityRepr): JavaPackage = new JavaPackage(repr.name, repr.fqn, repr.repository)

@@ -28,14 +28,14 @@ object SoftwareEntityTestDataFactory {
 
 
   def fullProgram(gav: String): JavaProgram = {
-    JavaEntities.buildProgram(gav)
+    JavaEntities.buildProgram(gav, "mvn", "<NONE>")
   }
 
   def fullMethodEntity(gav: String, packageName: String, className: String, methodName: String, returnType: String = "String", paramTypeNames: Seq[String] = Seq.empty): JavaMethod = {
     assert(gav.count(_ == ':') == 2)
 
     val lib = JavaEntities.buildLibrary(gav.substring(0, gav.lastIndexOf(':')))
-    val prog = JavaEntities.buildProgramFor(lib, gav)
+    val prog = JavaEntities.buildProgramFor(lib, gav, "<NONE>")
     val pack = JavaEntities.buildPackageFor(prog, packageName)
     val classObj = JavaEntities.buildClassFor(pack,
       className,
