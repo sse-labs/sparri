@@ -36,6 +36,7 @@ class PostgresDataAccessor extends DataAccessor {
   private lazy val db = Database.forConfig("spa-reuse.postgres")
 
   private val entitiesTable = TableQuery[SoftwareEntities]
+  private val javaProgramsTable = TableQuery[JavaPrograms] //TODO: USe
   private val javaClassesTable = TableQuery[JavaClasses]
   private val javaMethodsTable = TableQuery[JavaMethods]
   private val javaInvocationsTable = TableQuery[JavaInvocationStatements]
@@ -55,7 +56,7 @@ class PostgresDataAccessor extends DataAccessor {
   private lazy val idReturningResultTable = analysisResultsTable returning analysisResultsTable.map(_.id)
 
   override def initializeEntityTables(): Unit = {
-    val setupAction = DBIO.seq(entitiesTable.schema.createIfNotExists, javaClassesTable.schema.createIfNotExists,
+    val setupAction = DBIO.seq(entitiesTable.schema.createIfNotExists, javaProgramsTable.schema.createIfNotExists, javaClassesTable.schema.createIfNotExists,
       javaMethodsTable.schema.createIfNotExists, javaInvocationsTable.schema.createIfNotExists, javaFieldAccessesTable.schema.createIfNotExists)
 
     val setupF = db.run(setupAction)
@@ -371,6 +372,13 @@ class PostgresDataAccessor extends DataAccessor {
     Await.result(queryF, simpleQueryTimeout)
   }
 
+  private def getProgramTableData(idsToRetrieve: Seq[Long]): Seq[JavaProgramRepr] = {
+    if(idsToRetrieve.isEmpty) return Seq.empty
+    val queryF = db.run(javaProgramsTable.filter(jp => jp.id inSet idsToRetrieve).result)
+
+    Await.result(queryF, simpleQueryTimeout)
+  }
+
   private def getClassTableData(idsToRetrieve: Seq[Long]): Seq[JavaClassRepr] = {
     if (idsToRetrieve.isEmpty) return Seq.empty
     val queryF = db.run(javaClassesTable.filter(jc => jc.id inSet idsToRetrieve).result)
@@ -404,6 +412,7 @@ class PostgresDataAccessor extends DataAccessor {
 
   private def buildEntitiesIdMap(reprs: Seq[SoftwareEntityRepr]): Map[Long, SoftwareEntityData] = {
     //Retrieve all data from extension tables
+    val allProgramsData: Map[Long, JavaProgramRepr] = getProgramTableData(reprs.filter(_.kindId == SoftwareEntityKind.Program.id).map(_.id)).map(r => (r._1, r)).toMap
     val allClassesData: Map[Long, JavaClassRepr] = getClassTableData(reprs.filter(repr => repr.kindId == SoftwareEntityKind.Class.id).map(_.id)).map(r => (r._1, r)).toMap
     val allMethodsData: Map[Long, JavaMethodRepr] = getMethodTableData(reprs.filter(repr => repr.kindId == SoftwareEntityKind.Method.id).map(_.id)).map(r => (r._1, r)).toMap
     val allInvokeStmtData: Map[Long, JavaInvocationRepr] = getInvocationTableData(reprs.filter(repr => repr.kindId == SoftwareEntityKind.InvocationStatement.id).map(_.id)).map(r => (r._1, r)).toMap
@@ -412,7 +421,7 @@ class PostgresDataAccessor extends DataAccessor {
     reprs.map { repr =>
       val entityObj = SoftwareEntityKind.fromId(repr.kindId) match {
         case SoftwareEntityKind.Library => JavaConverter.toLib(repr)
-        case SoftwareEntityKind.Program => JavaConverter.toProgram(repr)
+        case SoftwareEntityKind.Program => JavaConverter.toProgram(repr, allProgramsData(repr.id))
         case SoftwareEntityKind.Package => JavaConverter.toPackage(repr)
         case SoftwareEntityKind.Class => JavaConverter.toClass(repr, allClassesData(repr.id))
         case SoftwareEntityKind.Method => JavaConverter.toMethod(repr, allMethodsData(repr.id))

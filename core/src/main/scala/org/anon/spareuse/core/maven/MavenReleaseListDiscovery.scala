@@ -43,7 +43,8 @@ trait MavenReleaseListDiscovery {
     val versionListUri: URI = MavenRepoUri.resolve(relativeVersionListUrl(groupId, artifactId))
 
     downloader.downloadFromUri(versionListUri.toString) match {
-      case Success(versionListInputStream) =>
+      case Success(downloadResult) =>
+        val versionListInputStream = downloadResult.contentStream
         val xml = XML.load(versionListInputStream)
         versionListInputStream.close()
 

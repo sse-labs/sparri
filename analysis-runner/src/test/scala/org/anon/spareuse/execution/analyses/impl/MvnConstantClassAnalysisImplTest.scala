@@ -13,7 +13,7 @@ class MvnConstantClassAnalysisImplTest extends AnyFlatSpec with must.Matchers {
 
   private val analysis = new MvnConstantClassAnalysisImpl
   private val sampleLibrary = buildLibrary("org.springframework:spring-jmx")
-  private val sampleProgram = buildProgramFor(sampleLibrary, "org.springframework:spring-jmx:2.0.5")
+  private val sampleProgram = buildProgramFor(sampleLibrary, "org.springframework:spring-jmx:2.0.5", "<NONE>")
 
   private val expectedResultFormat = MapResultFormat(formats.StringFormat,
     ObjectResultFormat(Set(NamedPropertyFormat("noOfOccurrences", NumberFormat), NamedPropertyFormat("noOfUniqueOccurrences", NumberFormat))))
@@ -29,7 +29,7 @@ class MvnConstantClassAnalysisImplTest extends AnyFlatSpec with must.Matchers {
 
   "The constant class analysis" must "fail for corrupt inputs" in {
     val lib = buildLibrary("abc:def")
-    val prog = buildProgramFor(lib, "abc:def:1.0")
+    val prog = buildProgramFor(lib, "abc:def:1.0", "<NONE>")
 
     val samplePackage = buildPackageFor(prog, "test1")
     val samplePackage2 = buildPackageFor(prog, "test2")
@@ -46,9 +46,9 @@ class MvnConstantClassAnalysisImplTest extends AnyFlatSpec with must.Matchers {
   "The constant class analysis" must "calculate valid results" in {
     val lib = buildLibrary("abc:def")
 
-    val prog1 = buildProgramFor(lib, "abc:def:1.0")
-    val prog2 = buildProgramFor(lib, "abc:def:1.1")
-    val prog3 = buildProgramFor(lib, "abc:def:1.2")
+    val prog1 = buildProgramFor(lib, "abc:def:1.0", "<NONE>")
+    val prog2 = buildProgramFor(lib, "abc:def:1.1", "<NONE>")
+    val prog3 = buildProgramFor(lib, "abc:def:1.2", "<NONE>")
 
     val samplePackage1 = buildPackageFor(prog1, "test1")
     val samplePackage2 = buildPackageFor(prog2, "test1")

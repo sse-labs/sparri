@@ -12,19 +12,19 @@ object JavaEntities {
 
   def buildLibrary(ga: String, repoIdent: String = "mvn"): JavaLibrary = new JavaLibrary(ga, repoIdent)
 
-  def buildProgram(gav: String, repoIdent: String = "mvn", hash: Array[Byte] = Array.empty): JavaProgram = {
-    buildProgramFor(buildLibrary(gav.substring(0, gav.lastIndexOf(":")), repoIdent), gav, hash)
+  def buildProgram(gav: String, repoIdent: String = "mvn", uploadTime: String, hash: Array[Byte] = Array.empty): JavaProgram = {
+    buildProgramFor(buildLibrary(gav.substring(0, gav.lastIndexOf(":")), repoIdent), gav, uploadTime, hash)
   }
 
-  def buildProgramFor(jl: JavaLibrary, gav: String, hash: Array[Byte] = Array.empty): JavaProgram = {
+  def buildProgramFor(jl: JavaLibrary, gav: String, uploadTime: String, hash: Array[Byte] = Array.empty): JavaProgram = {
     val ident = jl.uid + "!" + gav
-    val jp = new JavaProgram(gav, gav, ident, jl.repository, hash)
+    val jp = new JavaProgram(gav, gav, ident, jl.repository, uploadTime, hash)
     jp.setParent(jl)
     jp
   }
 
-  def buildPackage(gav: String, packageName: String, repoIdent: String = "mvn"): JavaPackage = {
-    buildPackageFor(buildProgram(gav, repoIdent), packageName)
+  def buildPackage(gav: String, packageName: String, repoIdent: String, uploadTime: String): JavaPackage = {
+    buildPackageFor(buildProgram(gav, repoIdent, uploadTime), packageName)
   }
 
   def buildPackageFor(jp: JavaProgram, packageName: String): JavaPackage = {
@@ -34,8 +34,8 @@ object JavaEntities {
     jpa
   }
 
-  def buildClass(gav: String, packageName: String, className: String, fqn: String, isInterface:Boolean, isFinal:Boolean, isAbstract:Boolean, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, repoIdent: String = "mvn", hash: Array[Byte] = Array.empty): JavaClass = {
-    buildClassFor(buildPackage(gav, packageName, repoIdent), className, fqn, isInterface, isFinal, isAbstract, superTypeFqn, interfaceFqns, hash)
+  def buildClass(gav: String, packageName: String, className: String, fqn: String, isInterface:Boolean, isFinal:Boolean, isAbstract:Boolean, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, jarUploadTime: String = "<NONE>", repoIdent: String = "mvn", hash: Array[Byte] = Array.empty): JavaClass = {
+    buildClassFor(buildPackage(gav, packageName, repoIdent, jarUploadTime), className, fqn, isInterface, isFinal, isAbstract, superTypeFqn, interfaceFqns, hash)
   }
 
   def buildClassFor(jp: JavaPackage, className: String, fqn: String, isInterface: Boolean, isFinal: Boolean, isAbstract: Boolean, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, hash: Array[Byte] = Array.empty): JavaClass = {
@@ -79,6 +79,7 @@ object JavaEntities {
                     val programIdent: String,
                     programUid: String,
                     repositoryIdent: String,
+                    uploadTime: String,
                     hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(programName, programIdent, programUid, repositoryIdent, Some(hashedBytes)) {
 
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Program
@@ -87,6 +88,8 @@ object JavaEntities {
 
     val ga: String = if(isGAV) programName.substring(0, programName.lastIndexOf(":")) else programName
     val v: String = if(isGAV) programName.substring(programName.lastIndexOf(":") + 1) else programName
+
+    val publishedAt: String = uploadTime
 
     def getPackages: Set[JavaPackage] = getChildren.map(_.asInstanceOf[JavaPackage])
 

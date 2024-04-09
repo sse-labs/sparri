@@ -19,6 +19,7 @@ object OPALJavaConverter {
   def convertProgram(programIdent: String,
                      repositoryIdent: String,
                      opalClasses: List[ClassFile],
+                     jarUploadTime: String,
                      loadClassContents: Boolean = true): JavaProgram = {
 
     val classHashes = opalClasses.map(cf => (cf, hashClass(cf))).toMap
@@ -26,7 +27,7 @@ object OPALJavaConverter {
     // Program hash is (for now) defined as the hash of all class hashes (this excludes resources / manifest changes)
     val programHash = hashBytes(classHashes.values.toArray.flatten)
 
-    val program = JavaEntities.buildProgram(programIdent, repositoryIdent, programHash)
+    val program = JavaEntities.buildProgram(programIdent, repositoryIdent, jarUploadTime, programHash)
 
     val packages = opalClasses
       .map(_.thisType.packageName)

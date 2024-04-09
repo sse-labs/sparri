@@ -9,9 +9,11 @@ import scala.util.Try
 
 class HttpDownloader {
 
+  case class StreamWithHeaders(contentStream: InputStream, headers: Map[String, String])
+
   private val client = HttpClients.createDefault()
 
-  def downloadFromUri(requestedUri: String): Try[InputStream] = {
+  def downloadFromUri(requestedUri: String, headersToRead: List[String] = List.empty): Try[StreamWithHeaders] = {
 
     val getRequest: HttpGet = new HttpGet(requestedUri)
 
@@ -24,9 +26,14 @@ class HttpDownloader {
         throw  HttpDownloadException(closeableResponse.getStatusLine.getStatusCode, requestedUri, s"Non-Success status while attempting to download.")
 
       val entityInputStream = closeableResponse.getEntity.getContent
+
+      val responseHeaderMap = headersToRead.flatMap { headerName =>
+        closeableResponse.getAllHeaders.find( h => h.getName == headerName).map( h => (headerName, h.getValue))
+      }.toMap
+
       val entityBytes = LazyList.continually(entityInputStream.read).takeWhile(_ != -1).map(_.toByte).toArray
 
-      new ByteArrayInputStream(entityBytes)
+      StreamWithHeaders(new ByteArrayInputStream(entityBytes), responseHeaderMap)
     }
 
     if(closeableResponse != null) closeableResponse.close()
