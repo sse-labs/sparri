@@ -16,8 +16,7 @@ import org.anon.spareuse.mvnem.storage.EntityMinerStorageAdapter
 import org.anon.spareuse.mvnem.storage.impl.PostgresStorageAdapter
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 import scala.language.implicitConversions
 import scala.util.{Failure, Success, Try}
 
@@ -31,7 +30,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
   private final val downloader = new MavenJarDownloader()
   private final val opalProjectHelper = new OPALProjectHelper()
-  private final val storageAdapter = new PostgresStorageAdapter()(streamMaterializer.executionContext)
+  private final val storageAdapter: EntityMinerStorageAdapter = new PostgresStorageAdapter()(streamMaterializer.executionContext)
 
   private final val analysisQueueWriter = new MqMessageWriter(configuration.toWriterConfig)
 
@@ -134,7 +133,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
           .programsToStore
           .map{ jp =>
             storageAdapter
-              .storeJavaProgramF(jp)
+              .storeJavaProgram(jp)
               .andThen {
                 case Success(jpName) =>
                   log.info(s"Successfully stored index model for $jpName")
