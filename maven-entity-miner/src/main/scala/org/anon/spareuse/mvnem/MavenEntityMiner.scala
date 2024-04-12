@@ -1,5 +1,6 @@
 package org.anon.spareuse.mvnem
 
+import akka.stream.OverflowStrategy
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.{Sink, Source}
 import spray.json.{enrichAny, enrichString}
@@ -30,7 +31,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
   private final val downloader = new MavenJarDownloader()
   private final val opalProjectHelper = new OPALProjectHelper()
-  private final val storageAdapter: EntityMinerStorageAdapter = new PostgresStorageAdapter()(streamMaterializer.executionContext)
+  private final val storageAdapter = new PostgresStorageAdapter()(streamMaterializer.executionContext)
 
   private final val analysisQueueWriter = new MqMessageWriter(configuration.toWriterConfig)
 
@@ -49,18 +50,25 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
   override protected def buildSource(): Source[String, NotUsed] = createMqMessageSource(configuration.toReadConfig, abortOnEmptyQueue = false)
 
+  case class StorageTask(programsToStore: Set[JavaProgram], command: MinerCommand)
+
   override protected def buildStreamPipeline(source: Source[String, NotUsed]): Future[Done] = {
     source
-      .map(getIdentifiersForMessage)
+      .map(messageToCommand)
+      .buffer(20, OverflowStrategy.backpressure)
+      .mapAsync(2)(transformPrograms)
+      .buffer(3, OverflowStrategy.backpressure)
       .runWith(storeAllEntitiesSink)(streamMaterializer)
   }
 
-  private def getIdentifiersForMessage(message: String): Set[MavenIdentifier] = {
-
-    val command = Try(message.parseJson.convertTo[MinerCommand]) match {
+  private def messageToCommand(message: String): MinerCommand = {
+    Try(message.parseJson.convertTo[MinerCommand]) match {
       case Success(mc) => mc
-      case Failure(_) => MinerCommand(Set(message), None) //This is convenience to support old queue format
+      case Failure(_) => MinerCommand(Set(message), None) //This is convenience to support old queue format, in the future we may want to fail here
     }
+  }
+
+  private def getIdentifiersForCommand(command: MinerCommand): Set[MavenIdentifier] = {
 
     val allIdentifiers = command.entityReferences.map(ref => (ref, messageToIdentifiers(ref))).flatMap {
       case (ref, Some(identifiers)) =>
@@ -74,9 +82,37 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     val allNewIdentifiers = allIdentifiers.filterNot(i => storageAdapter.hasProgram(i.toString))
 
     if(allIdentifiers.nonEmpty && allNewIdentifiers.isEmpty)
-      log.info(s"All programs already indexed for message $message")
+      log.info(s"All programs already indexed for command ${command.toString}")
 
     allNewIdentifiers
+  }
+
+
+  def transformPrograms(minerCommand: MinerCommand): Future[StorageTask] = Future {
+
+    // Get all GAVs for the message
+    val messageIdentifiers = getIdentifiersForCommand(minerCommand)
+
+    val programRepresentations = messageIdentifiers.flatMap { identifier =>
+      log.info(s"Start building index model for ${identifier.toString} ... ")
+
+      Try {
+        downloadJar(identifier).map{ jarFile =>
+          val representation = transform(jarFile)
+          log.info(s"Done building index model for ${identifier.toString}.")
+          representation
+        }
+      } match {
+        case Success(repOpt) => repOpt
+        case Failure(ex) =>
+          log.error(s"Failed to build index model for ${identifier.toString}", ex)
+          None
+      }
+    }
+
+    opalProjectHelper.freeOpalResources()
+
+    StorageTask(programRepresentations, minerCommand)
   }
 
   def downloadJar(identifier: MavenIdentifier): Option[MavenOnlineJar] = {
@@ -90,38 +126,34 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     }
   }
 
-  def storeAllEntitiesSink: Sink[Set[MavenIdentifier], Future[Done]] = {
-    Sink.foreach { identifiers =>
+  def storeAllEntitiesSink: Sink[StorageTask, Future[Done]] = {
+    Sink.foreachAsync(configuration.storageParallel) { storageTask =>
 
-      var cnt = 0
-      var err = 0
-
-      identifiers.foreach { identifier =>
-
-        log.info(s"[$cnt/${identifiers.size}] Start processing ${identifier.toString} ... ")
-
-        Try{
-          downloadJar(identifier) match {
-            case Some(jarFile) =>
-              val representation = transform(jarFile)
-              log.info(s"[$cnt/${identifiers.size}] Starting to store program for ${identifier.toString} ... ")
-              storageAdapter.storeJavaProgram(representation).get
-            case None =>
-              // Do nothing, this is a GAV without a JAR
+      Future.sequence {
+        storageTask
+          .programsToStore
+          .map{ jp =>
+            storageAdapter
+              .storeJavaProgramF(jp)
+              .andThen {
+                case Success(jpName) =>
+                  log.info(s"Successfully stored index model for $jpName")
+                case Failure(ex) =>
+                  log.error(s"Failed to store program.", ex)
+              }
           }
-        } match {
-          case Success(_) =>
-            log.info(s"[$cnt/${identifiers.size}] Done storing program for ${identifier.toString}.")
-            cnt += 1
-          case Failure(ex) =>
-            log.error(s"[$cnt/${identifiers.size}] Failed to handle identifier ${identifier.toString}", ex)
-            storageAdapter.ensureNotPresent(s"${identifier.toGA}!${identifier.toString}")
-            cnt += 1
-            err += 1
+      }.map { _ =>
+        if (storageTask.command.analysisToTrigger.isDefined) {
+          Try {
+            analysisQueueWriter.appendToQueue(storageTask.command.analysisToTrigger.get.toJson.compactPrint)
+          } match {
+            case Success(_) =>
+              log.info(s"Successfully queued follow-up analysis after indexing finished")
+            case Failure(ex) =>
+              log.error(s"Failed to queue follow-up analysis for command ${storageTask.command.toJson.compactPrint}", ex)
+          }
         }
       }
-
-      log.info(s"Processed $cnt identifiers for message, got $err errors")
     }
   }
 
@@ -207,7 +239,6 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     }
 
     jarFile.content.close()
-    opalProjectHelper.freeOpalResources()
 
     result
   }

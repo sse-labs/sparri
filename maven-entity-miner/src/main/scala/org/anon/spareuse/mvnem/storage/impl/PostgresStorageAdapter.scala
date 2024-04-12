@@ -7,7 +7,7 @@ import org.anon.spareuse.core.storage.postgresql.{SoftwareEntities, SoftwareEnti
 import org.anon.spareuse.core.utils.toHex
 import org.anon.spareuse.mvnem.storage.EntityMinerStorageAdapter
 
-import scala.util.Try
+import scala.util.{Failure, Success, Try}
 import slick.jdbc.PostgresProfile.api._
 
 import scala.concurrent.{Await, ExecutionContext, Future}
@@ -60,37 +60,120 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
     }
   }
 
-  override def storeJavaProgram(jp: JavaProgram): Try[Unit] = Try {
+  def storeJavaProgramF(jp: JavaProgram): Future[String] = {
 
-    // Create parent if it does not already exist, get uid of parent entity
-    val parentIdOpt = jp.getParent.map(p => {
-      if (hasEntityQualifier(p.uid)) {
-        getIdForQualifier(p.uid)
-      } else {
-        storeDataAndGetId(p, None)
+    // Query for parent, return id if present, create entry and return id otherwise
+    val parentIdOptF = jp.getParent.map { parent =>
+      idForQualifierF(parent.uid).flatMap {
+        case Some(id) => Future(id)
+        case None => storeDataAndGetIdF(parent, None)
       }
-    })
-
-    // Programs now have a separate additional table, so they need two inserts
-    val programId = storeDataAndGetId(jp, parentIdOpt)
-    Await.result(db.run(javaProgramsTable += (programId, jp.publishedAt)), 10.seconds)
-
-    def storeEntitiesTimed(entities: Set[SoftwareEntityData], parentIdLookup: Map[String, Long], batchSize: Int, kindName: String): Map[String, Long] = {
-      val timeout = Math.max((entities.size / 100) * 10, 30).seconds // 10 seconds for every 100 entities, at least 30 seconds
-      val start = System.currentTimeMillis()
-      val result = Await.result(insertEntitiesBatchedWithMapReturn(entities, parentIdLookup, batchSize), timeout)
-      val time = System.currentTimeMillis() - start
-      log.debug(s"Successfully stored ${entities.size} entities of kind $kindName for program ${jp.name} in $time ms.")
-      result
     }
 
-    val packageLookup = storeEntitiesTimed(jp.getChildren, Map(jp.uid -> programId), 30, "Package")
+    // Chain creation of actual program entity and its custom table entry to parent id future
+    val programIdF = (if (parentIdOptF.isDefined) parentIdOptF.get.flatMap(pId => storeDataAndGetIdF(jp, Some(pId))) else storeDataAndGetIdF(jp, None))
+      .flatMap { pId =>
+        db.run(javaProgramsTable += (pId, jp.publishedAt)).map(_ => pId)
+      }
+
+    val allPackages = jp.getChildren
     val allClasses = jp.getChildren.flatMap(_.getChildren)
-    val classLookup = storeEntitiesTimed(allClasses, packageLookup, 50, "Class")
     val allMethods = allClasses.flatMap(_.getChildren)
-    val methodLookup = storeEntitiesTimed(allMethods, classLookup, 50, "Methods")
     val allStatements = allMethods.flatMap(_.getChildren)
-    storeEntitiesTimed(allStatements, methodLookup, 100, "Statements")
+
+    def batchSizeFor(set: Set[SoftwareEntityData], suggestedSize: Int): Int = {
+      var currSize = suggestedSize
+      while (set.size / currSize > 300) {
+        currSize = currSize * 15 / 10
+      }
+      currSize
+    }
+
+    val insertionFuture = programIdF
+      .flatMap { pId =>
+        insertEntitiesBatchedWithMapReturnF(allPackages, Map(jp.uid -> pId), batchSizeFor(allPackages, 30))
+      }
+      .flatMap { pIds =>
+        insertEntitiesBatchedWithMapReturnF(allClasses, pIds, batchSizeFor(allClasses, 50))
+          .andThen {
+            case Success(_) =>
+              log.debug(s"Successfully stored ${allClasses.size} classes for program ${jp.name}.")
+          }
+      }
+      .flatMap { pIds =>
+        insertEntitiesBatchedWithMapReturnF(allMethods, pIds, batchSizeFor(allMethods, 50))
+          .andThen {
+            case Success(_) =>
+              log.debug(s"Successfully stored ${allMethods.size} methods for program ${jp.name}.")
+          }
+      }
+      .flatMap { pIds =>
+        insertEntitiesBatchedWithMapReturnF(allStatements, pIds, batchSizeFor(allStatements, 200))
+          .andThen {
+            case Success(_) =>
+              log.debug(s"Successfully stored ${allStatements.size} statements for program ${jp.name}.")
+          }
+      }
+    insertionFuture.map(_ => jp.programName)
+  }
+
+  override def storeJavaProgram(jp: JavaProgram): Try[Unit] = Try {
+
+    // Query for parent, return id if present, create entry and return id otherwise
+    val parentIdOptF = jp.getParent.map { parent =>
+      idForQualifierF(parent.uid).flatMap {
+        case Some(id) => Future(id)
+        case None => storeDataAndGetIdF(parent, None)
+      }
+    }
+
+    // Chain creation of actual program entity and its custom table entry to parent id future
+    val programIdF = (if(parentIdOptF.isDefined) parentIdOptF.get.flatMap(pId => storeDataAndGetIdF(jp, Some(pId))) else storeDataAndGetIdF(jp, None))
+      .flatMap { pId =>
+        db.run(javaProgramsTable += (pId, jp.publishedAt)).map(_ => pId)
+      }
+
+    val allPackages = jp.getChildren
+    val allClasses = jp.getChildren.flatMap(_.getChildren)
+    val allMethods = allClasses.flatMap(_.getChildren)
+    val allStatements = allMethods.flatMap(_.getChildren)
+
+    def batchSizeFor(set: Set[SoftwareEntityData], suggestedSize: Int): Int = {
+      var currSize = suggestedSize
+      while(set.size / currSize > 300) { currSize = currSize * 15 / 10 }
+      currSize
+    }
+
+    val insertionFuture = programIdF
+      .flatMap{ pId =>
+        insertEntitiesBatchedWithMapReturnF(allPackages, Map(jp.uid -> pId), batchSizeFor(allPackages, 30))
+      }
+      .flatMap{ pIds =>
+        insertEntitiesBatchedWithMapReturnF(allClasses, pIds, batchSizeFor(allClasses, 50))
+          .andThen {
+            case Success(_) =>
+              log.debug(s"Successfully stored ${allClasses.size} classes for program ${jp.name}.")
+          }
+      }
+      .flatMap{ pIds =>
+        insertEntitiesBatchedWithMapReturnF(allMethods, pIds, batchSizeFor(allMethods, 50))
+          .andThen {
+            case Success(_) =>
+              log.debug(s"Successfully stored ${allMethods.size} methods for program ${jp.name}.")
+          }
+      }
+      .flatMap{ pIds =>
+        insertEntitiesBatchedWithMapReturnF(allStatements, pIds, batchSizeFor(allStatements, 200))
+          .andThen{
+            case Success(_) =>
+              log.debug(s"Successfully stored ${allStatements.size} statements for program ${jp.name}.")
+          }
+      }
+
+    val totalEntities = allPackages.size + allClasses.size + allMethods.size + allStatements.size + 1
+    val timeout = Math.max( (totalEntities / 100) * 10, 30).seconds // 10 seconds for every 100 entities, at least 30 seconds
+
+    Await.ready(insertionFuture, timeout)
 
   }
 
@@ -176,7 +259,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
     val setupFuture = db.run(setupAction)
 
-    Await.ready(setupFuture, 20.seconds)
+    Await.ready(setupFuture, 60.seconds)
 
     val s = db.createSession()
     val autoCommit = s.conn.getAutoCommit
@@ -190,5 +273,41 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   override def hasEntityQualifier(fq: String): Boolean = {
     val queryFuture = db.run(entitiesTable.filter(row => row.qualifier === fq).exists.result)
     Await.result(queryFuture, 10.seconds)
+  }
+
+  private def hasEntityQualifierF(fq:String): Future[Boolean] = {
+    db.run(entitiesTable.filter(e => e.qualifier === fq).exists.result)
+  }
+
+  private def idForQualifierF(fq: String): Future[Option[Long]] = {
+    db.run(entitiesTable.filter(row => row.qualifier === fq).take(1).map(_.id).result).map(_.headOption)
+  }
+
+  private def storeDataAndGetIdF(data: SoftwareEntityData, parentIdOpt: Option[Long]): Future[Long] = {
+    val res = idReturningEntitiesTable +=
+      SoftwareEntityRepr(0, data.name, data.uid, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash)
+    db.run(res)
+  }
+
+  private[storage] def insertEntitiesBatchedWithMapReturnF(entities: Set[SoftwareEntityData], parentIdLookup: Map[String, Long], batchSize: Int): Future[Map[String, Long]] = {
+    val entityReprs = entities.map(e => toEntityRepr(e, e.getParent.flatMap(eP => parentIdLookup.get(eP.uid))))
+
+    batchedEntityInsertWithMapReturn(entityReprs, batchSize).flatMap { theMap =>
+      entities.headOption match {
+        case Some(_: JavaClass) =>
+          val allClasses = entities.collect { case jc: JavaClass => toClassRepr(jc, theMap(jc.uid)) }.toSeq
+          batchedClassInsert(allClasses, batchSize).map(_ => theMap)
+        case Some(_: JavaMethod) =>
+          val allMethods = entities.collect { case jm: JavaMethod => toMethodRepr(jm, theMap(jm.uid)) }.toSeq
+          batchedMethodInsert(allMethods, batchSize).map(_ => theMap)
+        case Some(_: JavaStatement) =>
+          val allInvocations = entities.collect { case jis: JavaInvokeStatement => toInvocationRepr(jis, theMap(jis.uid)) }.toSeq
+          val allFieldAccesses = entities.collect { case jfas: JavaFieldAccessStatement => toFieldAccessRepr(jfas, theMap(jfas.uid)) }.toSeq
+          batchedInvocationInsert(allInvocations, batchSize).flatMap(_ => batchedFieldAccessInsert(allFieldAccesses, batchSize)).map(_ => theMap)
+        case _ =>
+          // Do nothing if there are no entities to insert or the entity kind does not need an extra table insert
+          Future(theMap)
+      }
+    }
   }
 }
