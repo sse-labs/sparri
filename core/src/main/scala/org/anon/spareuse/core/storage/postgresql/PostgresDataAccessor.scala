@@ -20,13 +20,14 @@ import spray.json.JsonWriter
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
-import scala.concurrent.Await
+import scala.annotation.switch
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.DurationInt
 import scala.util.{Failure, Success, Try}
 
-class PostgresDataAccessor extends DataAccessor {
+class PostgresDataAccessor(implicit executor: ExecutionContext) extends DataAccessor {
 
-  protected val log: Logger = LoggerFactory.getLogger(getClass())
+  protected val log: Logger = LoggerFactory.getLogger(getClass)
 
   private val idToIdentifierCache = new ObjectCache[Long,String](maxEntries = 10000)
 
@@ -36,7 +37,7 @@ class PostgresDataAccessor extends DataAccessor {
   private lazy val db = Database.forConfig("spa-reuse.postgres")
 
   private val entitiesTable = TableQuery[SoftwareEntities]
-  private val javaProgramsTable = TableQuery[JavaPrograms] //TODO: USe
+  private val javaProgramsTable = TableQuery[JavaPrograms]
   private val javaClassesTable = TableQuery[JavaClasses]
   private val javaMethodsTable = TableQuery[JavaMethods]
   private val javaInvocationsTable = TableQuery[JavaInvocationStatements]
@@ -86,50 +87,159 @@ class PostgresDataAccessor extends DataAccessor {
     Await.result(queryF, simpleQueryTimeout)
   }
 
-  override def getEntity(ident: String,
-                         kind: SoftwareEntityKind,
-                         resolutionScope: SoftwareEntityKind): Try[SoftwareEntityData] = {
+  override def getEntity(ident: String, resolutionScope: SoftwareEntityKind): Future[SoftwareEntityData] = {
 
-    getEntityRepr(ident, kind).flatMap { rootEntityRepr =>
+    def getReprFor(ident: String): Future[SoftwareEntityRepr] = {
+      db.run(entitiesTable.filter(_.qualifier === ident).take(1).result).map(_.head)
+    }
 
-      val parentOptTry = getFullyResolvedParent(rootEntityRepr)
+    def getEntitiesWhereParentIn(parentIds: Seq[Long]): Future[Seq[SoftwareEntityRepr]] = {
+      db.run(entitiesTable.filter(_.parentID inSet parentIds).result)
+    }
 
-      if(parentOptTry.isFailure) return Failure(parentOptTry.failed.get)
+    def getAllParentEntities(currentEntity: SoftwareEntityRepr): Future[Seq[SoftwareEntityRepr]] = {
 
-      // Resolve child entities only if needed
-      val allChildEntities = if (SoftwareEntityKind.isLessSpecific(kind, resolutionScope))
-        getAllChildEntitiesOf(rootEntityRepr.id, resolutionScope) else Success(Seq.empty)
-
-      allChildEntities match {
-        case Success(childEntities) =>
-          buildEntityObjectTree(Seq(rootEntityRepr) ++ childEntities, rootEntityRepr.id).map { finalEntity =>
-            if(parentOptTry.get.isDefined) finalEntity.setParent(parentOptTry.get.get)
-
-            finalEntity
+      if(currentEntity.parentId.isDefined){
+        db
+          .run(entitiesTable.filter(_.id === currentEntity.parentId.get).take(1).result)
+          .map(_.head)
+          .flatMap{ parentRepr =>
+            getAllParentEntities(parentRepr).map( result => result ++ Seq(parentRepr) )
           }
-
-        case Failure(ex) =>
-          Failure(ex)
+      } else {
+        Future.successful(Seq.empty)
       }
     }
+
+
+    // Build Future that collects all entity representations of this entity's tree (parents and children)
+    val allEntityReprsAndRootEntityRepr =
+      getReprFor(ident) // Get the root element's representation
+        .flatMap { rootRepr =>
+
+          // Calculate how many levels (downwards, children) we have to resolve. Zero means we only resolve the level of the root entity
+          val currKindDepth = Math.min(rootRepr.kindId, 5)
+          val resolutionDepth = Math.min(resolutionScope.id, 5)
+          val levelsToResolve = Math.min(resolutionDepth - currKindDepth, 0)
+
+          // Start with a future that only contains the root element's representation (always resolved)
+          var currFuture = Future((Seq(rootRepr), Seq(rootRepr)))
+
+          // For each level to resolve: Chain an additional future that takes the new representations of the last level and looks for their children.
+          // Concat so that we end up with a set of all child representations for the given number of levels to resolve.
+          Range(0, levelsToResolve).foreach{ _ =>
+            currFuture = currFuture.flatMap { case (newEntities, allEntities) =>
+              getEntitiesWhereParentIn(newEntities.map(_.id)).map(childEntities => (childEntities, childEntities ++ allEntities))
+            }
+          }
+
+          // Chain a future that resolves all parent representations for the root element and add them to the set of all child representations
+          currFuture
+            .flatMap{ case (_, allEntities) =>
+              getAllParentEntities(rootRepr).map(allParents => (allParents ++ allEntities, rootRepr))
+            }
+        }
+
+    allEntityReprsAndRootEntityRepr
+      .flatMap { case (allRepresentations, rootRepresentation) =>
+        specializeAll(allRepresentations).map(allEntities => allEntities(rootRepresentation.id))
+      }
+
   }
 
-  private def getFullyResolvedParent(repr: SoftwareEntityRepr): Try[Option[SoftwareEntityData]] = Try {
 
-    def getReprById(id: Long): SoftwareEntityRepr = Await.result(db.run(entitiesTable.filter( e => e.id === id).take(1).result), simpleQueryTimeout).head
+  case class SpecificationTables(programT: Map[Long, JavaProgramRepr],
+                                 classT: Map[Long, JavaClassRepr],
+                                 methodT: Map[Long, JavaMethodRepr],
+                                 invocationT: Map[Long, JavaInvocationRepr],
+                                 fieldAccessT: Map[Long, JavaFieldAccessRepr]){
+    def withClasses(classes: Seq[JavaClassRepr]): SpecificationTables =
+      SpecificationTables(programT, classes.map(c => (c._1, c)).toMap, methodT, invocationT, fieldAccessT)
+
+    def withMethods(methods: Seq[JavaMethodRepr]): SpecificationTables =
+      SpecificationTables(programT, classT, methods.map(m => (m._1, m)).toMap, invocationT, fieldAccessT)
+
+    def withInvocations(invocations: Seq[JavaInvocationRepr]): SpecificationTables =
+      SpecificationTables(programT, classT, methodT, invocations.map(i => (i._1, i)).toMap, fieldAccessT)
+
+    def withFieldAccesses(fieldAccesses: Seq[JavaFieldAccessRepr]): SpecificationTables =
+      SpecificationTables(programT, classT, methodT, invocationT, fieldAccesses.map(f => (f._1, f)).toMap)
+  }
+
+  object SpecificationTables {
+    def fromPrograms(programs: Seq[JavaProgramRepr]): SpecificationTables =
+      SpecificationTables(programs.map(p => (p._1, p)).toMap, null, null, null, null)
+  }
+
+  private[storage] def getSpecificationTables(allRepresentations: Seq[SoftwareEntityRepr]): Future[SpecificationTables] = {
+    val allProgramIds = allRepresentations.filter(_.kindId == SoftwareEntityKind.Program.id).map(_.id).toSet
+    val allClassIds = allRepresentations.filter(_.kindId == SoftwareEntityKind.Class.id).map(_.id).toSet
+    val allMethodIds = allRepresentations.filter(_.kindId == SoftwareEntityKind.Method.id).map(_.id).toSet
+    val allInvocationIds = allRepresentations.filter(_.kindId == SoftwareEntityKind.InvocationStatement.id).map(_.id).toSet
+    val allFieldAccessIds = allRepresentations.filter(_.kindId == SoftwareEntityKind.FieldAccessStatement.id).map(_.id).toSet
+
+    db
+      .run(javaProgramsTable.filter(_.id inSet allProgramIds).result)
+      .map(SpecificationTables.fromPrograms)
+      .flatMap { specTables =>
+        db
+          .run(javaClassesTable.filter(_.id inSet allClassIds).result)
+          .map(specTables.withClasses)
+      }
+      .flatMap { specTables =>
+        db
+          .run(javaMethodsTable.filter(_.id inSet allMethodIds).result)
+          .map(specTables.withMethods)
+      }
+      .flatMap{ specTables =>
+        db
+          .run(javaInvocationsTable.filter(_.id inSet allInvocationIds).result)
+          .map(specTables.withInvocations)
+      }
+      .flatMap{ specTables =>
+        db
+          .run(javaFieldAccessesTable.filter(_.id inSet allFieldAccessIds).result)
+          .map(specTables.withFieldAccesses)
+      }
 
 
-    repr.parentId.map { parentId =>
-      val parentRepr = getReprById(parentId)
+  }
 
-      val parentParentOpt = getFullyResolvedParent(parentRepr).get
+  private[storage] def specializeAll(representations: Seq[SoftwareEntityRepr]): Future[Map[Long, SoftwareEntityData]] = {
+    getSpecificationTables(representations)
+      .map { specificationTables =>
 
-      val parentEntity = buildEntities(Seq(parentRepr)).head
+        val parentRelation = representations.map(r => (r.id, r.parentId)).toMap
 
-      if(parentParentOpt.isDefined) parentEntity.setParent(parentParentOpt.get)
+        val specializedEntityMap = representations.map { entityRepr =>
+          val specializedEntity = SoftwareEntityKind.fromId(entityRepr.kindId) match {
+            case SoftwareEntityKind.Library =>
+              JavaConverter.toLib(entityRepr)
+            case SoftwareEntityKind.Program =>
+              JavaConverter.toProgram(entityRepr, specificationTables.programT(entityRepr.id))
+            case SoftwareEntityKind.Package =>
+              JavaConverter.toPackage(entityRepr)
+            case SoftwareEntityKind.Class =>
+              JavaConverter.toClass(entityRepr, specificationTables.classT(entityRepr.id))
+            case SoftwareEntityKind.Method =>
+              JavaConverter.toMethod(entityRepr, specificationTables.methodT(entityRepr.id))
+            case SoftwareEntityKind.InvocationStatement =>
+              JavaConverter.toInvocation(entityRepr, specificationTables.invocationT(entityRepr.id))
+            case SoftwareEntityKind.FieldAccessStatement =>
+              JavaConverter.toFieldAccess(entityRepr, specificationTables.fieldAccessT(entityRepr.id))
+            case SoftwareEntityKind.NewInstanceStatement =>
+              JavaConverter.toNewInstanceCreation(entityRepr)
+          }
 
-      parentEntity
-    }
+          (entityRepr.id, specializedEntity)
+        }.toMap
+
+        parentRelation.filter(_._2.isDefined).foreach{ case (entityId, parentIdOpt) =>
+          specializedEntityMap(entityId).setParent(specializedEntityMap(parentIdOpt.get))
+        }
+
+        specializedEntityMap
+      }
   }
 
   override def getEntityKind(entityIdent: String): Try[SoftwareEntityKind] = Try {
@@ -345,6 +455,7 @@ class PostgresDataAccessor extends DataAccessor {
 
   }
 
+
   private def getEntityRepr(ident: String,
                             kind: SoftwareEntityKind): Try[SoftwareEntityRepr] = Try {
     val queryF = db.run(entitiesTable.filter(swe => swe.qualifier === ident).take(1).result)
@@ -355,21 +466,6 @@ class PostgresDataAccessor extends DataAccessor {
       case _ =>
         throw new IllegalArgumentException(s"Entity of kind $kind with FQ $ident not found")
     }
-  }
-
-  private def getAllChildEntitiesOf(entityDbId: Long, resolutionScope: SoftwareEntityKind): Try[Seq[SoftwareEntityRepr]] = Try {
-    val directChildren = getChildEntitiesOf(entityDbId).get
-
-    if (directChildren.isEmpty || directChildren.head.kindId == resolutionScope.id)
-      directChildren
-    else
-      directChildren ++ directChildren.flatMap(c => getAllChildEntitiesOf(c.id, resolutionScope).get)
-  }
-
-  private def getChildEntitiesOf(entityDbId: Long): Try[Seq[SoftwareEntityRepr]] = Try {
-    val queryF = db.run(entitiesTable.filter(swe => swe.parentID === entityDbId).result)
-
-    Await.result(queryF, simpleQueryTimeout)
   }
 
   private def getProgramTableData(idsToRetrieve: Seq[Long]): Seq[JavaProgramRepr] = {

@@ -32,7 +32,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
   override val workerName: String = "analysis-runner"
 
-  private val dataAccessor: DataAccessor = new PostgresDataAccessor
+  private val dataAccessor: DataAccessor = new PostgresDataAccessor()(streamMaterializer.executionContext)
 
 
   override def initialize(): Unit = {
@@ -123,7 +123,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
                     val theRun = dataAccessor
                       .getAnalysisRun(analysisName, analysisVersion, baselineRunId, includeResults = true)
                       .get
-                      .withResolvedGenerics( uid => dataAccessor.getEntity(uid).get , forceResolve = true)
+                      .withResolvedGenerics( uid => dataAccessor.awaitGetEntity(uid).get , forceResolve = true)
 
                     Some(theRun)
                   } else
@@ -210,7 +210,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
             }
 
             // Download entity information for the analysis from the DB
-            Try(namesToProcess.map(name => dataAccessor.getEntity(name, theAnalysisImpl.descriptor.inputEntityKind, theAnalysisImpl.descriptor.requiredInputResolutionLevel).get)) match {
+            Try(namesToProcess.map(name => dataAccessor.awaitGetEntity(name, theAnalysisImpl.descriptor.requiredInputResolutionLevel).get)) match {
               case Success(entities) =>
                 // Finally check that the analysis can in fact be executed with those parameters
                 if (theAnalysisImpl.executionPossible(entities.toSeq, command.configurationRaw)) {

@@ -13,9 +13,10 @@ import org.anon.spareuse.webapi.model.{AnalysisInformationRepr, AnalysisResultFo
 import org.slf4j.{Logger, LoggerFactory}
 import spray.json.enrichAny
 
+import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
-class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor) extends RunnerCommandJsonSupport with MinerCommandJsonSupport {
+class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor)(implicit context: ExecutionContext) extends RunnerCommandJsonSupport with MinerCommandJsonSupport {
 
   private val log: Logger = LoggerFactory.getLogger(getClass)
 
@@ -87,8 +88,10 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     }
   }
 
-  def getEntity(entityName: String): Try[EntityRepr] = {
-    dataAccessor.getEntity(entityName).map(toEntityRepr)
+  def getEntity(entityName: String): Future[EntityRepr] = {
+    dataAccessor
+      .getEntity(entityName)
+      .map(toEntityRepr)
   }
 
   def getEntityChildren(entityName: String, skip: Int, limit: Int): Try[Seq[EntityRepr]] = Try {
