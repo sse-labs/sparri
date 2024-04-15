@@ -120,7 +120,7 @@ class PostgresDataAccessor(implicit executor: ExecutionContext) extends DataAcce
           // Calculate how many levels (downwards, children) we have to resolve. Zero means we only resolve the level of the root entity
           val currKindDepth = Math.min(rootRepr.kindId, 5)
           val resolutionDepth = Math.min(resolutionScope.id, 5)
-          val levelsToResolve = Math.min(resolutionDepth - currKindDepth, 0)
+          val levelsToResolve = Math.max(resolutionDepth - currKindDepth, 0)
 
           // Start with a future that only contains the root element's representation (always resolved)
           var currFuture = Future((Seq(rootRepr), Seq(rootRepr)))
