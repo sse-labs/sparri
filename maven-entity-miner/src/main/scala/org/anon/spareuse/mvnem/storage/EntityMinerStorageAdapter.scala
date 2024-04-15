@@ -10,7 +10,7 @@ trait EntityMinerStorageAdapter {
 
   protected val log: Logger = LoggerFactory.getLogger(getClass)
 
-  def storeJavaProgram(data: JavaProgram): Try[Unit]
+  def storeJavaProgram(data: JavaProgram): Future[String]
 
   def ensureNotPresent(programUid: String): Unit
 

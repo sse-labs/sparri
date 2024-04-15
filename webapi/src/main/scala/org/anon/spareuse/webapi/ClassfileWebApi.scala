@@ -1,6 +1,7 @@
 package org.anon.spareuse.webapi
 
 import akka.actor.ActorSystem
+import akka.stream.Materializer
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
 import org.anon.spareuse.core.utils.rabbitmq.MqMessageWriter
@@ -18,9 +19,10 @@ class ClassfileWebApi(private val configuration: WebapiConfig) {
   private final val log: Logger = LoggerFactory.getLogger(getClass)
 
   private final val theSystem: ActorSystem = ActorSystem("cf-webapi-system")
+  private final val materializer: Materializer = Materializer(theSystem)
 
-  private[webapi] lazy val dataAccessor: DataAccessor = new PostgresDataAccessor
-  private[webapi] lazy val requestHandler: RequestHandler = new RequestHandler(configuration, dataAccessor)
+  private[webapi] lazy val dataAccessor: DataAccessor = new PostgresDataAccessor()(materializer.executionContext)
+  private[webapi] lazy val requestHandler: RequestHandler = new RequestHandler(configuration, dataAccessor)(materializer.executionContext)
   private[webapi] lazy val server: ApiServer = new ApiServer(requestHandler)(theSystem)
 
   private var dbInitialized = false
@@ -93,6 +95,8 @@ class ClassfileWebApi(private val configuration: WebapiConfig) {
 
     // Shutdown JDBC connection
     if(dbInitialized) dataAccessor.shutdown()
+
+    materializer.shutdown()
 
     // Shutdown actor system
     Await.ready(theSystem.terminate(), 10.seconds)
