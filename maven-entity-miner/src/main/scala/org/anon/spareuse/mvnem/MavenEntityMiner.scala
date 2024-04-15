@@ -1,5 +1,6 @@
 package org.anon.spareuse.mvnem
 
+import akka.stream.OverflowStrategy
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.{Sink, Source}
 import spray.json.{enrichAny, enrichString}
@@ -15,8 +16,7 @@ import org.anon.spareuse.mvnem.storage.EntityMinerStorageAdapter
 import org.anon.spareuse.mvnem.storage.impl.PostgresStorageAdapter
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration.DurationInt
-import scala.concurrent.{Await, Future}
+import scala.concurrent.Future
 import scala.language.implicitConversions
 import scala.util.{Failure, Success, Try}
 
@@ -51,16 +51,19 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
   override protected def buildStreamPipeline(source: Source[String, NotUsed]): Future[Done] = {
     source
-      .map(getIdentifiersForMessage)
+      .map(messageToCommand)
+      .buffer(20, OverflowStrategy.backpressure)
       .runWith(storeAllEntitiesSink)(streamMaterializer)
   }
 
-  private def getIdentifiersForMessage(message: String): Set[MavenIdentifier] = {
-
-    val command = Try(message.parseJson.convertTo[MinerCommand]) match {
+  private def messageToCommand(message: String): MinerCommand = {
+    Try(message.parseJson.convertTo[MinerCommand]) match {
       case Success(mc) => mc
-      case Failure(_) => MinerCommand(Set(message), None) //This is convenience to support old queue format
+      case Failure(_) => MinerCommand(Set(message), None) //This is convenience to support old queue format, in the future we may want to fail here
     }
+  }
+
+  private def getIdentifiersForCommand(command: MinerCommand): Set[MavenIdentifier] = {
 
     val allIdentifiers = command.entityReferences.map(ref => (ref, messageToIdentifiers(ref))).flatMap {
       case (ref, Some(identifiers)) =>
@@ -74,9 +77,83 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     val allNewIdentifiers = allIdentifiers.filterNot(i => storageAdapter.hasProgram(i.toString))
 
     if(allIdentifiers.nonEmpty && allNewIdentifiers.isEmpty)
-      log.info(s"All programs already indexed for message $message")
+      log.info(s"All programs already indexed for command ${command.toString}")
 
     allNewIdentifiers
+  }
+
+
+  def buildTransformAndStorageFuture(minerCommand: MinerCommand): Future[Set[String]] = {
+
+    val identifiers = getIdentifiersForCommand(minerCommand)
+
+    def buildTransformerFuture(identifier: MavenIdentifier): Future[Option[JavaProgram]] = Future {
+      log.info(s"Start building index model for ${identifier.toString} ... ")
+
+      Try {
+        downloadJar(identifier).map { jarFile =>
+          val representation = transform(jarFile)
+          log.info(s"Done building index model for ${identifier.toString}.")
+          representation
+        }
+      } match {
+        case Success(repOpt) =>
+          repOpt
+        case Failure(ex) =>
+          log.error(s"Failed to build index model for ${identifier.toString}", ex)
+          None
+      }
+    }
+
+    def buildStorageFuture(jpOpt: Option[JavaProgram]): Future[String] = {
+      if (jpOpt.isDefined) {
+        storageAdapter
+          .storeJavaProgram(jpOpt.get)
+          .andThen {
+            case Success(jpName) =>
+              log.info(s"Successfully stored index model for $jpName")
+            case Failure(ex) =>
+              log.error(s"Failed to store program.", ex)
+          }
+      } else {
+        Future.successful("")
+      }
+    }
+
+
+    val fullStorageFuture =
+      if(identifiers.isEmpty)
+        Future.successful(Set.empty[String])
+      else if(identifiers.size == 1)
+        buildTransformerFuture(identifiers.head)
+          .flatMap(buildStorageFuture)
+          .map(name => Set(name))
+      else {
+        var currentFuture: Future[Set[String]] = null
+        identifiers.foreach { ident =>
+          if(currentFuture == null) currentFuture = buildTransformerFuture(ident).flatMap(buildStorageFuture).map(name => Set(name))
+          else currentFuture = currentFuture.flatMap { names =>
+            buildTransformerFuture(ident).flatMap(buildStorageFuture).map(name => Set(name) ++ names)
+          }
+        }
+
+        currentFuture
+      }
+
+    fullStorageFuture.andThen{ _ =>
+      if (minerCommand.analysisToTrigger.isDefined) {
+        Try {
+          analysisQueueWriter.appendToQueue(minerCommand.analysisToTrigger.get.toJson.compactPrint)
+        } match {
+          case Success(_) =>
+            log.info(s"Successfully queued follow-up analysis after indexing finished")
+          case Failure(ex) =>
+            log.error(s"Failed to queue follow-up analysis for command ${minerCommand.toJson.compactPrint}", ex)
+        }
+      }
+
+      opalProjectHelper.freeOpalResources()
+    }
   }
 
   def downloadJar(identifier: MavenIdentifier): Option[MavenOnlineJar] = {
@@ -90,38 +167,10 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     }
   }
 
-  def storeAllEntitiesSink: Sink[Set[MavenIdentifier], Future[Done]] = {
-    Sink.foreach { identifiers =>
-
-      var cnt = 0
-      var err = 0
-
-      identifiers.foreach { identifier =>
-
-        log.info(s"[$cnt/${identifiers.size}] Start processing ${identifier.toString} ... ")
-
-        Try{
-          downloadJar(identifier) match {
-            case Some(jarFile) =>
-              val representation = transform(jarFile)
-              log.info(s"[$cnt/${identifiers.size}] Starting to store program for ${identifier.toString} ... ")
-              storageAdapter.storeJavaProgram(representation).get
-            case None =>
-              // Do nothing, this is a GAV without a JAR
-          }
-        } match {
-          case Success(_) =>
-            log.info(s"[$cnt/${identifiers.size}] Done storing program for ${identifier.toString}.")
-            cnt += 1
-          case Failure(ex) =>
-            log.error(s"[$cnt/${identifiers.size}] Failed to handle identifier ${identifier.toString}", ex)
-            storageAdapter.ensureNotPresent(s"${identifier.toGA}!${identifier.toString}")
-            cnt += 1
-            err += 1
-        }
-      }
-
-      log.info(s"Processed $cnt identifiers for message, got $err errors")
+  def storeAllEntitiesSink: Sink[MinerCommand, Future[Done]] = {
+    Sink.foreachAsync(configuration.storageParallel) { minerCommand =>
+      buildTransformAndStorageFuture(minerCommand)
+        .map(_ => ())
     }
   }
 
@@ -207,7 +256,6 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     }
 
     jarFile.content.close()
-    opalProjectHelper.freeOpalResources()
 
     result
   }

@@ -80,7 +80,8 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
 
   private def singleEntityRouteImpl(entityName: String)(implicit request: HttpRequest): Route = {
     log.debug(s"Single entity requested, name=$entityName.")
-    requestHandler.getEntity(entityName) match {
+
+    onComplete(requestHandler.getEntity(entityName)) {
       case Success(entity) => complete(entity.toJson)
       case Failure(ex) =>
         log.error("Failure while retrieving single entity information", ex)

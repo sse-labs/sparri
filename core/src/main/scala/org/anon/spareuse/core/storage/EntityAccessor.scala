@@ -7,31 +7,13 @@ import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityD
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.GenericEntityData
 
+import scala.concurrent.duration.{DurationInt, FiniteDuration}
+import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Success, Try}
 
 trait EntityAccessor {
 
-  def getLibrary(ident: String, resolutionScope: SoftwareEntityKind): Try[JavaLibrary] =
-    getEntityAs[JavaLibrary](ident, SoftwareEntityKind.Library, resolutionScope)
-
-  def getProgram(ident: String, resolutionScope: SoftwareEntityKind): Try[JavaProgram] =
-    getEntityAs[JavaProgram](ident, SoftwareEntityKind.Program, resolutionScope)
-
-  def getPackage(ident: String, resolutionScope: SoftwareEntityKind): Try[JavaPackage] =
-    getEntityAs[JavaPackage](ident, SoftwareEntityKind.Package, resolutionScope)
-
-  def getClass(ident: String, resolutionScope: SoftwareEntityKind): Try[JavaClass] =
-    getEntityAs[JavaClass](ident, SoftwareEntityKind.Class, resolutionScope)
-
-  def getMethod(ident: String, resolutionScope: SoftwareEntityKind): Try[JavaMethod] =
-    getEntityAs[JavaMethod](ident, SoftwareEntityKind.Method, resolutionScope)
-
-  def getInvokeStatement(ident: String): Try[JavaInvokeStatement] =
-    getEntityAs[JavaInvokeStatement](ident, SoftwareEntityKind.InvocationStatement, SoftwareEntityKind.InvocationStatement)
-
-  def getFieldStatement(ident: String): Try[JavaFieldAccessStatement] =
-    getEntityAs[JavaFieldAccessStatement](ident, SoftwareEntityKind.FieldAccessStatement, SoftwareEntityKind.FieldAccessStatement)
-
+  protected val awaitEntityTimeout: FiniteDuration = 60.seconds
 
   def initializeEntityTables(): Unit
 
@@ -41,24 +23,24 @@ trait EntityAccessor {
 
   def getEntityKind(entityIdent: String): Try[SoftwareEntityKind]
 
-  def getEntity(ident: String): Try[SoftwareEntityData] = {
+  def getEntity(ident: String): Future[SoftwareEntityData] = {
     if(hasEntity(ident)){
-      getEntityKind(ident).flatMap(kind => getEntity(ident, kind, SoftwareEntityKind.InvocationStatement))
-    } else Failure(new IllegalStateException(s"Entity not present: $ident"))
+      getEntity(ident, SoftwareEntityKind.InvocationStatement)
+
+    } else Future.failed(new IllegalStateException(s"Entity not present: $ident"))
   }
 
-  def getEntity(ident: String, kind: SoftwareEntityKind, resolutionScope: SoftwareEntityKind): Try[SoftwareEntityData]
+  def awaitGetEntity(ident: String): Try[SoftwareEntityData] = {
+    Try(Await.result(getEntity(ident), awaitEntityTimeout))
+  }
 
+  def getEntity(ident: String, resolutionScope: SoftwareEntityKind): Future[SoftwareEntityData]
+
+  def awaitGetEntity(ident: String, resolutionScope: SoftwareEntityKind): Try[SoftwareEntityData] = {
+    Try(Await.result(getEntity(ident, resolutionScope), awaitEntityTimeout))
+  }
   def hasEntity(ident: String, kind: SoftwareEntityKind): Boolean
 
   def hasEntity(ident: String): Boolean
 
-
-  private def getEntityAs[T <: SoftwareEntityData](ident: String,
-                                                   kind: SoftwareEntityKind,
-                                                   resolutionScope: SoftwareEntityKind): Try[T] =
-    getEntity(ident, kind, resolutionScope).flatMap{
-      case it: SoftwareEntityData => Success(it.asInstanceOf[T])
-      case _ => Failure(new IllegalStateException(s"Not of kind ${kind.toString}: $ident"))
-    }
 }
