@@ -29,7 +29,7 @@ trait ProcessingRouteDefinitions extends BasicRouteDefinition {
 
       log.debug(s"Entity indexing requested for id ${entity.Identifier}")
 
-      if(requestHandler.hasEntity(entity.Identifier)) {
+      if(requestHandler.hasEntity(entity.Identifier) && !requestHandler.isLibrary(entity.Identifier)) {
         val libUri = Uri(s"entities/${entity.Identifier}")
         respondWithHeaders(Location(libUri)) { complete(Found, s"Library ${entity.Identifier} has already been processed.")}
       } else {

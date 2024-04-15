@@ -49,14 +49,10 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
   override protected def buildSource(): Source[String, NotUsed] = createMqMessageSource(configuration.toReadConfig, abortOnEmptyQueue = false)
 
-  case class StorageTask(programsToStore: Set[JavaProgram], command: MinerCommand)
-
   override protected def buildStreamPipeline(source: Source[String, NotUsed]): Future[Done] = {
     source
       .map(messageToCommand)
       .buffer(20, OverflowStrategy.backpressure)
-      .mapAsync(2)(transformPrograms)
-      .buffer(3, OverflowStrategy.backpressure)
       .runWith(storeAllEntitiesSink)(streamMaterializer)
   }
 
@@ -87,31 +83,77 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
   }
 
 
-  def transformPrograms(minerCommand: MinerCommand): Future[StorageTask] = Future {
+  def buildTransformAndStorageFuture(minerCommand: MinerCommand): Future[Set[String]] = {
 
-    // Get all GAVs for the message
-    val messageIdentifiers = getIdentifiersForCommand(minerCommand)
+    val identifiers = getIdentifiersForCommand(minerCommand)
 
-    val programRepresentations = messageIdentifiers.flatMap { identifier =>
+    def buildTransformerFuture(identifier: MavenIdentifier): Future[Option[JavaProgram]] = Future {
       log.info(s"Start building index model for ${identifier.toString} ... ")
 
       Try {
-        downloadJar(identifier).map{ jarFile =>
+        downloadJar(identifier).map { jarFile =>
           val representation = transform(jarFile)
           log.info(s"Done building index model for ${identifier.toString}.")
           representation
         }
       } match {
-        case Success(repOpt) => repOpt
+        case Success(repOpt) =>
+          repOpt
         case Failure(ex) =>
           log.error(s"Failed to build index model for ${identifier.toString}", ex)
           None
       }
     }
 
-    opalProjectHelper.freeOpalResources()
+    def buildStorageFuture(jpOpt: Option[JavaProgram]): Future[String] = {
+      if (jpOpt.isDefined) {
+        storageAdapter
+          .storeJavaProgram(jpOpt.get)
+          .andThen {
+            case Success(jpName) =>
+              log.info(s"Successfully stored index model for $jpName")
+            case Failure(ex) =>
+              log.error(s"Failed to store program.", ex)
+          }
+      } else {
+        Future.successful("")
+      }
+    }
 
-    StorageTask(programRepresentations, minerCommand)
+
+    val fullStorageFuture =
+      if(identifiers.isEmpty)
+        Future.successful(Set.empty[String])
+      else if(identifiers.size == 1)
+        buildTransformerFuture(identifiers.head)
+          .flatMap(buildStorageFuture)
+          .map(name => Set(name))
+      else {
+        var currentFuture: Future[Set[String]] = null
+        identifiers.foreach { ident =>
+          if(currentFuture == null) currentFuture = buildTransformerFuture(ident).flatMap(buildStorageFuture).map(name => Set(name))
+          else currentFuture = currentFuture.flatMap { names =>
+            buildTransformerFuture(ident).flatMap(buildStorageFuture).map(name => Set(name) ++ names)
+          }
+        }
+
+        currentFuture
+      }
+
+    fullStorageFuture.andThen{ _ =>
+      if (minerCommand.analysisToTrigger.isDefined) {
+        Try {
+          analysisQueueWriter.appendToQueue(minerCommand.analysisToTrigger.get.toJson.compactPrint)
+        } match {
+          case Success(_) =>
+            log.info(s"Successfully queued follow-up analysis after indexing finished")
+          case Failure(ex) =>
+            log.error(s"Failed to queue follow-up analysis for command ${minerCommand.toJson.compactPrint}", ex)
+        }
+      }
+
+      opalProjectHelper.freeOpalResources()
+    }
   }
 
   def downloadJar(identifier: MavenIdentifier): Option[MavenOnlineJar] = {
@@ -125,34 +167,10 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     }
   }
 
-  def storeAllEntitiesSink: Sink[StorageTask, Future[Done]] = {
-    Sink.foreachAsync(configuration.storageParallel) { storageTask =>
-
-      Future.sequence {
-        storageTask
-          .programsToStore
-          .map{ jp =>
-            storageAdapter
-              .storeJavaProgram(jp)
-              .andThen {
-                case Success(jpName) =>
-                  log.info(s"Successfully stored index model for $jpName")
-                case Failure(ex) =>
-                  log.error(s"Failed to store program.", ex)
-              }
-          }
-      }.map { _ =>
-        if (storageTask.command.analysisToTrigger.isDefined) {
-          Try {
-            analysisQueueWriter.appendToQueue(storageTask.command.analysisToTrigger.get.toJson.compactPrint)
-          } match {
-            case Success(_) =>
-              log.info(s"Successfully queued follow-up analysis after indexing finished")
-            case Failure(ex) =>
-              log.error(s"Failed to queue follow-up analysis for command ${storageTask.command.toJson.compactPrint}", ex)
-          }
-        }
-      }
+  def storeAllEntitiesSink: Sink[MinerCommand, Future[Done]] = {
+    Sink.foreachAsync(configuration.storageParallel) { minerCommand =>
+      buildTransformAndStorageFuture(minerCommand)
+        .map(_ => ())
     }
   }
 
