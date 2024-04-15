@@ -57,7 +57,7 @@ trait AnalysisAccessor {
 
   def getFreshResultUuids(noOfUuids: Int): Set[String]
 
-  def getFreshRunUuid(): String
+  def getFreshRunUuid: String
 
   def hasAnalysis(analysisName: String, analysisVersion: String): Boolean = getAnalysisData(analysisName, analysisVersion).isSuccess
 
