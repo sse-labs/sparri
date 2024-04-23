@@ -18,12 +18,13 @@ trait PostgresSparriSupport extends PostgresAnalysisTables with PostgresEntityTa
   protected val idToIdentifierCache = new ObjectCache[Long, String](maxEntries = 10000)
 
   protected val simpleQueryTimeout: FiniteDuration = 5.seconds
-  protected val longActionTimeout: FiniteDuration = 20.seconds
+  protected val longActionTimeout: FiniteDuration = 40.seconds
 
   protected lazy val db = Database.forConfig("spa-reuse.postgres")
 
   override def initializeEntityTables(): Unit = {
-    val setupAction = DBIO.seq(allEntityTables.map(_.schema.createIfNotExists): _*)
+    val setupAction = DBIO.seq(entitiesTable.schema.createIfNotExists, javaProgramsTable.schema.createIfNotExists, javaClassesTable.schema.createIfNotExists, javaMethodsTable.schema.createIfNotExists,
+      javaInvocationsTable.schema.createIfNotExists, javaFieldAccessesTable.schema.createIfNotExists)
 
     val setupF = db.run(setupAction)
 
@@ -35,7 +36,8 @@ trait PostgresSparriSupport extends PostgresAnalysisTables with PostgresEntityTa
   }
 
   override def initializeAnalysisTables(): Unit = {
-    val setupAction = DBIO.seq(allAnalysisTables.map(_.schema.createIfNotExists): _*)
+    val setupAction = DBIO.seq(resultFormatsTable.schema.createIfNotExists, nestedResultFormatsTable.schema.createIfNotExists, analysesTable.schema.createIfNotExists, analysisRunsTable.schema.createIfNotExists,
+      analysisRunInputsTable.schema.createIfNotExists, analysisResultsTable.schema.createIfNotExists, resultValiditiesTable.schema.createIfNotExists, runResultsTable.schema.createIfNotExists)
 
     val setupF = db.run(setupAction)
 
