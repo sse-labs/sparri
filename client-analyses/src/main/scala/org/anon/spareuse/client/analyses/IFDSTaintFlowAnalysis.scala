@@ -19,6 +19,8 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
   def execute(): Try[Unit] = Try {
     val p = getOpalProject(loadJre = false)
 
+    val projectModel = getProjectModel(p.allProjectClassFiles)
+
     //TODO: Do something
   }
 }

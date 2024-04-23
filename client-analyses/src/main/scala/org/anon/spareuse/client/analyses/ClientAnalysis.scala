@@ -2,7 +2,10 @@ package org.anon.spareuse.client.analyses
 
 import org.anon.spareuse.client.http.SparriApiClient
 import org.anon.spareuse.core.maven.MavenDependencyIdentifier
+import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
+import org.anon.spareuse.core.model.entities.conversion.OPALJavaConverter
 import org.anon.spareuse.core.utils.EnhancedLogging
+import org.opalj.br.ClassFile
 import org.opalj.br.analyses.Project
 import org.opalj.bytecode.JRELibraryFolder
 
@@ -24,6 +27,11 @@ abstract class ClientAnalysis(classFilesDirectory: File, pomFile: File) extends 
 
     if(!loadJre) Project(classFilesDirectory)
     else Project(classFilesDirectory, JRELibraryFolder)
+  }
+
+  protected[analyses] def getProjectModel(projectClassFiles: Seq[ClassFile]): Try[JavaProgram] = Try {
+    val projectName = classFilesDirectory.getName
+    OPALJavaConverter.convertProgram(s"custom:$projectName:1.0.0-SNAPSHOT", "<no-repo>", projectClassFiles.toList, "<no-upload>")
   }
 
 
