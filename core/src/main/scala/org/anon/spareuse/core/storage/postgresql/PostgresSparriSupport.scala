@@ -6,29 +6,36 @@ import org.anon.spareuse.core.utils.ObjectCache
 import org.slf4j.{Logger, LoggerFactory}
 import slick.dbio.DBIO
 import slick.jdbc.JdbcBackend.Database
+import slick.jdbc.PostgresProfile
 import slick.jdbc.PostgresProfile.api._
+import slick.jdbc.meta.MTable
 
 import scala.concurrent.Await
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 trait PostgresSparriSupport extends PostgresAnalysisTables with PostgresEntityTables with DataAccessor {
 
+  this: PostgresDataAccessor =>
+
   protected val log: Logger = LoggerFactory.getLogger(getClass)
 
   protected val idToIdentifierCache = new ObjectCache[Long, String](maxEntries = 10000)
 
   protected val simpleQueryTimeout: FiniteDuration = 5.seconds
-  protected val longActionTimeout: FiniteDuration = 40.seconds
+  protected val longActionTimeout: FiniteDuration = 60.seconds
 
   protected lazy val db = Database.forConfig("spa-reuse.postgres")
 
   override def initializeEntityTables(): Unit = {
-    val setupAction = DBIO.seq(entitiesTable.schema.createIfNotExists, javaProgramsTable.schema.createIfNotExists, javaClassesTable.schema.createIfNotExists, javaMethodsTable.schema.createIfNotExists,
-      javaInvocationsTable.schema.createIfNotExists, javaFieldAccessesTable.schema.createIfNotExists)
 
-    val setupF = db.run(setupAction)
+    val existing = db.run(MTable.getTables)
+    val f = existing.flatMap(v => {
+      val names = v.map(mt => mt.name.name)
+      val createIfNotExist = allEntityTables.filter(table => !names.contains(table.baseTableRow.tableName)).map(_.schema.create)
+      db.run(DBIO.sequence(createIfNotExist))
+    })(executor)
 
-    Await.ready(setupF, longActionTimeout)
+    Await.ready(f, longActionTimeout)
   }
 
   override def shutdown(): Unit = {
@@ -36,12 +43,14 @@ trait PostgresSparriSupport extends PostgresAnalysisTables with PostgresEntityTa
   }
 
   override def initializeAnalysisTables(): Unit = {
-    val setupAction = DBIO.seq(resultFormatsTable.schema.createIfNotExists, nestedResultFormatsTable.schema.createIfNotExists, analysesTable.schema.createIfNotExists, analysisRunsTable.schema.createIfNotExists,
-      analysisRunInputsTable.schema.createIfNotExists, analysisResultsTable.schema.createIfNotExists, resultValiditiesTable.schema.createIfNotExists, runResultsTable.schema.createIfNotExists)
+    val existing = db.run(MTable.getTables)
+    val f = existing.flatMap(v => {
+      val names = v.map(mt => mt.name.name)
+      val createIfNotExist = allAnalysisTables.filter(table => !names.contains(table.baseTableRow.tableName)).map(_.schema.create)
+      db.run(DBIO.sequence(createIfNotExist))
+    })(executor)
 
-    val setupF = db.run(setupAction)
-
-    Await.ready(setupF, longActionTimeout)
+    Await.ready(f, longActionTimeout)
 
     storePredefinedFormats()
   }
