@@ -198,7 +198,8 @@ trait PostgresEntityAccessor extends EntityAccessor {
         }.toMap
 
         parentRelation.filter(_._2.isDefined).foreach { case (entityId, parentIdOpt) =>
-          specializedEntityMap(entityId).setParent(specializedEntityMap(parentIdOpt.get))
+          if(specializedEntityMap.contains(parentIdOpt.get))
+            specializedEntityMap(entityId).setParent(specializedEntityMap(parentIdOpt.get))
         }
 
         specializedEntityMap
@@ -206,13 +207,16 @@ trait PostgresEntityAccessor extends EntityAccessor {
 
   }
 
-  override def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Try[Seq[GenericEntityData]] = Try {
+  override def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Future[Seq[SoftwareEntityData]] = {
 
-    val queryF = if (parentFilter.isDefined) buildEntityQueryWithParentFilter(limit, skip, parentFilter.get, kindFilter)
+    val rawEntityQuery = if (parentFilter.isDefined) buildEntityQueryWithParentFilter(limit, skip, parentFilter.get, kindFilter)
     else if (kindFilter.isDefined) db.run(entitiesTable.filter(e => e.kind === kindFilter.get.id).sortBy(_.id).drop(skip).take(limit).result)
     else db.run(entitiesTable.sortBy(_.id).drop(skip).take(limit).result)
 
-    Await.result(queryF, longActionTimeout).map(toGenericEntityData)
+    rawEntityQuery
+      .flatMap { entityReprs =>
+        specializeAll(entityReprs).map(_.values.toSeq)
+      }
 
   }
 

@@ -78,19 +78,20 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     existingAnalysesCache.getWithCache(key, () => dataAccessor.hasAnalysisRun(analysisName, version, runUid))
   }
 
-  def getAllEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Try[Seq[EntityRepr]] = {
-    dataAccessor.getEntities(limit, skip, kindFilter, parentFilter) match {
-      case Success(entityDataList) =>
-        Success(entityDataList.map(genericEntityToEntityRepr))
-      case Failure(ex) =>
-        log.error("Database connection error while retrieving entities", ex)
-        Failure(ex)
-    }
+  def getAllEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Future[Seq[EntityRepr]] = {
+
+    dataAccessor
+      .getEntities(limit, skip, kindFilter, parentFilter)
+      .map{ entities =>
+        entities.map(toEntityRepr)
+      }
   }
 
-  def getEntity(entityName: String): Future[EntityRepr] = {
+  def getEntity(entityName: String, resolutionDepth: Option[Int]): Future[EntityRepr] = {
+
+    // Make sure the default depth is 2. If somebody wants the entire tree, they need to pass a value larger than 5
     dataAccessor
-      .getEntity(entityName)
+      .getEntity(entityName, Some(resolutionDepth.getOrElse(2)))
       .map(toEntityRepr)
   }
 

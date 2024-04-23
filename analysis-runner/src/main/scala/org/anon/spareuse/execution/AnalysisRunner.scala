@@ -123,7 +123,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
                     val theRun = dataAccessor
                       .getAnalysisRun(analysisName, analysisVersion, baselineRunId, includeResults = true)
                       .get
-                      .withResolvedGenerics( uid => dataAccessor.awaitGetEntity(uid).get , forceResolve = true)
+                      .withResolvedGenerics( uid => dataAccessor.awaitGetEntity(uid, None).get , forceResolve = true)
 
                     Some(theRun)
                   } else
