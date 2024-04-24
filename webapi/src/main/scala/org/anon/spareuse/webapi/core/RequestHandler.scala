@@ -20,9 +20,6 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
 
   private val log: Logger = LoggerFactory.getLogger(getClass)
 
-  private val existingEntitiesCache: SimpleValueCache[Boolean] = new SimpleValueCache[Boolean]()
-  private val existingAnalysesCache: SimpleValueCache[Boolean] = new SimpleValueCache[Boolean]()
-
   def hasEntity(entityName: String): Boolean = {
     dataAccessor.hasEntity(entityName)
   }
@@ -64,18 +61,12 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
   }
 
   def hasAnalysis(analysisName: String, version: Option[String] = None): Boolean = {
-    val key = if(version.isDefined) s"$analysisName:${version.get}" else analysisName
-
-    existingAnalysesCache.getWithCache(key, () => {
-      if(version.isDefined) dataAccessor.hasAnalysis(analysisName, version.get)
-      else dataAccessor.hasAnalysis(analysisName)
-    })
+    if (version.isDefined) dataAccessor.hasAnalysis(analysisName, version.get)
+    else dataAccessor.hasAnalysis(analysisName)
   }
 
   def hasAnalysisRun(analysisName: String, version: String, runUid: String): Boolean = {
-    val key = s"$analysisName:$version:$runUid"
-
-    existingAnalysesCache.getWithCache(key, () => dataAccessor.hasAnalysisRun(analysisName, version, runUid))
+    dataAccessor.hasAnalysisRun(analysisName, version, runUid)
   }
 
   def getAllEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Future[Seq[EntityRepr]] = {
@@ -194,15 +185,19 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     }
   }
 
-  def triggerEntityMining(entityIdent: String): Boolean = {
+  def getAllAnalysisResults(analysisName: String, analysisVersion: String, limit: Int, skip: Int): Future[Set[AnalysisResultRepr]] = {
+    dataAccessor.getAllResults(analysisName, analysisVersion, limit, skip).map { allResults => allResults.map(toResultRepr)}
+  }
+
+  def triggerEntityMining(entityIdentifiers: Seq[String]): Boolean = {
 
     Try {
       val writer = new MqMessageWriter(configuration.asMinerQueuePublishConfig)
       writer.initialize()
 
-      val msg = MinerCommand(Set(entityIdent), None).toJson.compactPrint
+      val msg = MinerCommand(entityIdentifiers.toSet, None).toJson.compactPrint
 
-      log.info(s"Publishing a new Miner Command for entity $entityIdent : $msg")
+      log.info(s"Publishing a new Miner Command for ${entityIdentifiers.size} entities : $msg")
 
       writer.appendToQueue(msg, Some(3))
 
@@ -210,7 +205,7 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     } match {
       case Success(_) => true
       case Failure(ex) =>
-        log.error(s"Failed to enqueue entity id $entityIdent", ex)
+        log.error(s"Failed to enqueue ${entityIdentifiers.size} entity ids.", ex)
         false
     }
 

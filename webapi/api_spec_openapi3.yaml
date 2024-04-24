@@ -309,6 +309,49 @@ paths:
         '404':
           description: "If the analysis is not found, 404 is returned."
 
+  /analyses/{analysisName}/{analysisVersion}/results:
+    get:
+      tags: ["Analysis Related Information"]
+      description: "Returns all results for the specified version of the analysis with the given name"
+      parameters:
+        - name: analysisName
+          description: "Unique name of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: analysisVersion
+          description: "Unique version of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: skip
+          description: "Pagination: Number of results to skip"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          description: "Pagination: Number of results to retrieve"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: "Paginated list of results for this analysis"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnalysisResultInformation"
+        '404':
+          description: "If the analysis is not found, 404 is returned."
+
   /analyses/{analysisName}/{analysisVersion}/runs:
     post:
       tags: ["Analysis Related Information", "Processing Related Endpoints"]
@@ -717,7 +760,9 @@ components:
       required: [Inputs, Configuration]
       properties:
         Inputs:
-          $ref: '#/components/schemas/StringList'
+          type: array
+          items:
+            type: string
           description: List of full entity identifiers to be used as inputs for the analysis
         Configuration:
           type: string
@@ -735,15 +780,17 @@ components:
         Configuration: --be-fancy -use-algo Foo
         User: Ron Swanson
         BaselineRun: a0928f80-cc49-4b4e-bff9-a364e4b50f25
-    
+
     TriggerMinerRequest:
       type: object
-      required: [Identifier]
+      required: [Identifiers]
       properties:
-        Identifier:
-          type: string
-          description: Full name of the entity that is to be indexed. Supports GA-Tuple, GAV-Triple or any more specific identifier (the miner will always index the entire program the entity is part of).
-          example: org.json:json!org.json:json:20070829
+        Identifiers:
+          type: array
+          items:
+            type: string
+          description: Full names of the entities that are to be indexed. Supports GA-Tuple, GAV-Triple or any more specific identifier (the miner will always index the entire program the entity is part of).
+          example: ['org.json:json!org.json:json:20070829']
     
           
         
