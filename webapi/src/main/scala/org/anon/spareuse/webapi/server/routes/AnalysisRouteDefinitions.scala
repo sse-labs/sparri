@@ -36,6 +36,9 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
       ensureAnalysisPresent(analysisName, analysisVersion){
         pathEnd { get { singleAnalysisVersionRouteImpl(analysisName, analysisVersion) } } ~
         pathPrefix("runs") { analysisRunRelatedRoutes(analysisName, analysisVersion) } ~
+        path("results") {
+          get { extractPaginationHeaders(request, defaultLimit = 20){ (limit, skip) => allAnalysisResultsRouteImpl(analysisName, analysisVersion, limit, skip) } }
+        } ~
         path("result-format") { get { analysisResultFormatRouteImpl(analysisName, analysisVersion) } }
       }
     }
@@ -106,12 +109,22 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
     }
   }
 
+  private def allAnalysisResultsRouteImpl(analysisName: String, analysisVersion: String, limit: Int, skip: Int): Route = {
+    onComplete(requestHandler.getAllAnalysisResults(analysisName, analysisVersion, limit, skip)) {
+      case Success(resultData) => complete(resultData.toJson)
+      case Failure(ex) =>
+        log.error(s"Failed to retrieve analysis results for $analysisName:$analysisVersion", ex)
+        complete(InternalServerError)
+    }
+  }
+
   private def allAnalysisRunsRouteImpl(analysisName: String, analysisVersion: String, inputFilter: Option[String], limit: Int, skip: Int)(implicit request:HttpRequest): Route = {
 
     if(inputFilter.isDefined && !requestHandler.hasEntity(inputFilter.get))
       return complete(NotFound, s"Entity that was filtered for was not found: ${inputFilter.get}")
 
     requestHandler.getAnalysisRuns(analysisName, analysisVersion, inputFilter, limit, skip) match {
+      
       case Success(runData) =>
         complete(runData.toJson)
       case Failure(ex) =>
@@ -133,7 +146,7 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
       requestHandler.getRunIdIfPresent(analysisName, analysisVersion, entity) match {
         // If it exists, respond with "Found" and location of run result
         case Success(Some(id)) =>
-          respondWithHeaders(Location(buildRunUri(id))){ complete(Found, "The analysis configuration requested has already been executed.")}
+          respondWithHeaders(Location(buildRunUri(id))){ complete(OK, id)}
 
         // If it does not exist, create new run record and trigger analysis. Respond with id of new run record
         case Success(None) =>

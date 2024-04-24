@@ -17,21 +17,33 @@ trait EntityAccessor {
 
   def initializeEntityTables(): Unit
 
-  def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Try[Seq[GenericEntityData]]
+  def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Future[Seq[SoftwareEntityData]]
 
   def getEntityChildren(uid: String, skip: Int, limit:Int): Try[Seq[SoftwareEntityData]]
 
   def getEntityKind(entityIdent: String): Try[SoftwareEntityKind]
 
-  def getEntity(ident: String): Future[SoftwareEntityData] = {
+  def getEntity(ident: String, resolutionDepth: Option[Int]): Future[SoftwareEntityData] = {
     if(hasEntity(ident)){
-      getEntity(ident, SoftwareEntityKind.InvocationStatement)
+
+      getEntityKind(ident) match {
+        case Success(entityKind) =>
+          // If no depth is given, resolve the entire tree
+          val resolutionScope = if(resolutionDepth.isDefined)
+            SoftwareEntityKind.fromId(Math.min(entityKind.id + resolutionDepth.get, SoftwareEntityKind.InvocationStatement.id))
+          else
+            SoftwareEntityKind.InvocationStatement
+
+          getEntity(ident, resolutionScope)
+        case Failure(ex) =>
+          Future.failed(ex)
+      }
 
     } else Future.failed(new IllegalStateException(s"Entity not present: $ident"))
   }
 
-  def awaitGetEntity(ident: String): Try[SoftwareEntityData] = {
-    Try(Await.result(getEntity(ident), awaitEntityTimeout))
+  def awaitGetEntity(ident: String, resolutionDepth: Option[Int]): Try[SoftwareEntityData] = {
+    Try(Await.result(getEntity(ident, resolutionDepth), awaitEntityTimeout))
   }
 
   def getEntity(ident: String, resolutionScope: SoftwareEntityKind): Future[SoftwareEntityData]

@@ -65,7 +65,13 @@ paths:
           required: true
           schema:
             type: string
-        
+        - name: depth
+          description: "The depth of the entity tree that shall be resolved. Defaults to 2."
+          in: query
+          required: false
+          schema:
+            type: integer
+
       responses:
         '200':
           description: "Requested Program Entity is returned"
@@ -75,7 +81,7 @@ paths:
                 $ref: "#/components/schemas/ProgramEntity"
         '404':
           description: "If the entity identifier is not found, 404 is returned."
-  
+
   /entities/{entityIdent}/children:
     get:
       tags: ["Entity Related Information"]
@@ -101,7 +107,7 @@ paths:
           schema:
             type: integer
             default: 500
-        
+
       responses:
         '200':
           description: "List of children for the given program entity"
@@ -113,8 +119,8 @@ paths:
                   $ref: "#/components/schemas/ProgramEntity"
         '404':
           description: "If the entity identifier is not found, 404 is returned."
-          
-  
+
+
   /entities/{entityIdent}/processedBy:
     get:
       tags: ["Entity Related Information"]
@@ -140,7 +146,7 @@ paths:
           schema:
             type: integer
             default: 500
-        
+
       responses:
         '200':
           description: "List of analysis runs"
@@ -151,7 +157,7 @@ paths:
                 items:
                   $ref: "#/components/schemas/AnalysisRunInformation"
         '404':
-          description: "If the entity identifier is not found, 404 is returned."  
+          description: "If the entity identifier is not found, 404 is returned."
 
   /entities/{entityIdent}/results:
     get:
@@ -184,7 +190,7 @@ paths:
           required: false
           schema:
             type: string
-        
+
       responses:
         '200':
           description: "List of results being returned"
@@ -196,7 +202,7 @@ paths:
                   type: object
         '404':
           description: "If the entity identifier is not found, 404 is returned."
-          
+
   /analyses:
     get:
       tags: ["Analysis Related Information"]
@@ -225,7 +231,7 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/AnalysisInformation"
-  
+
   /analyses/{analysisName}:
     get:
       tags: ["Analysis Related Information"]
@@ -248,7 +254,7 @@ paths:
                   $ref: "#/components/schemas/AnalysisInformation"
         '404':
           description: "If the analysis is not found, 404 is returned."
-          
+
   /analyses/{analysisName}/{analysisVersion}:
     get:
       tags: ["Analysis Related Information"]
@@ -275,7 +281,7 @@ paths:
                 $ref: "#/components/schemas/AnalysisInformation"
         '404':
           description: "If the analysis is not found, 404 is returned."
-  
+
   /analyses/{analysisName}/{analysisVersion}/result-format:
     get:
       tags: ["Analysis Related Information"]
@@ -302,7 +308,50 @@ paths:
                 $ref: "#/components/schemas/AnalysisFormatInformation"
         '404':
           description: "If the analysis is not found, 404 is returned."
-  
+
+  /analyses/{analysisName}/{analysisVersion}/results:
+    get:
+      tags: ["Analysis Related Information"]
+      description: "Returns all results for the specified version of the analysis with the given name"
+      parameters:
+        - name: analysisName
+          description: "Unique name of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: analysisVersion
+          description: "Unique version of the analysis"
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: skip
+          description: "Pagination: Number of results to skip"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 0
+        - name: limit
+          description: "Pagination: Number of results to retrieve"
+          in: header
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: "Paginated list of results for this analysis"
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AnalysisResultInformation"
+        '404':
+          description: "If the analysis is not found, 404 is returned."
+
   /analyses/{analysisName}/{analysisVersion}/runs:
     post:
       tags: ["Analysis Related Information", "Processing Related Endpoints"]
@@ -320,7 +369,7 @@ paths:
           required: true
           schema:
             type: string
-            
+
       requestBody:
         description: "Request with details regarding the analysis that is to be executed"
         required: true
@@ -328,7 +377,7 @@ paths:
           application/json:
             schema:
               $ref: "#/components/schemas/TriggerAnalysisRequest"
-       
+
       responses:
         '202':
           description: "New analysis run has been queued"
@@ -338,14 +387,14 @@ paths:
               schema:
                 type: string
                 example: localhost:9090/api/analses/mvn-dependencies/1.0.0/runs/a0928f80-cc49-4b4e-bff9-a364e4b50f25
-                
+
           content:
             text/plain:
               schema:
                 description: The UID of the analysis run that is being triggered
                 example: a0928f80-cc49-4b4e-bff9-a364e4b50f25
 
-          
+
         '404':
           description: "If the analysis is not found, 404 is returned."
     get:
@@ -395,7 +444,7 @@ paths:
                   $ref: "#/components/schemas/AnalysisRunInformation"
         '404':
           description: "If the analysis is not found, 404 is returned."
-  
+
   /analyses/{analysisName}/{analysisVersion}/runs/{runId}:
     get:
       tags: ["Analysis Related Information"]
@@ -428,7 +477,7 @@ paths:
                 $ref: "#/components/schemas/AnalysisRunInformation"
         '404':
           description: "If the analysis or the analysis run are not found, 404 is returned."
-          
+
   /analyses/{analysisName}/{analysisVersion}/runs/{runId}/inputs:
     get:
       tags: ["Analysis Related Information"]
@@ -477,7 +526,7 @@ paths:
                   $ref: "#/components/schemas/ProgramEntity"
         '404':
           description: "If the analysis or the analysis run are not found, 404 is returned."
-          
+
   /analyses/{analysisName}/{analysisVersion}/runs/{runId}/results:
     get:
       tags: ["Analysis Related Information"]
@@ -526,8 +575,8 @@ paths:
                   $ref: "#/components/schemas/AnalysisResultInformation"
         '404':
           description: "If the analysis or the analysis run are not found, 404 is returned."
-  
-          
+
+
   /processing/enqueueEntity:
     post:
       tags: ["Processing Related Endpoints"]
@@ -547,14 +596,14 @@ paths:
         '400':
           description: "Bad request missing required parameters"
 
-  
+
 components:
   schemas:
     StringList:
       type: array
       items:
         type: string
-        
+
     AnalysisInformation:
       type: object
       required: [Name, Description, Version, IsRevoked, User, InputEntityKind, InputLanguages, ResultSchema, RunIds]
@@ -579,7 +628,7 @@ components:
           type: string
         RunIds:
           $ref: '#/components/schemas/StringList'
-    
+
     AnalysisFormatInformation:
       type: object
       required: [Description, FormatDefinition]
@@ -590,7 +639,7 @@ components:
         FormatDefinition:
           type: string
           example: "{\"Properties\": [{\"PropertyDescription\":\"Number of times 42 was used.\",\"PropertyFormat\":{\"Type\":\"NumberFormat\"},\"PropertyName\":\"numberOfTimes\",\"Type\":\"NamedPropertyFormat\"}]}"
-    
+
     AnalysisRunInformation:
       type: object
       required: [UID, TimeStamp, Logs, Configuration, State, IsRevoked, AnalysisName]
@@ -622,7 +671,7 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/ProgramEntity"
-    
+
     AnalysisResultInformation:
       type: object
       required: [UID, IsRevoked, JsonContent, AffectedEntityIds]
@@ -638,8 +687,8 @@ components:
           example: {\"numberOfTimes\": 42}
         AffectedEntityIds:
           $ref: '#/components/schemas/StringList'
-          
-    
+
+
     ProgramEntity:
       type: object
       required: ['Name', 'Identifier', 'Language', 'Kind', 'Repository']
@@ -687,6 +736,8 @@ components:
           type: string
         MethodHash:
           type: integer
+        PublishDate:
+          type: string
       example:
         Name: setLength
         Identifier: "commons-io:commons-io!commons-io:commons-io:2.2!org/apache/commons/io/monitor!org/apache/commons/io/monitor/FileEntry!setLength: (J)V"
@@ -708,14 +759,16 @@ components:
         Visibility: public
         Descriptor: (J)V
         MethodHash: 234772383
-        
+
 
     TriggerAnalysisRequest:
       type: object
       required: [Inputs, Configuration]
       properties:
         Inputs:
-          $ref: '#/components/schemas/StringList'
+          type: array
+          items:
+            type: string
           description: List of full entity identifiers to be used as inputs for the analysis
         Configuration:
           type: string
@@ -733,15 +786,17 @@ components:
         Configuration: --be-fancy -use-algo Foo
         User: Ron Swanson
         BaselineRun: a0928f80-cc49-4b4e-bff9-a364e4b50f25
-    
+
     TriggerMinerRequest:
       type: object
-      required: [Identifier]
+      required: [Identifiers]
       properties:
-        Identifier:
-          type: string
-          description: Full name of the entity that is to be indexed. Supports GA-Tuple, GAV-Triple or any more specific identifier (the miner will always index the entire program the entity is part of).
-          example: org.json:json!org.json:json:20070829
+        Identifiers:
+          type: array
+          items:
+            type: string
+          description: Full names of the entities that are to be indexed. Supports GA-Tuple, GAV-Triple or any more specific identifier (the miner will always index the entire program the entity is part of).
+          example: ['org.json:json!org.json:json:20070829']
     
           
         

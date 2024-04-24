@@ -11,7 +11,7 @@ import spray.json.JsonWriter
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
-import scala.concurrent.{Await, ExecutionContext}
+import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
 trait PostgresAnalysisAccessor {
@@ -358,6 +358,41 @@ trait PostgresAnalysisAccessor {
 
       AnalysisResultData(resultRep.uid, resultRep.isRevoked, producingRunUid, resultRep.jsonContent, allAssociatedEntities.toSet)
     }.toSet
+
+  }
+
+  def getAllResults(analysisName: String, analysisVersion: String, limit: Int, skip: Int): Future[Set[AnalysisResultData]] = {
+    val analysisId = getAnalysisRepr(analysisName, analysisVersion).id
+
+    val resultIdQuery = for {(_, runResultRelation) <- analysisRunsTable.filter(_.parentID === analysisId) join runResultsTable on (_.id === _.analysisRunID) }
+      yield runResultRelation.resultID
+
+    db.run(resultIdQuery.sorted.drop(skip).take(limit).result)
+      .flatMap{ resultIds =>
+        db.run(analysisResultsTable.filter(r => r.id inSet resultIds).result)
+      }
+      .flatMap{ resultsData =>
+        val resultEntitiesF = db.run {
+          val join = for {(resultValidity, entity) <- resultValiditiesTable.filter(v => v.resultId inSet resultsData.map(_.id)) join entitiesTable on (_.entityId === _.id)}
+            yield (resultValidity.resultId, entity)
+          join.result
+        }
+
+        resultEntitiesF.map(resultToEntitiesMap => (resultsData, resultToEntitiesMap))
+      }
+      .flatMap{ case (resultsData, resultToEntitiesMapping) =>
+        val runUidMappingF = db.run(analysisRunsTable.filter(_.id inSet resultsData.map(_.runId)).map(r => (r.id, r.uid)).result)
+
+        runUidMappingF.map(m => (resultsData, resultToEntitiesMapping, m.toMap))
+      }
+      .map{ case (resultsData, resultToEntitiesMapping, runToUidMapping) =>
+        resultsData
+          .map{ data =>
+            AnalysisResultData(data.uid, data.isRevoked, runToUidMapping(data.runId), data.jsonContent, resultToEntitiesMapping.filter(_._1 == data.id).map(_._2).map(toGenericEntityData).toSet)
+          }
+          .toSet
+      }
+
 
   }
 
