@@ -6,6 +6,7 @@ import org.anon.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisR
 import spray.json.JsonWriter
 
 import java.time.LocalDateTime
+import scala.concurrent.Future
 import scala.util.Try
 
 trait AnalysisAccessor {
@@ -81,6 +82,8 @@ trait AnalysisAccessor {
    *         a PLAIN JSON STRING
    */
   def getJSONResultsFor(entityName: String, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]]
+
+  def getAllResults(analysisName: String, analysisVersion: String, limit: Int, skip: Int): Future[Set[AnalysisResultData]]
 
   def registerIfNotPresent(analysis: AnalysisData): Unit
 

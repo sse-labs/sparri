@@ -8,7 +8,7 @@ import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import spray.json.enrichAny
 
-import scala.util.{Failure, Success}
+import scala.util.{Failure, Success, Try}
 
 trait EntityRouteDefinitions extends BasicRouteDefinition {
 
@@ -41,7 +41,12 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
 
 
 
-    pathEnd { get { singleEntityRouteImpl(entityName) } } ~
+    pathEnd { get {
+        parameters("depth".?){ depthOpt =>
+          val depthIntOpt = depthOpt.flatMap(_.toIntOption)
+          singleEntityRouteImpl(entityName, depthIntOpt)
+        }
+    } } ~
     path("children") {
       get { extractPaginationHeaders(request){ (limit, skip) => allEntityChildrenRouteImpl(entityName, limit, skip) } }
     }~
@@ -62,8 +67,6 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
   }
 
 
-
-
   private def allEntitiesRouteImpl(limit: Int, skip: Int, queriedKind: Option[SoftwareEntityKind], queriedParent: Option[String],
                                    queriedLanguage: Option[String])(implicit request: HttpRequest): Route = {
 
@@ -72,21 +75,26 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
 
     log.debug(s"All entities requested (skip=$skip, limit=$limit). Filters: Kind=${queriedKind.getOrElse("None")}, Parent=${queriedParent.getOrElse("None")}, Language=${queriedLanguage.getOrElse("None")}")
 
-    requestHandler.getAllEntities(limit, skip, queriedKind, queriedParent) match {
-      case Success(entities) => complete(entities.toArray.toJson)
-      case Failure(_) => complete(InternalServerError)
+    onComplete(requestHandler.getAllEntities(limit, skip, queriedKind, queriedParent)) {
+      case Success(entityReprs) => complete(entityReprs.toArray.toJson)
+      case Failure(ex) =>
+        log.error("Failure while retrieving list of entities", ex)
+        complete(InternalServerError)
     }
   }
 
-  private def singleEntityRouteImpl(entityName: String)(implicit request: HttpRequest): Route = {
-    log.debug(s"Single entity requested, name=$entityName.")
+  private def singleEntityRouteImpl(entityName: String, depthOpt: Option[Int])(implicit request: HttpRequest): Route = {
+    log.debug(s"Single entity requested, name=$entityName, depth=$depthOpt.")
 
-    onComplete(requestHandler.getEntity(entityName)) {
-      case Success(entity) => complete(entity.toJson)
-      case Failure(ex) =>
-        log.error("Failure while retrieving single entity information", ex)
-        complete(InternalServerError)
-    }
+    if(depthOpt.isDefined && depthOpt.get < 0)
+      complete(BadRequest, "Depth must be positive integer value")
+    else
+      onComplete(requestHandler.getEntity(entityName, depthOpt)) {
+        case Success(entity) => complete(entity.toJson)
+        case Failure(ex) =>
+          log.error("Failure while retrieving single entity information", ex)
+          complete(InternalServerError)
+      }
   }
 
   private def allEntityChildrenRouteImpl(entityName: String, limit: Int, skip: Int)(implicit request: HttpRequest): Route = {

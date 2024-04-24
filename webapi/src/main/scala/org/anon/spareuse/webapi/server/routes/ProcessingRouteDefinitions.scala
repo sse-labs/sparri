@@ -27,13 +27,14 @@ trait ProcessingRouteDefinitions extends BasicRouteDefinition {
   private def triggerMinerForEntityRouteImpl(implicit request: HttpRequest): Route = post {
     entityAs[EnqueueRequest]{ entity =>
 
-      log.debug(s"Entity indexing requested for id ${entity.Identifier}")
+      log.debug(s"Entity indexing requested for ${entity.Identifiers.length} ids.")
 
-      if(requestHandler.hasEntity(entity.Identifier) && !requestHandler.isLibrary(entity.Identifier)) {
-        val libUri = Uri(s"entities/${entity.Identifier}")
-        respondWithHeaders(Location(libUri)) { complete(Found, s"Library ${entity.Identifier} has already been processed.")}
+      val identifiersToProcess = entity.Identifiers.filter(ident => !requestHandler.hasEntity(ident) || requestHandler.isLibrary(ident))
+
+      if(identifiersToProcess.isEmpty) {
+        complete(Found, s"All requested entities are already indexed.")
       } else {
-        val enqueueSuccess = requestHandler.triggerEntityMining(entity.Identifier)
+        val enqueueSuccess = requestHandler.triggerEntityMining(identifiersToProcess)
         if(enqueueSuccess) complete(Accepted)
         else complete(InternalServerError)
       }
