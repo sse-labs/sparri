@@ -34,7 +34,7 @@ trait ProcessingRouteDefinitions extends BasicRouteDefinition {
       if(identifiersToProcess.isEmpty) {
         complete(Found, s"All requested entities are already indexed.")
       } else {
-        val enqueueSuccess = requestHandler.triggerEntityMining(identifiersToProcess)
+        val enqueueSuccess = requestHandler.triggerEntityMining(identifiersToProcess.toIndexedSeq)
         if(enqueueSuccess) complete(Accepted)
         else complete(InternalServerError)
       }

@@ -1,22 +1,28 @@
 package org.anon.spareuse.execution.analyses
 
-import org.anon.spareuse.core.maven.{MavenIdentifier, MavenJarDownloader, MavenReleaseListDiscovery}
+import org.anon.spareuse.core.maven.dependencies.PomFileDependencyExtractor
+import org.anon.spareuse.core.maven.{MavenDependencyIdentifier, MavenIdentifier, MavenJarDownloader, MavenReleaseListDiscovery}
 import org.anon.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities._
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
-import org.anon.spareuse.core.storage.AnalysisAccessor
+import org.anon.spareuse.core.storage.DataAccessor
+import org.anon.spareuse.execution.analyses.impl.MvnDependencyAnalysisImpl
 import org.slf4j.{Logger, LoggerFactory}
+import spray.json.{JsArray, JsObject, JsString, JsValue}
 
 import java.io.InputStream
 import scala.annotation.tailrec
 import scala.collection.mutable
-import scala.util.{Failure, Try}
+import scala.language.implicitConversions
+import scala.util.{Failure, Success, Try}
 
 trait AnalysisImplementation extends MavenReleaseListDiscovery {
 
   private val internalLog: Logger = LoggerFactory.getLogger(getClass)
   protected val log: PersistingLogger = new PersistingLogger
+
+  protected[analyses] lazy val dependencyExtractor = new PomFileDependencyExtractor
 
   val descriptor: AnalysisImplementationDescriptor
 
@@ -67,6 +73,71 @@ trait AnalysisImplementation extends MavenReleaseListDiscovery {
       res.map(_.content)
     }
 
+  }
+
+  protected def computeTransitiveDependencies(program: JavaProgram): Try[dependencyExtractor.Dependencies] = {
+    dependencyExtractor.resolveAllDependencies(MavenIdentifier.fromGAV(program.programName).get) match {
+      case (succ@Success(_), failures) =>
+        failures.foreach{ ident => log.warn(s"Unable to resolve transitive dependency ${ident.toString} while processing ${program.programName}")}
+        succ
+      case (fail@Failure(ex), _) =>
+        log.error(s"Failed to compute transitive dependencies for ${program.programName}", ex)
+        fail
+    }
+  }
+
+  protected def getTransitiveDependencies(dataAccessor: DataAccessor, program: JavaProgram): Try[dependencyExtractor.Dependencies] = {
+
+    import spray.json.enrichString
+    implicit def asString(value: JsValue): String = value.asInstanceOf[JsString].value
+
+    log.info(s"Accessing all dependencies for ${program.programName} ...")
+    dataAccessor.getJSONResultsFor(program.identifier,
+      analysisFilter = Some((MvnDependencyAnalysisImpl.name, MvnDependencyAnalysisImpl.version)),
+      limit = 1,
+      skip = 0) match {
+
+      // If lookup in DB succeeds and results are found, we return them
+      case Success(results) if results.nonEmpty =>
+        val resultContent = results.head.content.asInstanceOf[String].parseJson.asInstanceOf[JsArray]
+
+        log.info(s"Found ${resultContent.elements.size} dependencies precomputed in DB.")
+
+        Success(resultContent.elements.collect{
+          case jo: JsObject =>
+            val identObj = jo.fields("identifier").asInstanceOf[JsObject]
+            val ident = MavenIdentifier(MavenIdentifier.DefaultRepository, identObj.fields("groupId"), identObj.fields("artifactId"), identObj.fields("version"))
+            MavenDependencyIdentifier(ident, jo.fields("scope"))
+        })
+
+
+      // If lookup in DB succeeds, but no results are found, we compute dependencies now and return them
+      // IMPROVE: We may want to store them in the DB here to avoid redundant re-computations
+      case Success(_) =>
+        log.info(s"No dependencies computed yet - starting analysis locally ...")
+       computeTransitiveDependencies(program) match {
+         case succ@Success(dependencies) =>
+           log.info(s"Found ${dependencies.size} transitive dependencies.")
+           succ
+         case fail@Failure(_) =>
+           log.error(s"Computing dependencies for ${program.programName} failed.")
+           fail
+       }
+
+      // If looking up results in DB fails, we will re-compute them on-the-fly, but not attempt to store them in the DB
+      case Failure(ex) =>
+        log.error(s"Failed to check whether list of dependencies for ${program.programName} already exists in DB.", ex)
+        log.info(s"Computing dependencies locally ... ")
+        computeTransitiveDependencies(program) match {
+          case succ@Success(dependencies) =>
+            log.info(s"Found ${dependencies.size} transitive dependencies.")
+            succ
+          case fail@Failure(_) =>
+            log.error(s"Computing dependencies for ${program.programName} failed.")
+            fail
+
+        }
+    }
   }
 
   class PersistingLogger {
