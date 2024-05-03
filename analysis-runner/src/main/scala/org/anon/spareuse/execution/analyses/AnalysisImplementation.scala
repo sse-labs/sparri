@@ -6,12 +6,15 @@ import org.anon.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities._
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
+import org.anon.spareuse.core.opal.OPALProjectHelper
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.execution.analyses.impl.MvnDependencyAnalysisImpl
+import org.opalj.br.analyses.Project
 import org.slf4j.{Logger, LoggerFactory}
 import spray.json.{JsArray, JsObject, JsString, JsValue}
 
 import java.io.InputStream
+import java.net.URL
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.language.implicitConversions
@@ -73,6 +76,43 @@ trait AnalysisImplementation extends MavenReleaseListDiscovery {
       res.map(_.content)
     }
 
+  }
+
+  protected def buildOpalProjectFor(programIdent: MavenIdentifier,
+                                    transitiveDependencyIdents: Set[MavenIdentifier]): Try[Project[URL]] = {
+    val projectHelper = new OPALProjectHelper
+    val downloader = new MavenJarDownloader
+
+    val result = Try {
+      val projectIS = downloader.downloadJar(programIdent).get
+      val projectClasses = projectHelper
+        .readClassesFromJarStream(projectIS.content, programIdent.toJarLocation.toURL, loadImplementation = true)
+        .get
+
+      val libraryClasses = transitiveDependencyIdents
+        .map { depIdent =>
+          Try {
+            val dependencyIS = downloader.downloadJar(depIdent).get
+            projectHelper
+              .readClassesFromJarStream(dependencyIS.content, depIdent.toJarLocation.toURL, loadImplementation = true)
+              .get
+          }
+        }
+        .filter {
+          case Success(_) => true
+          case Failure(ex) =>
+            log.error(s"Failed to download dependency for ${programIdent.toString}", ex)
+            false
+        }
+        .flatMap { s => s.get }
+        .toList
+
+      projectHelper.buildOPALProject(projectClasses, libraryClasses, loadJre = false, setLibraryMode = true)
+    }
+
+    downloader.shutdown()
+
+    result
   }
 
   protected def computeTransitiveDependencies(program: JavaProgram): Try[dependencyExtractor.Dependencies] = {
