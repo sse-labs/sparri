@@ -6,9 +6,11 @@ import org.anon.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr,
 import org.anon.spareuse.core.storage.postgresql.{SoftwareEntities, SoftwareEntityRepr}
 import org.anon.spareuse.core.utils.toHex
 import org.anon.spareuse.mvnem.storage.EntityMinerStorageAdapter
+import slick.dbio.DBIO
 
 import scala.util.{Success, Try}
 import slick.jdbc.PostgresProfile.api._
+import slick.jdbc.meta.MTable
 
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.concurrent.duration.DurationInt
@@ -201,12 +203,17 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
     (parentId, jfas.targetFieldTypeName, jfas.targetTypeName, jfas.fieldAccessType.id, jfas.instructionPc)
 
   override def initialize(): Unit = {
-    val setupAction = DBIO.seq(entitiesTable.schema.createIfNotExists, javaProgramsTable.schema.createIfNotExists, javaClassesTable.schema.createIfNotExists,
-      javaMethodsTable.schema.createIfNotExists, javaInvocationsTable.schema.createIfNotExists, javaFieldAccessesTable.schema.createIfNotExists)
 
-    val setupFuture = db.run(setupAction)
+    val allEntityTables = Seq(entitiesTable, javaProgramsTable, javaClassesTable, javaMethodsTable, javaInvocationsTable, javaFieldAccessesTable)
 
-    Await.ready(setupFuture, 60.seconds)
+    val existing = db.run(MTable.getTables)
+    val f = existing.flatMap(v => {
+      val names = v.map(mt => mt.name.name)
+      val createIfNotExist = allEntityTables.filter(table => !names.contains(table.baseTableRow.tableName)).map(_.schema.create)
+      db.run(DBIO.sequence(createIfNotExist))
+    })(executor)
+
+    Await.ready(f, 60.seconds)
 
     val s = db.createSession()
     val autoCommit = s.conn.getAutoCommit
