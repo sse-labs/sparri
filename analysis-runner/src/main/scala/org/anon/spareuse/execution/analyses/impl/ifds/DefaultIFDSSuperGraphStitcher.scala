@@ -22,7 +22,7 @@ class DefaultIFDSSuperGraphStitcher(dataAccessor: DataAccessor,
   private[ifds] var missingSummariesCount = 0
 
   private[ifds] def getPartialGraphFor(dm: cgBuilder.DefinedMethod): Try[IFDSMethodGraph] = Try {
-    val theResults = dataAccessor.getJSONResultsFor(dm.javaMethod.uid, analysisFilter = Some(analysisToStitch.name, analysisToStitch.version), limit = 1, skip = 0).get
+    val theResults = dataAccessor.getJSONResultsFor(???, analysisFilter = Some(analysisToStitch.name, analysisToStitch.version), limit = 1, skip = 0).get
 
     if(theResults.isEmpty)
       throw new IllegalStateException(s"Precondition not met: No results for analysis ${analysisToStitch.name}:${analysisToStitch.version} on method ${dm.toString}")

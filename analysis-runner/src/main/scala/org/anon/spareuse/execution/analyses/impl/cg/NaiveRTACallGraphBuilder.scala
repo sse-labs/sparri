@@ -43,7 +43,7 @@ class NaiveRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: Opt
 
       if(!methodsAnalyzed.contains(currentMethod.hashCode())){
 
-        currentMethod.javaMethod.invocationStatements.foreach { jis =>
+        currentMethod.invocationStatements.foreach { jis =>
           resolveInvocation(jis, allInstantiatedTypes, simpleCaching = true).foreach { target =>
             putCall(currentMethod, jis.instructionPc, target)
             if (!methodsAnalyzed.contains(target.hashCode()))

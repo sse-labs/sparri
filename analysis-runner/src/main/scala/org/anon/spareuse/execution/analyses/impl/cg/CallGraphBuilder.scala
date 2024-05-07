@@ -1,6 +1,6 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaMethod}
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaInvokeStatement, JavaMethod}
 
 import scala.collection.mutable
 import scala.util.Try
@@ -44,20 +44,25 @@ trait CallGraphBuilder {
 
   def asDefinedMethod(jm: JavaMethod): DefinedMethod = {
     if (!defMCache.contains(jm))
-      defMCache(jm) = new DefinedMethod(jm.enclosingClass.get.thisType, jm)
+      defMCache(jm) = new DefinedMethod(jm.enclosingClass.get.thisType,
+        jm.name,
+        jm.descriptor,
+        jm.isStatic,
+        () => jm.newStatements.map(_.instantiatedTypeName).toSet,
+        () => jm.invocationStatements)
 
     defMCache(jm)
   }
 
-  class DefinedMethod(declaringType: String, jm: JavaMethod) {
+  class DefinedMethod(declaringType: String, mName: String, mDescriptor: String, mIsStatic: Boolean, newTypesProvider: () => Set[String], invocationProvider: () => Seq[JavaInvokeStatement]) {
 
     val definingTypeName: String = declaringType
-    val methodName: String = jm.name
-    val descriptor: String = jm.descriptor
+    val methodName: String = mName
+    val descriptor: String = mDescriptor
+    val isStatic: Boolean = mIsStatic
 
-    lazy val javaMethod: JavaMethod = jm
-
-    lazy val newTypesInstantiated: Set[String] = jm.newStatements.map(_.instantiatedTypeName).toSet
+    lazy val newTypesInstantiated: Set[String] = newTypesProvider.apply()
+    lazy val invocationStatements: Seq[JavaInvokeStatement] = invocationProvider.apply()
 
     override def equals(obj: Any): Boolean = obj match {
       case other: DefinedMethod =>

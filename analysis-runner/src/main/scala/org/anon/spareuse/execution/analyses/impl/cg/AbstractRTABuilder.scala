@@ -1,6 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaProgram}
+import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
 import org.opalj.br.FieldType
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -58,7 +59,7 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
    * Builds the type hierarchy based on all inputs and the JRE version currently specified.
    * @return A Map of type FQNs to their TypeNodes, which hold the parent / child relation
    */
-  private[cg] def buildTypeHierarchy(): Map[String, TypeNode] = {
+  protected[cg] def buildTypeHierarchy(): Map[String, TypeNode] = {
 
     val jreTypeMap = if (jreOpt.isDefined) {
       jreOpt.get.types.map { jreType =>
@@ -288,7 +289,12 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
 
   protected def buildTypeNode(jt: JreType): TypeNode = new TypeNode(jt.t, jt.s, jt.i.toSet, jt.iI)
 
-  protected[cg] class TypeNode(thisTypeFqn: String, superTypeFqnOpt: Option[String], interfaceTypeFqns: Set[String], isInterfaceNode: Boolean) {
+
+
+}
+
+object AbstractRTABuilder {
+  class TypeNode(thisTypeFqn: String, superTypeFqnOpt: Option[String], interfaceTypeFqns: Set[String], isInterfaceNode: Boolean) {
 
     private var parent: Option[TypeNode] = None
     private val interfaces: mutable.Set[TypeNode] = mutable.Set.empty
@@ -314,9 +320,6 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
     def getParent: Option[TypeNode] = parent
 
     def addImplements(t: TypeNode): Unit = {
-      if (!t.isInterface)
-        log.warn(s"${t.thisType} is not an interface type, yet it is implemented by $thisType")
-
       interfaces.add(t)
       t.children.add(this)
     }
@@ -330,5 +333,4 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
     def isIncomplete: Boolean = superTypeOpt.isDefined && parent.isEmpty
 
   }
-
 }
