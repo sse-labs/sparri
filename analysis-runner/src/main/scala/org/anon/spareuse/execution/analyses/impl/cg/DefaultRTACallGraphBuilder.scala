@@ -1,6 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
 
 import scala.collection.mutable
 import scala.util.Try
@@ -37,7 +38,7 @@ class DefaultRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: O
           val effectiveTypesToResolve = currTask.method.newTypesInstantiated ++ newExternalTypes
 
           currTask.method.invocationStatements.foreach { jis =>
-            resolveInvocation(jis, effectiveTypesToResolve).foreach { target =>
+            resolveInvocation(jis, currTask.method, s => effectiveTypesToResolve.contains(s)).foreach { target =>
               putCall(currTask.method, jis.instructionPc, target)
               workStack.push(ResolverTask(target, effectiveTypesToResolve, rootSet))
             }

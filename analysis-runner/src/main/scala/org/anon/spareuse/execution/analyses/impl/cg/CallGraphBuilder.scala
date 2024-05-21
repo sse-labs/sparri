@@ -1,6 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaInvokeStatement, JavaMethod}
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
 
 import scala.collection.mutable
 import scala.util.Try
@@ -54,6 +55,21 @@ trait CallGraphBuilder {
     defMCache(jm)
   }
 
+  class CallGraphView private[cg](){
+
+    def reachableMethods(): Set[DefinedMethod] = calleeMap.keySet.toSet ++ callerMap.keySet.toSet
+
+    def calleesOf(dm: DefinedMethod): Iterable[(Int, Set[DefinedMethod])] = calleeMap.get(dm).map(_.map(t => (t._1, t._2.toSet)).toSeq).getOrElse(Seq.empty)
+
+    def calleesOf(dm: DefinedMethod, pc: Int): Set[DefinedMethod] = calleeMap.get(dm).map( callSites => callSites.getOrElse(pc, throw new IllegalArgumentException(s"Not a callsite: $pc")).toSet).getOrElse(Set.empty[DefinedMethod])
+
+    def callersOf(dm: DefinedMethod): Set[DefinedMethod] = callerMap.get(dm).map(_.toSet).getOrElse(Set.empty)
+
+  }
+}
+
+object CallGraphBuilder {
+
   class DefinedMethod(declaringType: String, mName: String, mDescriptor: String, mIsStatic: Boolean, newTypesProvider: () => Set[String], invocationProvider: () => Seq[JavaInvokeStatement]) {
 
     val definingTypeName: String = declaringType
@@ -76,15 +92,4 @@ trait CallGraphBuilder {
 
   }
 
-  class CallGraphView private[cg](){
-
-    def reachableMethods(): Set[DefinedMethod] = calleeMap.keySet.toSet ++ callerMap.keySet.toSet
-
-    def calleesOf(dm: DefinedMethod): Iterable[(Int, Set[DefinedMethod])] = calleeMap.get(dm).map(_.map(t => (t._1, t._2.toSet)).toSeq).getOrElse(Seq.empty)
-
-    def calleesOf(dm: DefinedMethod, pc: Int): Set[DefinedMethod] = calleeMap.get(dm).map( callSites => callSites.getOrElse(pc, throw new IllegalArgumentException(s"Not a callsite: $pc")).toSet).getOrElse(Set.empty[DefinedMethod])
-
-    def callersOf(dm: DefinedMethod): Set[DefinedMethod] = callerMap.get(dm).map(_.toSet).getOrElse(Set.empty)
-
-  }
 }

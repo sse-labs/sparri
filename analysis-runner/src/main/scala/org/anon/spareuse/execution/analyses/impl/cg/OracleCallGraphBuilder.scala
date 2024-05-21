@@ -2,6 +2,8 @@ package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaProgram}
 import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.LookupApplicationMethodRequest
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphResolutionMode.{CHA, NaiveRTA, OracleCallGraphResolutionMode, RTA}
 
 import scala.collection.mutable
@@ -10,9 +12,11 @@ import scala.util.Try
 class OracleCallGraphBuilder(programs: Set[JavaProgram],
                              applicationTypes: Set[TypeNode],
                              jreVersionToLoad: Option[String], //TODO: Define Obligation Resolver
-                             obligationResolver: () => Unit) extends AbstractRTABuilder(programs: Set[JavaProgram],jreVersionToLoad: Option[String]){
+                             requestApplicationMethodLookup: LookupApplicationMethodRequest => Unit) extends AbstractRTABuilder(programs: Set[JavaProgram],jreVersionToLoad: Option[String]){
 
   private[cg] final val applicationTypeNames: Set[String] = applicationTypes.map(_.thisType)
+
+  private[cg] final val applicationMethodSummaries: mutable.Map[TypeNode, mutable.Map[String, mutable.Map[String, ApplicationMethod]]] = new mutable.HashMap()
 
   private[cg] def isApplicationNode(tNode: TypeNode): Boolean =
     applicationTypeNames.contains(tNode.thisType)
@@ -76,7 +80,7 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
   private[cg] val methodsAnalyzed = mutable.HashSet[Int]()
 
-  private[cg] def resolveNaive(entry: DefinedMethod, isRTA: Boolean): Try[CallGraphView] = {
+  private[cg] def resolveNaive(entry: DefinedMethod, isRTA: Boolean): Try[CallGraphView] = Try {
     val workList = mutable.Queue[DefinedMethod](entry)
 
     while (workList.nonEmpty) {
@@ -85,11 +89,7 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
       if (!methodsAnalyzed.contains(currentMethod.hashCode())) {
 
         currentMethod.invocationStatements.foreach { jis =>
-          resolveInvocationNaive(jis, currentMethod, isRTA).foreach {
-
-            case pdm: PotentialApplicationMethod =>
-              //TODO
-            case targetDm =>
+          resolveInvocationNaive(jis, currentMethod, isRTA).foreach { targetDm =>
               putCall(currentMethod, jis.instructionPc, targetDm)
               if (!methodsAnalyzed.contains(targetDm.hashCode()))
                 workList.enqueue(targetDm)
@@ -99,29 +99,98 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
         methodsAnalyzed.add(currentMethod.hashCode())
       }
     }
+
+    getGraph
   }
 
   private[cg] def resolveInvocationNaive(jis: JavaInvokeStatement, context: DefinedMethod, isRTA: Boolean): Set[DefinedMethod] = {
 
     val typeSelector = (typeName: String) => if(isRTA) allInstantiatedTypes.contains(typeName) else true
 
-    resolveInvocation(jis, context, typeSelector)
+    resolveInvocation(jis, context, typeSelector, simpleCaching = true)
   }
 
   private[cg] def resolveInvocation(jis: JavaInvokeStatement, context: DefinedMethod, typesInstantiated: Set[String]): Set[DefinedMethod] = {
     resolveInvocation(jis, context, typeName => typesInstantiated.contains(typeName))
   }
 
-  private[cg] def resolveInvocation(jis: JavaInvokeStatement, context: DefinedMethod, typeSelectable: String => Boolean): Set[DefinedMethod] = {
+  protected[cg] override def resolveInvocation(jis: JavaInvokeStatement, declType: TypeNode, callingContext: DefinedMethod, typeSelectable: String => Boolean): Set[DefinedMethod] = {
 
+    val typeExtern = isApplicationNode(declType)
+
+    //TODO: Do something if target type is extern
+    def applicationMethodKnown(typeNode: TypeNode, name: String, descriptor: String) = applicationMethodSummaries.contains(typeNode) &&
+      applicationMethodSummaries(typeNode).contains(name) && applicationMethodSummaries(typeNode)(name).contains(descriptor)
+
+
+    jis.invokeStatementType match {
+      // If we have a static method invocation on a type that's defined in the application AND we do not have the specific method definition available yet:
+      //   ---> Request method definition at client, do not return any potential targets
+      case JavaInvocationType.Static if typeExtern && !applicationMethodKnown(declType, jis.targetMethodName, jis.targetDescriptor) =>
+
+        log.info(s"Request lookup of static application method: ${jis.targetMethodName} : ${jis.targetDescriptor}")
+        val request = LookupApplicationMethodRequest(jis.targetMethodName, jis.targetDescriptor, Set(declType.thisType), jis.instructionPc, callingContext)
+        requestApplicationMethodLookup(request)
+
+        Set.empty
+
+      // If we have a static invocation on a library method OR a application method that we already know --> Resolve it
+      case JavaInvocationType.Static =>
+
+        // Static methods only need to be looked for at the precise declared type!
+        var targetOpt = findMethodOn(jis, declType)
+
+        // If the static call is made inside the same class, it may be a reference to a parent's implementation of the method
+        if (targetOpt.isEmpty && jis.getParent.get.asInstanceOf[JavaMethod].enclosingClass.get.thisType == declType.thisType) {
+          targetOpt = findMethodDefinition(jis, declType, recurseParents = true)
+        }
+
+        if (targetOpt.isEmpty)
+          log.warn(s"Failed to resolve static invocation on : ${jis.targetTypeName} -> ${jis.targetMethodName}")
+
+        targetOpt.toSet
+
+      case JavaInvocationType.Virtual | JavaInvocationType.Interface =>
+        if (declType.thisType == "java/lang/Object") return resolveOnObject(jis, typeSelectable)
+
+        val targets = getPossibleChildNodes(declType, typeSelectable)
+          .flatMap(node => findMethodOn(jis, node))
+
+        // "Easy" approximation: Always consider base definition if available. Technically it might not be reachable if the
+        // declared type is never instantiated and all instantiated subtypes override the method - complex to compute!
+        val currentOpt = findMethodDefinition(jis, declType, recurseParents = true)
+
+        targets ++ currentOpt.toSet
+
+      case JavaInvocationType.Special =>
+
+        val declTypeM = findMethodOn(jis, declType)
+
+        if (declTypeM.isDefined) declTypeM.toSet
+        else if (!declType.isInterface && declType.hasParent) {
+          findMethodDefinition(jis, declType, recurseParents = true).toSet
+        } else {
+          val dmOnObjOpt = getMethodOnObjectType(jis)
+          if (declType.isInterface && dmOnObjOpt.isDefined) {
+            dmOnObjOpt.toSet
+          } else {
+            log.warn(s"Failed to resolve INVOKESPECIAL: No implementation found for ${jis.targetTypeName}->${jis.targetMethodName}")
+            Set.empty
+          }
+        }
+
+      case _ =>
+        log.error(s"Unhandled invocation type: ${jis.invokeStatementType}")
+        Set.empty
+    }
   }
 
 
 
 
 
-  private[cg] def resolveRTA(entry: DefinedMethod, typesInstantiated: Set[String]): Try[CallGraphView] = {
-    val workStack = mutable.Stack[ResolverTask]()
+  private[cg] def resolveRTA(entry: DefinedMethod, typesInstantiated: Set[String]): Try[CallGraphView] = { ???
+    /*val workStack = mutable.Stack[ResolverTask]()
     val rootSet = mutable.Set.empty[String]
 
 
@@ -155,7 +224,7 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
     } while (rootSet.toSet.diff(priorInvocations(entry)).nonEmpty)
 
 
-    getGraph
+    getGraph*/
   }
 
 
@@ -197,12 +266,17 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
   private[cg] case class ResolverTask(method: DefinedMethod, typesInstantiated: Set[String], newTypes: mutable.Set[String])
 
-  class PotentialApplicationMethod(declType: String,
+  class ApplicationMethod(declType: String,
                                    mName: String,
                                    mDescriptor: String,
                                    mIsStatic: Boolean,
-                                   typesInstantiated: Set[String]) extends this.DefinedMethod(declType, mName, mDescriptor, mIsStatic, newTypesProvider = () => typesInstantiated, invocationProvider = ???)
+                                   typesInstantiated: Set[String]) extends DefinedMethod(declType, mName, mDescriptor, mIsStatic, newTypesProvider = () => typesInstantiated, invocationProvider = ???)
 
+
+}
+
+object OracleCallGraphBuilder {
+  case class LookupApplicationMethodRequest(mName: String, mDescriptor: String, types: Set[String], retPC: Int, callingContext: DefinedMethod)
 
 }
 

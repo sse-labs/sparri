@@ -4,6 +4,7 @@ import org.anon.spareuse.core.model.AnalysisData
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaMethod, JavaProgram}
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.core.utils.EnhancedLogging
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
 import org.anon.spareuse.execution.analyses.impl.cg.DefaultRTACallGraphBuilder
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
 import spray.json.enrichString
@@ -21,7 +22,7 @@ class DefaultIFDSSuperGraphStitcher(dataAccessor: DataAccessor,
 
   private[ifds] var missingSummariesCount = 0
 
-  private[ifds] def getPartialGraphFor(dm: cgBuilder.DefinedMethod): Try[IFDSMethodGraph] = Try {
+  private[ifds] def getPartialGraphFor(dm: DefinedMethod): Try[IFDSMethodGraph] = Try {
     val theResults = dataAccessor.getJSONResultsFor(???, analysisFilter = Some(analysisToStitch.name, analysisToStitch.version), limit = 1, skip = 0).get
 
     if(theResults.isEmpty)
@@ -48,7 +49,7 @@ class DefaultIFDSSuperGraphStitcher(dataAccessor: DataAccessor,
     }
   }
 
-  private[ifds] def stitchAll(entryPoint: cgBuilder.DefinedMethod): Try[Unit] = Try {
+  private[ifds] def stitchAll(entryPoint: DefinedMethod): Try[Unit] = Try {
    superGraph.getMethodGraphFor(entryPoint) match {
       case Some(partialGraph) =>
 
@@ -72,7 +73,7 @@ class DefaultIFDSSuperGraphStitcher(dataAccessor: DataAccessor,
     }
   }
 
-  private[ifds] def stitch(currentGraph: IFDSMethodGraph, callStmt: StatementNode, target: cgBuilder.DefinedMethod): Unit = {
+  private[ifds] def stitch(currentGraph: IFDSMethodGraph, callStmt: StatementNode, target: DefinedMethod): Unit = {
 
     superGraph.getMethodGraphFor(target) match {
       case Some(targetGraph) =>
@@ -85,10 +86,10 @@ class DefaultIFDSSuperGraphStitcher(dataAccessor: DataAccessor,
 
   class StitchedGraph {
 
-    private[ifds] val partialGraphs: mutable.Map[cgBuilder.DefinedMethod, IFDSMethodGraph] = mutable.HashMap()
+    private[ifds] val partialGraphs: mutable.Map[DefinedMethod, IFDSMethodGraph] = mutable.HashMap()
 
 
-    def getMethodGraphFor(dm: cgBuilder.DefinedMethod): Option[IFDSMethodGraph] = {
+    def getMethodGraphFor(dm: DefinedMethod): Option[IFDSMethodGraph] = {
       if(!partialGraphs.contains(dm)){
 
         timedOp(s"Retrieve IFDS summary for method ${dm.toString}", () => getPartialGraphFor(dm)) match {

@@ -2,6 +2,7 @@ package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaProgram}
 import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
 import org.opalj.br.FieldType
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -143,20 +144,25 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
   /**
    * Retrieve all children of the given type node that are instantiated somewhere
    * @param typeNode TypeNode to enumerate children for
-   * @param instantiatedTypes Set of instantiated type names
+   * @param typeSelectable Function determining whether a type is selectable as a target
    * @return Set of TypeNodes that are children of the given node and instantiated somewhere
    */
-  protected[cg]def getPossibleChildNodes(typeNode: TypeNode, instantiatedTypes: Set[String]): Set[TypeNode] = {
-    typeNode.allChildren.filter(cNode => instantiatedTypes.contains(cNode.thisType))
+  protected[cg]def getPossibleChildNodes(typeNode: TypeNode, typeSelectable: String => Boolean): Set[TypeNode] = {
+    typeNode.allChildren.filter(cNode => typeSelectable(cNode.thisType))
   }
 
-  private[cg] def resolveOnObject(jis: JavaInvokeStatement, instantiatedTypes: Set[String]): Set[DefinedMethod] =
-    instantiatedTypes
-      .flatMap(t => classLookup(t).lookupMethod(jis.targetMethodName, jis.targetDescriptor).map(asDefinedMethod)) ++
+  private[cg] def resolveOnObject(jis: JavaInvokeStatement, typeSelectable: String => Boolean): Set[DefinedMethod] = {
+    typeLookup
+      .values
+      .map(_.thisType)
+      .filter(typeSelectable)
+      .flatMap(t => classLookup(t).lookupMethod(jis.targetMethodName, jis.targetDescriptor).map(asDefinedMethod))
+      .toSet ++
       getMethodOnObjectType(jis).toSet
+  }
 
 
-  protected[cg] def resolveInvocation(jis: JavaInvokeStatement, declType: TypeNode, instantiatedTypes: Set[String]): Set[DefinedMethod] = jis.invokeStatementType match {
+  protected[cg] def resolveInvocation(jis: JavaInvokeStatement, declType: TypeNode, callingContext: DefinedMethod, typeSelectable: String => Boolean): Set[DefinedMethod] = jis.invokeStatementType match {
     case JavaInvocationType.Static =>
       // Static methods only need to be looked for at the precise declared type!
       var targetOpt = findMethodOn(jis, declType)
@@ -172,9 +178,9 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
       targetOpt.toSet
 
     case JavaInvocationType.Virtual | JavaInvocationType.Interface =>
-      if(declType.thisType == "java/lang/Object") return resolveOnObject(jis, instantiatedTypes)
+      if(declType.thisType == "java/lang/Object") return resolveOnObject(jis, typeSelectable)
 
-      val targets = getPossibleChildNodes(declType, instantiatedTypes)
+      val targets = getPossibleChildNodes(declType, typeSelectable)
         .flatMap(node => findMethodOn(jis, node))
 
       // "Easy" approximation: Always consider base definition if available. Technically it might not be reachable if the
@@ -210,14 +216,13 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
   /**
    * Resolves the given invocation with the given set of instantiatable types
    * @param jis Invocation statment to resolve
-   * @param instantiatedTypes Set of type names that may be instantiated at this point in time
+   * @param callingContext Method this call was made from
+   * @param typeSelectable Function determining whether a type is selectable as a target (usually: Is it instantiatable?)
    * @param simpleCaching Set to true in order to cache results only per invocation, not considering types. Only applicable
    *                      if the types considered instantiatable are always the same (ie. in naive RTA).
    * @return Set of defined methods that may be invoked
    */
-  def resolveInvocation(jis: JavaInvokeStatement, instantiatedTypes: Set[String], simpleCaching: Boolean = false): Set[DefinedMethod] = {
-
-
+  def resolveInvocation(jis: JavaInvokeStatement, callingContext: DefinedMethod, typeSelectable: String => Boolean, simpleCaching: Boolean = false): Set[DefinedMethod] = {
 
     if(simpleCaching ){
       val invocationIdent = jis.targetTypeName + jis.targetMethodName + jis.targetDescriptor
@@ -232,7 +237,7 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
           Set.empty
         } else {
           val declaredType = typeLookup(objTypeFqn)
-          resolveInvocation(jis, declaredType, instantiatedTypes)
+          resolveInvocation(jis, declaredType, callingContext, typeSelectable)
         }
       case '<' =>
         log.warn(s"Resolution for INVOKEDYNAMIC not supported: $jis")
@@ -252,11 +257,11 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
               // hashCode, equals and toString on array types involve calling the respective method on their component type!
               // Hence, we rewrite the invoke statement to point to the component type instead
               val correctedInvocation = new JavaInvokeStatement(jis.targetMethodName, at.toJVMTypeName, jis.targetDescriptor, jis.invokeStatementType, jis.instructionPc, jis.uid, jis.repository)
-              resolveInvocation(correctedInvocation, instantiatedTypes)
+              resolveInvocation(correctedInvocation, callingContext, typeSelectable, simpleCaching)
             } else {
               // if one of the three methods is invoked on a primitive component type, we refer to object as the declaring type
               val correctedInvocation = new JavaInvokeStatement(jis.targetMethodName, "java/lang/Object", jis.targetDescriptor, jis.invokeStatementType, jis.instructionPc, jis.uid, jis.repository)
-              resolveInvocation(correctedInvocation, instantiatedTypes)
+              resolveInvocation(correctedInvocation, callingContext, typeSelectable, simpleCaching)
             }
           case _ =>
             log.warn(s"Unable to resolve method invocation on array type: ${jis.targetTypeName}->${jis.targetMethodName}")
