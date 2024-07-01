@@ -154,9 +154,8 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
   private[cg] def resolveOnObject(jis: JavaInvokeStatement, typeSelectable: String => Boolean): Set[DefinedMethod] = {
     typeLookup
       .values
-      .map(_.thisType)
-      .filter(typeSelectable)
-      .flatMap(t => classLookup(t).lookupMethod(jis.targetMethodName, jis.targetDescriptor).map(asDefinedMethod))
+      .filter(n => typeSelectable(n.thisType))
+      .flatMap(n => findMethodOn(jis, n))
       .toSet ++
       getMethodOnObjectType(jis).toSet
   }
@@ -313,6 +312,10 @@ object AbstractRTABuilder {
 
     lazy val allChildren: Set[TypeNode] = {
       getChildren.flatMap(c => Set(c) ++ c.allChildren)
+    }
+
+    lazy val allParents: Seq[TypeNode] = {
+      getParent.map(p => Seq(p) ++ p.allParents).getOrElse(Seq.empty)
     }
 
     def setParent(p: TypeNode): Unit = {
