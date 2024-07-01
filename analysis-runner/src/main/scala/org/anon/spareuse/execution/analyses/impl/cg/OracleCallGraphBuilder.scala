@@ -3,7 +3,7 @@ package org.anon.spareuse.execution.analyses.impl.cg
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaProgram}
 import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
 import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
-import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.LookupApplicationMethodRequest
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, LookupApplicationMethodRequest, LookupApplicationMethodResponse}
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphResolutionMode.{CHA, NaiveRTA, OracleCallGraphResolutionMode, RTA}
 
 import scala.collection.mutable
@@ -76,6 +76,35 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
         val effectiveTypesInstantiated = if(!dm.isStatic) typesInstantiated ++ Set(dm.definingTypeName) else typesInstantiated
         resolveRTA(dm, effectiveTypesInstantiated) // Pass information on instantiated types
     }
+  }
+
+  def processResponse(clientResponse: LookupApplicationMethodResponse): Unit = {
+
+    def putSummary(node: TypeNode, name: String, descriptor: String, methodOpt: Option[ApplicationMethod]): Unit = {
+      if(applicationMethodSummaries.contains(node)){
+        val typeMap = applicationMethodSummaries(node)
+        if(typeMap.contains(name)){
+          val nameMap = typeMap(name)
+          if(!nameMap.contains(descriptor)) nameMap.put(descriptor, methodOpt)
+        } else {
+          typeMap.put(name, mutable.HashMap(descriptor -> methodOpt))
+        }
+      } else {
+        applicationMethodSummaries.put(node, mutable.HashMap(name -> mutable.Map(descriptor -> methodOpt)))
+      }
+    }
+
+    // Register that the requested method is not defined on the noDefTypes returned by the client
+    clientResponse.noDefTypes.foreach{ noDefType =>
+      putSummary(typeLookup(noDefType), clientResponse.methodRequested.methodName, clientResponse.methodRequested.methodDescriptor, None)
+    }
+
+    // Register that the requested method is defined on the following types
+    clientResponse.targetMethods.foreach{ defMethod =>
+      putSummary(typeLookup(defMethod.definingTypeName), clientResponse.methodRequested.methodName, clientResponse.methodRequested.methodDescriptor, Some(defMethod))
+    }
+
+    //TODO: Restart resolution at calling context
   }
 
   private[cg] val methodsAnalyzed = mutable.HashSet[Int]()
@@ -430,17 +459,32 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
   private[cg] case class ResolverTask(method: DefinedMethod, typesInstantiated: Set[String], newTypes: mutable.Set[String])
 
-  class ApplicationMethod(declType: String,
-                                   mName: String,
-                                   mDescriptor: String,
-                                   mIsStatic: Boolean,
-                                   typesInstantiated: Set[String]) extends DefinedMethod(declType, mName, mDescriptor, mIsStatic, newTypesProvider = () => typesInstantiated, invocationProvider = ???)
+
 
 
 }
 
 object OracleCallGraphBuilder {
+
+  case class MethodIdent(declaredType: String, methodName: String, methodDescriptor: String)
+
   case class LookupApplicationMethodRequest(mInvokeType: Int, mName: String, mDescriptor: String, types: Set[String], retPC: Int, callingContext: DefinedMethod)
+
+  class ApplicationMethod(identifier: MethodIdent,
+                          mIsStatic: Boolean,
+                          typesInstantiated: Set[String],
+                          invocations: Seq[JavaInvokeStatement]) extends DefinedMethod(identifier.declaredType, identifier.methodName, identifier.methodDescriptor, mIsStatic, newTypesProvider = () => typesInstantiated, invocationProvider = () => invocations)
+
+  /**
+   * Class representing a clients response to a lookup request.
+   * @param ccIdent The method identifier of the calling context ( where to resume resolution at )
+   * @param ccPC The PC of the calling context
+   * @param methodRequested Identifier of the method that was requested (the call made at ccPC)
+   * @param typesRequested Set of types that was requested from the client
+   * @param targetMethods A set of method definitions that were contributed by the client - application methods
+   * @param noDefTypes Set of type names for which no matching definition has been found at the client
+   */
+  case class LookupApplicationMethodResponse(ccIdent: MethodIdent, ccPC: Int, methodRequested: MethodIdent, typesRequested: Set[String], targetMethods: Set[ApplicationMethod], noDefTypes: Set[String])
 
 }
 
