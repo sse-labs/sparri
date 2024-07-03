@@ -1,9 +1,9 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaProgram}
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaInvocationType, JavaInvokeStatement, JavaProgram}
 import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
 import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
-import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, LookupApplicationMethodRequest, LookupApplicationMethodResponse}
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, LookupApplicationMethodRequest, LookupApplicationMethodResponse, MethodIdent}
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphResolutionMode.{CHA, NaiveRTA, OracleCallGraphResolutionMode, RTA}
 
 import scala.collection.mutable
@@ -11,7 +11,7 @@ import scala.util.Try
 
 class OracleCallGraphBuilder(programs: Set[JavaProgram],
                              applicationTypes: Set[TypeNode],
-                             jreVersionToLoad: Option[String], //TODO: Define Obligation Resolver
+                             jreVersionToLoad: Option[String],
                              requestApplicationMethodLookup: LookupApplicationMethodRequest => Unit) extends AbstractRTABuilder(programs: Set[JavaProgram],jreVersionToLoad: Option[String]){
 
   private[cg] final val applicationTypeNames: Set[String] = applicationTypes.map(_.thisType)
@@ -104,7 +104,29 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
       putSummary(typeLookup(defMethod.definingTypeName), clientResponse.methodRequested.methodName, clientResponse.methodRequested.methodDescriptor, Some(defMethod))
     }
 
-    //TODO: Restart resolution at calling context
+    if(resolutionMode == CHA || resolutionMode == NaiveRTA){
+      // To resume resolution we want to:
+      // - Identify those methods reported by the client that we did not know yet ( => have not analyzed yet)
+      // - For those methods put a call from the original calling context to the method in the graph
+      // - Restart "normal" resolution at those methods.
+      clientResponse
+        .targetMethods
+        .filterNot(am => methodsAnalyzed.contains(am.hashCode()))
+        .foreach { appMethod =>
+          findMethod(clientResponse.ccIdent) match {
+            case Some(caller) =>
+              putCall(caller, clientResponse.ccPC, appMethod)
+              resolveNaive(appMethod, resolutionMode == NaiveRTA)
+            case None =>
+              log.error(s"Client responded with method for which calling context could not be located. Calling Context: ${clientResponse.ccIdent}")
+          }
+
+        }
+    } else {
+      ???
+      //TODO: Implement logic for complex RTA
+    }
+
   }
 
   private[cg] val methodsAnalyzed = mutable.HashSet[Int]()
@@ -147,6 +169,17 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
     // It is important to override this method so we can handle both application methods that are cached and "regular" methods
     if(isApplicationNode(node)) applicationMethodSummaries.get(node).flatMap(im => im.get(jis.targetMethodName).flatMap(iim => iim.get(jis.targetDescriptor).flatten))
     else super.findMethodOn(jis, node)
+  }
+
+  private[cg] def findMethod(ident: MethodIdent): Option[DefinedMethod] = {
+    typeLookup.get(ident.declaredType).flatMap { node =>
+      if(isApplicationNode(node)) applicationMethodSummaries.get(node).flatMap(im => im.get(ident.methodName).flatMap(iim => iim.get(ident.methodDescriptor).flatten))
+      else {
+        val currentClass = classLookup(node.thisType)
+
+        currentClass.lookupMethod(ident.methodName, ident.methodDescriptor).map(asDefinedMethod)
+      }
+    }
   }
 
   private[cg] def findApplicableDefinition(jis: JavaInvokeStatement, currNode: TypeNode, callingContext: DefinedMethod): Either[Option[DefinedMethod], LookupApplicationMethodRequest] = {
