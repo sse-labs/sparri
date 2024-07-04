@@ -10,6 +10,13 @@ import org.opalj.tac.fpcf.analyses.cg.MethodDesc
 
 object JavaEntities {
 
+  def gavToProgramIdent(gav: String): Option[String] = {
+    if(gav.count(_ ==':') != 2) return None
+    val ga = gav.substring(0, gav.lastIndexOf(":"))
+
+    Some(s"$ga!$gav")
+  }
+
   def buildLibrary(ga: String, repoIdent: String = "mvn"): JavaLibrary = new JavaLibrary(ga, repoIdent)
 
   def buildProgram(gav: String, repoIdent: String = "mvn", uploadTime: String, hash: Array[Byte] = Array.empty): JavaProgram = {

@@ -96,12 +96,12 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
     // Register that the requested method is not defined on the noDefTypes returned by the client
     clientResponse.noDefTypes.foreach{ noDefType =>
-      putSummary(typeLookup(noDefType), clientResponse.methodRequested.methodName, clientResponse.methodRequested.methodDescriptor, None)
+      putSummary(typeLookup(noDefType), clientResponse.mName, clientResponse.mDescriptor, None)
     }
 
     // Register that the requested method is defined on the following types
     clientResponse.targetMethods.foreach{ defMethod =>
-      putSummary(typeLookup(defMethod.definingTypeName), clientResponse.methodRequested.methodName, clientResponse.methodRequested.methodDescriptor, Some(defMethod))
+      putSummary(typeLookup(defMethod.definingTypeName), clientResponse.mName, clientResponse.mDescriptor, Some(defMethod))
     }
 
     if(resolutionMode == CHA || resolutionMode == NaiveRTA){
@@ -226,7 +226,7 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
     if (typeNamesToLookup.nonEmpty) {
       // If there are any types to lookup with the client, we place an appropriate lookup request and return no targets yet
-      Right(LookupApplicationMethodRequest(jis.invokeStatementType.id, jis.targetMethodName, jis.targetDescriptor, typeNamesToLookup, jis.instructionPc, callingContext))
+      Right(LookupApplicationMethodRequest(jis.invokeStatementType.id, jis.targetMethodName, jis.targetDescriptor, typeNamesToLookup, jis.instructionPc, MethodIdent(callingContext.definingTypeName, callingContext.methodName, callingContext.descriptor)))
     } else if (firstDefinitionSiteInParent.isEmpty) {
       // We know that no parent defines the method, and there is no type to query that might
       // define it. That means there is no implementation for that method on this type.
@@ -252,7 +252,7 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
       applicationMethodSummaries(typeNode).contains(jis.targetMethodName) && applicationMethodSummaries(typeNode)(jis.targetMethodName).contains(jis.targetDescriptor)
 
 
-
+    val ccIdent = MethodIdent(callingContext.definingTypeName, callingContext.methodName, callingContext.descriptor)
 
 
     jis.invokeStatementType match {
@@ -305,7 +305,7 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
           if(typeNamesToLookup.nonEmpty){
             // If there are any types to lookup with the client, we place an appropriate lookup request and return no targets yet
-            val request = LookupApplicationMethodRequest(jis.invokeStatementType.id, jis.targetMethodName, jis.targetDescriptor, typeNamesToLookup, jis.instructionPc, callingContext)
+            val request = LookupApplicationMethodRequest(jis.invokeStatementType.id, jis.targetMethodName, jis.targetDescriptor, typeNamesToLookup, jis.instructionPc, ccIdent)
             requestApplicationMethodLookup(request)
             Set.empty
           } else if(firstDefinitionSiteInParent.isEmpty){
@@ -332,7 +332,7 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
           case Some(targetMethod) =>
             Set(targetMethod)
           case None if typeExtern  && !applicationMethodKnown(declType) =>
-            val request = LookupApplicationMethodRequest(jis.invokeStatementType.id, jis.targetMethodName, jis.targetDescriptor, Set(declType.thisType), jis.instructionPc, callingContext)
+            val request = LookupApplicationMethodRequest(jis.invokeStatementType.id, jis.targetMethodName, jis.targetDescriptor, Set(declType.thisType), jis.instructionPc, ccIdent)
             requestApplicationMethodLookup(request)
             Set.empty
           case None =>
@@ -380,7 +380,7 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
         // Request all information missing to fully determine targets
         if(needRequesting.nonEmpty){
-          val request = LookupApplicationMethodRequest(jis.invokeStatementType.id, jis.targetMethodName, jis.targetDescriptor, needRequesting, jis.instructionPc, callingContext)
+          val request = LookupApplicationMethodRequest(jis.invokeStatementType.id, jis.targetMethodName, jis.targetDescriptor, needRequesting, jis.instructionPc, ccIdent)
           requestApplicationMethodLookup(request)
         }
 
@@ -501,7 +501,7 @@ object OracleCallGraphBuilder {
 
   case class MethodIdent(declaredType: String, methodName: String, methodDescriptor: String)
 
-  case class LookupApplicationMethodRequest(mInvokeType: Int, mName: String, mDescriptor: String, types: Set[String], retPC: Int, callingContext: DefinedMethod)
+  case class LookupApplicationMethodRequest(mInvokeType: Int, mName: String, mDescriptor: String, types: Set[String], ccPC: Int, ccIdent: MethodIdent)
 
   class ApplicationMethod(identifier: MethodIdent,
                           mIsStatic: Boolean,
@@ -512,12 +512,13 @@ object OracleCallGraphBuilder {
    * Class representing a clients response to a lookup request.
    * @param ccIdent The method identifier of the calling context ( where to resume resolution at )
    * @param ccPC The PC of the calling context
-   * @param methodRequested Identifier of the method that was requested (the call made at ccPC)
+   * @param mName Name of the method that was requested (the call made at ccPC)
+   * @param mDescriptor Descriptor of the method that was requested
    * @param typesRequested Set of types that was requested from the client
    * @param targetMethods A set of method definitions that were contributed by the client - application methods
    * @param noDefTypes Set of type names for which no matching definition has been found at the client
    */
-  case class LookupApplicationMethodResponse(ccIdent: MethodIdent, ccPC: Int, methodRequested: MethodIdent, typesRequested: Set[String], targetMethods: Set[ApplicationMethod], noDefTypes: Set[String])
+  case class LookupApplicationMethodResponse(ccIdent: MethodIdent, ccPC: Int, mName: String, mDescriptor: String, typesRequested: Set[String], targetMethods: Set[ApplicationMethod], noDefTypes: Set[String])
 
 }
 
