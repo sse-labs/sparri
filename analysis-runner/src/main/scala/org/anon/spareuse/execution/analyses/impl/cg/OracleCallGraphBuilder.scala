@@ -18,6 +18,21 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
   private[cg] final val applicationMethodSummaries: mutable.Map[TypeNode, mutable.Map[String, mutable.Map[String, Option[ApplicationMethod]]]] = new mutable.HashMap()
 
+
+  private[cg] def putSummary(node: TypeNode, name: String, descriptor: String, methodOpt: Option[ApplicationMethod]): Unit = {
+    if (applicationMethodSummaries.contains(node)) {
+      val typeMap = applicationMethodSummaries(node)
+      if (typeMap.contains(name)) {
+        val nameMap = typeMap(name)
+        if (!nameMap.contains(descriptor)) nameMap.put(descriptor, methodOpt)
+      } else {
+        typeMap.put(name, mutable.HashMap(descriptor -> methodOpt))
+      }
+    } else {
+      applicationMethodSummaries.put(node, mutable.HashMap(name -> mutable.Map(descriptor -> methodOpt)))
+    }
+  }
+
   private[cg] def isApplicationNode(tNode: TypeNode): Boolean =
     applicationTypeNames.contains(tNode.thisType)
 
@@ -60,39 +75,29 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
   override def buildFrom(dm: DefinedMethod): Try[CallGraphView] = buildFrom(dm, Set.empty)
 
+  def buildFromApplicationMethod(am: ApplicationMethod, typesInstantiated: Set[String], startAtPc: Int = 0): Try[CallGraphView] = {
+    putSummary(typeLookup(am.definingTypeName), am.methodName, am.descriptor, Some(am))
 
-  def buildFrom(dm: DefinedMethod, typesInstantiated: Set[String]): Try[CallGraphView] = {
+    buildFrom(am, typesInstantiated, startAtPc)
+  }
+  def buildFrom(dm: DefinedMethod, typesInstantiated: Set[String], startAtPc: Int = 0): Try[CallGraphView] = {
 
     resolutionMode match {
       case CHA =>
-        resolveNaive(dm, isRTA = false) // No need to pass type information for CHA, only hierarchy is needed
+        resolveNaive(dm, isRTA = false, startAtPc) // No need to pass type information for CHA, only hierarchy is needed
       case NaiveRTA =>
         // Make sure type of current method is instantiatable (if method is not static)
         if (!dm.isStatic && !typeNamesInstantiatedInApplication.contains(dm.definingTypeName))
           typeNamesInstantiatedInApplication = typeNamesInstantiatedInApplication ++ Set(dm.definingTypeName)
-        resolveNaive(dm, isRTA = true) // No need to pass type information for naive RTA, algorithm will use global type information
+        resolveNaive(dm, isRTA = true, startAtPc) // No need to pass type information for naive RTA, algorithm will use global type information
       case RTA =>
         // Make sure type of current method is instantiatable (if method is not static)
         val effectiveTypesInstantiated = if(!dm.isStatic) typesInstantiated ++ Set(dm.definingTypeName) else typesInstantiated
-        resolveRTA(dm, effectiveTypesInstantiated) // Pass information on instantiated types
+        resolveRTA(dm, effectiveTypesInstantiated, startAtPc) // Pass information on instantiated types
     }
   }
 
   def processResponse(clientResponse: LookupApplicationMethodResponse): Unit = {
-
-    def putSummary(node: TypeNode, name: String, descriptor: String, methodOpt: Option[ApplicationMethod]): Unit = {
-      if(applicationMethodSummaries.contains(node)){
-        val typeMap = applicationMethodSummaries(node)
-        if(typeMap.contains(name)){
-          val nameMap = typeMap(name)
-          if(!nameMap.contains(descriptor)) nameMap.put(descriptor, methodOpt)
-        } else {
-          typeMap.put(name, mutable.HashMap(descriptor -> methodOpt))
-        }
-      } else {
-        applicationMethodSummaries.put(node, mutable.HashMap(name -> mutable.Map(descriptor -> methodOpt)))
-      }
-    }
 
     // Register that the requested method is not defined on the noDefTypes returned by the client
     clientResponse.noDefTypes.foreach{ noDefType =>
@@ -131,8 +136,10 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
   private[cg] val methodsAnalyzed = mutable.HashSet[Int]()
 
-  private[cg] def resolveNaive(entry: DefinedMethod, isRTA: Boolean): Try[CallGraphView] = Try {
+  private[cg] def resolveNaive(entry: DefinedMethod, isRTA: Boolean, startAtPC: Int = 0): Try[CallGraphView] = Try {
     val workList = mutable.Queue[DefinedMethod](entry)
+
+    var isEntry = true
 
     while (workList.nonEmpty) {
       val currentMethod = workList.dequeue()
@@ -140,15 +147,21 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
       if (!methodsAnalyzed.contains(currentMethod.hashCode())) {
 
         currentMethod.invocationStatements.foreach { jis =>
-          resolveInvocationNaive(jis, currentMethod, isRTA).foreach { targetDm =>
+
+          // Only consider invocations with PC >= startAtPC if this is the entry method
+          if(!isEntry || jis.instructionPc >= startAtPC){
+            resolveInvocationNaive(jis, currentMethod, isRTA).foreach { targetDm =>
               putCall(currentMethod, jis.instructionPc, targetDm)
               if (!methodsAnalyzed.contains(targetDm.hashCode()))
                 workList.enqueue(targetDm)
+            }
           }
         }
 
         methodsAnalyzed.add(currentMethod.hashCode())
       }
+
+      if(isEntry) isEntry = false
     }
 
     getGraph
@@ -414,7 +427,7 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
 
 
-  private[cg] def resolveRTA(entry: DefinedMethod, typesInstantiated: Set[String]): Try[CallGraphView] = { ???
+  private[cg] def resolveRTA(entry: DefinedMethod, typesInstantiated: Set[String], startAtPc: Int): Try[CallGraphView] = { ???
     //TODO: Implement an algorithm that tracks instantiated types here
     /*val workStack = mutable.Stack[ResolverTask]()
     val rootSet = mutable.Set.empty[String]

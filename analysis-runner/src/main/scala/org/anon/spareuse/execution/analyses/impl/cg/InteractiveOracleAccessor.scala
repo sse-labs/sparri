@@ -5,17 +5,27 @@ import org.anon.spareuse.core.model.entities.JavaEntities
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
-import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.InteractionType.{Initialization, InteractionType, MethodRequest}
+import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.InteractionType.{Initialization, InteractionType, MethodRequest, Internal}
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{LookupRequestRepresentation, LookupResponseRepresentation, OracleInteractionError}
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, LookupApplicationMethodRequest, LookupApplicationMethodResponse}
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphResolutionMode.{CHA, NaiveRTA, OracleCallGraphResolutionMode, RTA}
 import org.slf4j.{Logger, LoggerFactory}
 
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
+/**
+ * This class manages concurrent communications between a client analysis application and the oracle CG builder for one
+ * specific project context. It buffers and decouples outgoing lookup requests and incoming lookup responses. It also
+ * asynchronously runs a main resolver loop that waits for all requests to be answered. Resolution will time out if the
+ * client does not provide at least one new response every thirty seconds. This class also implements some caching to
+ * reduce actual communication overhead.
+ *
+ *
+ * @param dataAccessor The database accessor for this instance. Needed for resolving the third party libraries in the index.
+ */
 class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
 
   private final val log: Logger = LoggerFactory.getLogger(getClass)
@@ -25,6 +35,8 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
   private[cg] var oracleCGBuilderOpt: Option[OracleCallGraphBuilder] = None
 
   private[cg] var resolverLoopFuture: Option[Future[Unit]] = None
+
+  private[cg] val isRunning: AtomicBoolean = new AtomicBoolean(false)
 
   private[cg] val outgoingRequestsBuffer: mutable.Queue[LookupRequestRepresentation] = mutable.Queue.empty
   private[cg] val outgoingRequestId: AtomicInteger = new AtomicInteger(0)
@@ -57,7 +69,11 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
    * @param mode Resolution mode to use for this oracle
    * @return An Either object that can represent a Unit value (left) or an interaction error (right) which will during initialization always be fatal
    */
-  def initialize(libraryGAVs: Set[String], libraryTypes: Set[TypeNode], typesInstantiated: Set[String], jreVersion: Option[String], mode: OracleCallGraphResolutionMode): Either[Unit, OracleInteractionError] = {
+  def initialize(libraryGAVs: Set[String],
+                 libraryTypes: Set[TypeNode],
+                 typesInstantiated: Set[String],
+                 jreVersion: Option[String],
+                 mode: OracleCallGraphResolutionMode): Either[Unit, OracleInteractionError] = {
     // Avoid dual initialization - if that happens, that's a non-fatal user error
     if(oracleCGBuilderOpt.isDefined){
       val error = OracleInteractionError("Got a second initialization message, ignoring.", isFatal = false, isUserError = true, Initialization)
@@ -91,6 +107,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       builder
     } match {
       case Success(builder) =>
+        //noinspection ScalaUnnecessaryParentheses
         Left((oracleCGBuilderOpt = Some(builder)))
       case Failure(ex) =>
         oracleCGBuilderOpt = None
@@ -99,24 +116,59 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
     }
   }
 
-  def startResolution(callingContext: ApplicationMethod, ccPC: Int)(implicit ec: ExecutionContext): Unit = {
-    val theInvocation = callingContext.invocationStatements.find(_.instructionPc == ccPC).get
-    // TODO: We need a way to trigger resolution at the specific invocation statement - not supported by now
-    ???
-
-    resolverLoopFuture = Some(Future(runBuilderLoop()))
+  /**
+   * Main interface for starting CG resolution at a specific invocation statement inside an application method. Will start
+   * the asynchronous resolution loop in the background and start producing lookup requests. A caller is required to check
+   * the outgoing request buffer (nextRequest) and to send those requests to the client. Incoming responses must be returned
+   * to this instance via pushResponse. Only when all requests have been responded to, the execution will finish.
+   *
+   *
+   * @param callingContext Application method that the entry call has been made in
+   * @param ccPC PC that the entry call has been made at
+   * @param typesInstantiated Types that have been instantiated so far (at the call site). Only needed for full-blown RTA.
+   * @param ec Implicit execution context to run the main resolver loop on
+   * @return Either a unit value (if successful) or an OracleInteractionError
+   */
+  def startResolution(callingContext: ApplicationMethod,
+                      ccPC: Int,
+                      typesInstantiated: Set[String])(implicit ec: ExecutionContext): Either[Unit, OracleInteractionError] = {
+    if(isRunning.get()){
+      val error = OracleInteractionError(s"Request for a new entry point while still resolving - wait for resolution to finish!",
+        isFatal = false, isUserError = true, interactionType = MethodRequest)
+      logError(error)
+      Right(error)
+    } else {
+      isRunning.set(true)
+      resolverLoopFuture = Some(Future(runBuilderLoop(callingContext, ccPC, typesInstantiated)))
+      Left(())
+    }
   }
 
   /**
    * This method handles the interaction with the actual OracleCallGraphBuilder. It triggers the processing of all responses
    * that are in the buffer, and makes sure that we wait for all responses to be in before we terminate. It will also
    * stop on any fatal error
+   *
+   * @param cc Calling context of this library invocation, i.e. the application method containing an library entry point call
+   * @param ccPC: PC of the entry call inside the calling method(cc)
+   * @param typesInstantiated Set of type names that are instantiated for this entry point
    */
-  private[cg] def runBuilderLoop(): Unit = {
+  private[cg] def runBuilderLoop(cc: ApplicationMethod, ccPC: Int, typesInstantiated: Set[String]): Unit = {
 
     var lastResponseTime = System.currentTimeMillis()
     var hasNewResponses = incomingResponsesBuffer.synchronized{ incomingResponsesBuffer.nonEmpty }
     var isWaitingForResponses = unansweredRequestIds.synchronized{ unansweredRequestIds.nonEmpty }
+
+    Try {
+      oracleCGBuilderOpt.get.buildFromApplicationMethod(cc, typesInstantiated, ccPC)
+    }.flatten match {
+      case Success(view) =>
+        log.info(s"Successfully finished initial computations starting at ${cc.definingTypeName}.${cc.methodName} PC $ccPC - got ${view.reachableMethods().size} reachable methods")
+      case Failure(ex) =>
+        // Will immediately skip following loop, as this is a fatal error
+        val error = OracleInteractionError(s"Internal error during initial computations starting at ${cc.definingTypeName}.${cc.methodName} PC $ccPC: ${ex.getMessage}", isFatal = true, isUserError = false, interactionType = Internal)
+        logError(error)
+    }
 
     while((hasNewResponses || isWaitingForResponses) && !hasFatalErrors){
 
@@ -145,6 +197,8 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
     } else {
       log.info(s"Finished main CG builder loop, all requests have been answered.")
     }
+
+    isRunning.set(false)
   }
 
   /**
@@ -209,6 +263,11 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
     }
   }
 
+  def isResolving: Boolean = isRunning.get()
+
+  def succeeded: Boolean = resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isSuccess)
+  def failed: Boolean = resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isFailure)
+
 }
 
 object InteractiveOracleAccessor {
@@ -228,6 +287,7 @@ object InteractiveOracleAccessor {
 
     val Initialization: Value = Value(0)
     val MethodRequest: Value = Value(1)
+    val Internal: Value = Value(2)
 
   }
 }
