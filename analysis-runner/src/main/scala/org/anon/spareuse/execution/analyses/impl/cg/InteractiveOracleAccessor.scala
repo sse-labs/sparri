@@ -234,10 +234,8 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
    * passed from the API is being rebuilt into a full response object, and pushed onto the internal response buffer (in a threadsafe manner).
    *
    * @param response The (data-minimal) response representation
-   * @param ec Execution context for the asynchronous execution
-   * @return A future with no content that finishes once the response has been pushed onto the buffer
    */
-  def pushResponse(response: LookupResponseRepresentation)(implicit ec: ExecutionContext): Future[Unit] = Future {
+  def pushResponse(response: LookupResponseRepresentation): Unit = {
     val originalRequest = outgoingRequestIdMap.synchronized{ outgoingRequestIdMap(response.requestId) }
 
     val responseObj = LookupApplicationMethodResponse(originalRequest.ccIdent, originalRequest.ccPC,
@@ -254,10 +252,9 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
   /**
    * This method is used to retrieve the next request from the internal request buffer. This request must then be
    * delivered to the client, so it can produce a response and pass it to this instance via 'pushResponse'.
-   * @param ec Execution context for the asynchronous execution
-   * @return Future of an optional LookupRequestRepresentation - might be None if there are no request at the moment
+   * @return Optional LookupRequestRepresentation - might be None if there are no request at the moment
    */
-  def nextRequest()(implicit ec: ExecutionContext): Future[Option[LookupRequestRepresentation]] = Future {
+  def nextRequest(): Option[LookupRequestRepresentation] =  {
     outgoingRequestsBuffer.synchronized{
       if(outgoingRequestsBuffer.nonEmpty) Some(outgoingRequestsBuffer.dequeue()) else None
     }

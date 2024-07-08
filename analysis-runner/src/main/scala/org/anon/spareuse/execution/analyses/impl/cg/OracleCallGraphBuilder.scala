@@ -14,7 +14,11 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
                              jreVersionToLoad: Option[String],
                              requestApplicationMethodLookup: LookupApplicationMethodRequest => Unit) extends AbstractRTABuilder(programs: Set[JavaProgram],jreVersionToLoad: Option[String]){
 
+  type CallsiteInMethod = (DefinedMethod, Int)
+
   private[cg] final val applicationTypeNames: Set[String] = applicationTypes.map(_.thisType)
+
+  private[cg] final val libraryEntries: mutable.Set[CallsiteInMethod] = mutable.HashSet.empty
 
   private[cg] final val applicationMethodSummaries: mutable.Map[TypeNode, mutable.Map[String, mutable.Map[String, Option[ApplicationMethod]]]] = new mutable.HashMap()
 
@@ -77,7 +81,7 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
   def buildFromApplicationMethod(am: ApplicationMethod, typesInstantiated: Set[String], startAtPc: Int = 0): Try[CallGraphView] = {
     putSummary(typeLookup(am.definingTypeName), am.methodName, am.descriptor, Some(am))
-
+    libraryEntries.add((am, startAtPc))
     buildFrom(am, typesInstantiated, startAtPc)
   }
   def buildFrom(dm: DefinedMethod, typesInstantiated: Set[String], startAtPc: Int = 0): Try[CallGraphView] = {

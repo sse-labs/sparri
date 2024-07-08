@@ -125,7 +125,7 @@ lazy val playground = (project in file("playground"))
 	.settings(libraryDependencies ++= Seq(dependencies.logback))
 
 lazy val webapi = (project in file("webapi"))
-	.dependsOn(core)
+	.dependsOn(core % "test->test;compile->compile", `analysis-runner` % "test->test;compile->compile")
 	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= Seq(dependencies.akkaStreams, dependencies.akkaHttp, dependencies.akkaActors, dependencies.akkaSprayJson,
