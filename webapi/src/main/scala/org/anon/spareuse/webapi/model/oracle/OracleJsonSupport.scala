@@ -1,0 +1,7 @@
+package org.anon.spareuse.webapi.model.oracle
+
+trait OracleJsonSupport extends ApplicationMethodReprJsonSupport
+  with StartResolutionRequestJsonSupport
+  with InitializeResolutionRequestJsonSupport
+  with PullLookupRequestsResponseJsonSupport
+  with LookupResponseJsonSupport

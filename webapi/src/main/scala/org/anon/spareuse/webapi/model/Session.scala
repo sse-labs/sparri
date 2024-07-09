@@ -27,8 +27,6 @@ class Session[T] private(ident: String, createdAt: DateTime, state: T) {
     if(isActive) isActive = DateTime.now.clicks - lastRequest.clicks <= DefaultSessionTimeout.toMillis
     !isActive
   }
-
-
 }
 
 object Session {
