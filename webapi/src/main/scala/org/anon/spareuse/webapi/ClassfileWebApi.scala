@@ -5,7 +5,7 @@ import akka.stream.Materializer
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
 import org.anon.spareuse.core.utils.rabbitmq.MqMessageWriter
-import org.anon.spareuse.webapi.core.RequestHandler
+import org.anon.spareuse.webapi.core.{OracleResolutionRequestHandler, RequestHandler}
 import org.anon.spareuse.webapi.server.ApiServer
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -23,7 +23,8 @@ class ClassfileWebApi(private val configuration: WebapiConfig) {
 
   private[webapi] lazy val dataAccessor: DataAccessor = new PostgresDataAccessor()(materializer.executionContext)
   private[webapi] lazy val requestHandler: RequestHandler = new RequestHandler(configuration, dataAccessor)(materializer.executionContext)
-  private[webapi] lazy val server: ApiServer = new ApiServer(requestHandler)(theSystem)
+  private[webapi] lazy val oracleRequestHandler: OracleResolutionRequestHandler = new OracleResolutionRequestHandler(dataAccessor)(materializer.executionContext)
+  private[webapi] lazy val server: ApiServer = new ApiServer(requestHandler, oracleRequestHandler)(theSystem)
 
   private var dbInitialized = false
 

@@ -28,8 +28,10 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
    *
    * @return Future holding the session object - even in case of errors
    */
-  def startResolutionSession(initRequest: InitializeResolutionRequest): Future[Session[OracleSessionState]] = {
+  def startResolutionSession(initRequest: InitializeResolutionRequest): Session[OracleSessionState] = {
     val theSession = newSession()
+    val accessor = new InteractiveOracleAccessor(dataAccessor)
+    sessionOracleAccessors.put(theSession.uid, accessor)
 
     def invalidateSession(): Unit = {
       theSession.sessionState.isValid = false
@@ -38,26 +40,23 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
     }
 
     Future{
-      val accessor = new InteractiveOracleAccessor(dataAccessor)
-      sessionOracleAccessors.put(theSession.uid, accessor)
       accessor.initialize(initRequest.libs, initRequest.types.map(toModel), initRequest.initTypes, initRequest.jreVersion,
         OracleCallGraphResolutionMode.fromId(initRequest.mode)) match {
         case Left(_) =>
           log.info(s"[${theSession.uid}] Successfully initialized accessor for session.")
           theSession.sessionState.currentPhase = OracleSessionPhase.Initialized
-          theSession
         case Right(error) =>
           invalidateSession()
           theSession.sessionState.errors.addOne(error)
-          theSession
       }
-    }.recover{
-      case e: Exception =>
+    }.onComplete{
+      case Failure(e: Exception) =>
         log.error(s"[${theSession.uid}] Failed to initialize accessor for session",e)
         invalidateSession()
-        theSession
+      case _ =>
     }
 
+    theSession
   }
 
   def resolveFromEntrypoint(sessionUid: String, startRequest: StartResolutionRequest): Try[Unit] = ensureValidSession(sessionUid) { session =>
@@ -133,9 +132,9 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
     }
   }
 
-  def finalize(sessionUid: String): Try[Any] = {
-    ???
-    //TODO: Validate session, set new state, finalize summary generation
+  def finalize(sessionUid: String): Try[Any] = ensureValidSession(sessionUid){ session =>
+    Try { throw new RuntimeException("Not implemented")}
+    //TODO:set new state, finalize summary generation
   }
 
 
