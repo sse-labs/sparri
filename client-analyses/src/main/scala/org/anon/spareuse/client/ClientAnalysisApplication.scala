@@ -13,9 +13,12 @@ object ClientAnalysisApplication {
 
     if(theAnalysis.checkRequirements()){
       println("Analysis requirements are met.")
+      theAnalysis.initialize()
       theAnalysis.execute()
+      theAnalysis.close()
     } else {
       println("Analysis requirements not satisfied")
+      theAnalysis.close()
     }
   }
 

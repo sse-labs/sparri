@@ -3,11 +3,11 @@ package org.anon.spareuse.client.http
 import org.anon.spareuse.client.ConfigReader
 import org.anon.spareuse.webapi.model.{AnalysisInformationRepr, AnalysisResultRepr, AnalysisRunRepr, JsonSupport}
 import org.apache.http.client.HttpResponseException
-import org.apache.http.client.methods.{CloseableHttpResponse, HttpGet}
+import org.apache.http.client.methods.{CloseableHttpResponse, HttpGet, HttpPost}
 import org.apache.http.client.utils.URIBuilder
-import org.apache.http.impl.DefaultHttpRequestFactory
+import org.apache.http.entity.{ContentType, StringEntity}
 import org.apache.http.{Header, HttpHost, HttpRequest}
-import org.apache.http.impl.client.HttpClients
+import org.apache.http.impl.client.{CloseableHttpClient, HttpClients}
 import org.apache.http.message.BasicHeader
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -18,10 +18,10 @@ import java.net.URI
 
 class SparriApiClient extends AutoCloseable with JsonSupport {
 
-  private final val log: Logger = LoggerFactory.getLogger(getClass)
+  protected final val log: Logger = LoggerFactory.getLogger(getClass)
 
-  private[http] val httpClient = HttpClients.createDefault()
-  private[http] val sparriHost = new HttpHost(ConfigReader.getSparriHost, ConfigReader.getSparriPort)
+  protected[http] val httpClient: CloseableHttpClient = HttpClients.createDefault()
+  protected[http] val sparriHost: HttpHost = new HttpHost(ConfigReader.getSparriHost, ConfigReader.getSparriPort)
 
 
   def getAnalysisResultFor(analysisName: String, analysisVersion: String, input: String): Option[AnalysisResultRepr] = {
@@ -83,6 +83,35 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
     builder.build()
   }
 
+  protected[http] def postJsonRaw(relPath: String, jsonBody: Option[String], rawHeaders: Map[String, String] = Map.empty): Try[CloseableHttpResponse] = {
+    val post = new HttpPost(buildUri(relPath))
+
+    if(jsonBody.isDefined){
+      val json = jsonBody.get
+      post.setEntity(new StringEntity(json, ContentType.APPLICATION_JSON))
+    }
+
+    executeWithHeaders(post, rawHeaders)
+  }
+
+  protected[http] def postJsonAndReturnString(relPath: String, jsonBody: String, rawHeader: Map[String, String] = Map.empty): Try[String] = {
+    postJsonRaw(relPath, Some(jsonBody), rawHeader)
+      .map{ response =>
+        val code = response.getStatusLine.getStatusCode
+
+        getStringEntity(response) match {
+          case Success(stringEntity) =>
+            if (code / 100 != 2)
+              throw new HttpResponseException(code, stringEntity)
+
+            stringEntity
+          case Failure(ex) =>
+            log.error(s"Failed to read string entity", ex)
+            throw ex
+        }
+      }
+  }
+
   private[http] def getRaw(relPath: String, queryParams: Map[String, String] = Map.empty, rawHeaders: Map[String, String] = Map.empty): Try[CloseableHttpResponse] = {
     val get = new HttpGet(buildUri(relPath, queryParams))
 
@@ -93,26 +122,37 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
     getRaw(relPath, queryParams, rawHeader)
       .map{ response =>
         val code = response.getStatusLine.getStatusCode
-        val entity = response.getEntity
 
-        val entityInputStream = entity.getContent
-        var charSetOpt: Option[String] = None
-        if(entity.getContentEncoding != null){
-          charSetOpt = Some(entity.getContentEncoding.getValue)
+        getStringEntity(response) match {
+          case Success(stringEntity) =>
+            if (code / 100 != 2)
+              throw new HttpResponseException(code, stringEntity)
+
+            stringEntity
+          case Failure(ex) =>
+            log.error(s"Failed to read string entity", ex)
+            throw ex
         }
-
-        val entityBytes = LazyList.continually(entityInputStream.read).takeWhile(_ != -1).map(_.toByte).toArray
-
-        val stringEntity = if(charSetOpt.isDefined) new String(entityBytes, charSetOpt.get) else new String(entityBytes)
-
-        entityInputStream.close()
-        response.close()
-
-        if(code / 100 != 2)
-          throw new HttpResponseException(code, stringEntity)
-
-        stringEntity
       }
+  }
+
+  private[http] def getStringEntity(response: CloseableHttpResponse): Try[String] = Try {
+    val entity = response.getEntity
+
+    val entityInputStream = entity.getContent
+    var charSetOpt: Option[String] = None
+    if (entity.getContentEncoding != null) {
+      charSetOpt = Some(entity.getContentEncoding.getValue)
+    }
+
+    val entityBytes = LazyList.continually(entityInputStream.read).takeWhile(_ != -1).map(_.toByte).toArray
+
+    val stringEntity = if (charSetOpt.isDefined) new String(entityBytes, charSetOpt.get) else new String(entityBytes)
+
+    entityInputStream.close()
+    response.close()
+
+    stringEntity
   }
 
   override def close(): Unit = {

@@ -13,11 +13,18 @@ import java.io.File
 import java.net.URL
 import scala.util.{Failure, Success, Try}
 
-abstract class ClientAnalysis(classFilesDirectory: File, pomFile: File) extends EnhancedLogging with AutoCloseable {
+abstract class ClientAnalysis[T](classFilesDirectory: File, pomFile: File) extends EnhancedLogging with AutoCloseable {
 
   protected[analyses] val api: SparriApiClient = new SparriApiClient
 
   override def close(): Unit = api.close()
+
+
+  def initialize(): Unit = {
+    log.info(s"Successfully initialized.")
+  }
+
+  def execute(): Try[T]
 
   protected[analyses] def getAllDependencies: Set[MavenDependencyIdentifier] = ???
 
