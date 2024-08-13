@@ -522,7 +522,7 @@ object OracleCallGraphBuilder {
 
   class ApplicationMethod(identifier: MethodIdent,
                           mIsStatic: Boolean,
-                          typesInstantiated: Set[String],
+                          typesInstantiated: List[String],
                           invocations: Seq[JavaInvokeStatement]) extends DefinedMethod(identifier.declaredType, identifier.methodName, identifier.methodDescriptor, mIsStatic, newTypesProvider = () => typesInstantiated, invocationProvider = () => invocations)
 
   /**

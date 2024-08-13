@@ -49,7 +49,7 @@ trait CallGraphBuilder {
         jm.name,
         jm.descriptor,
         jm.isStatic,
-        () => jm.newStatements.map(_.instantiatedTypeName).toSet,
+        () => jm.newStatements.map(_.instantiatedTypeName).toList,
         () => jm.invocationStatements)
 
     defMCache(jm)
@@ -70,14 +70,14 @@ trait CallGraphBuilder {
 
 object CallGraphBuilder {
 
-  class DefinedMethod(declaringType: String, mName: String, mDescriptor: String, mIsStatic: Boolean, newTypesProvider: () => Set[String], invocationProvider: () => Seq[JavaInvokeStatement]) {
+  class DefinedMethod(declaringType: String, mName: String, mDescriptor: String, mIsStatic: Boolean, newTypesProvider: () => List[String], invocationProvider: () => Seq[JavaInvokeStatement]) {
 
     val definingTypeName: String = declaringType
     val methodName: String = mName
     val descriptor: String = mDescriptor
     val isStatic: Boolean = mIsStatic
 
-    lazy val newTypesInstantiated: Set[String] = newTypesProvider.apply()
+    lazy val newTypesInstantiated: List[String] = newTypesProvider.apply()
     lazy val invocationStatements: Seq[JavaInvokeStatement] = invocationProvider.apply()
 
     override def equals(obj: Any): Boolean = obj match {

@@ -2,10 +2,15 @@ package org.anon.spareuse.client.analyses
 
 import org.anon.spareuse.client.http.SparriOracleApiClient
 import org.anon.spareuse.execution.analyses.impl.ifds.IFDSTaintFlowSummaryBuilderImpl
-import org.anon.spareuse.webapi.model.oracle.TypeNodeRepr
+import org.anon.spareuse.webapi.model.oracle.{StartResolutionRequest, TypeNodeRepr}
+import org.opalj.br.Method
+import org.opalj.br.analyses.Project
 import org.opalj.br.instructions.NEW
+import org.opalj.tac.cg.CFA_1_1_CallGraphKey
 
 import java.io.File
+import java.net.URL
+import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
 //TODO: Build a return type
@@ -49,7 +54,20 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
       case Success(_) =>
         log.info(s"Successfully started resolution session with server, session-id = ${oracleApiClient.getToken.getOrElse("<NONE>")}")
 
-        //TODO: Manage session lifecycle
+        // Add all library entry points to a work stack
+        val entryPointsToProcess = mutable.Stack.from(getLibraryEntryPoints(p))
+
+        // Handle one entry point after the other
+        while(entryPointsToProcess.nonEmpty){
+          val currentEntry = entryPointsToProcess.pop()
+          Try(oracleApiClient.startResolutionAt(currentEntry.callingContext, currentEntry.ccPC, currentEntry.typesInitialized)).flatten match {
+            case Success(_) =>
+              log.info(s"Successfully started resolution at entrypoint: <TBA>")
+              handleOracleInteractionUntilFinished(currentEntry)
+            case Failure(ex) =>
+              log.error(s"Failed to start resolution at entrypoint: <TBA>", ex)
+          }
+        }
 
         0
       case Failure(ex) =>
@@ -58,4 +76,17 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
     }
 
   }
+
+  private def getLibraryEntryPoints(project: Project[URL]): Set[EntryPoint] = {
+    //TODO: Implement detection of potential entry points
+    val cg = project.get(CFA_1_1_CallGraphKey)
+
+
+    ???
+  }
+
+  //TODO: Manage session lifecycle
+  private def handleOracleInteractionUntilFinished(entry: EntryPoint): Unit = ???
+
+  private case class EntryPoint(callingContext: Method, ccPC: Int, typesInitialized: Set[String])
 }

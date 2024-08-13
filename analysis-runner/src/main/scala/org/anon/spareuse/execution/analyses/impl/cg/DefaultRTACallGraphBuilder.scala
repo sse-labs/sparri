@@ -40,7 +40,7 @@ class DefaultRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: O
           currTask.method.invocationStatements.foreach { jis =>
             resolveInvocation(jis, currTask.method, s => effectiveTypesToResolve.contains(s)).foreach { target =>
               putCall(currTask.method, jis.instructionPc, target)
-              workStack.push(ResolverTask(target, effectiveTypesToResolve, rootSet))
+              workStack.push(ResolverTask(target, effectiveTypesToResolve.toSet, rootSet))
             }
           }
 
