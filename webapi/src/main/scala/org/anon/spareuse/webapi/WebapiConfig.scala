@@ -8,7 +8,8 @@ import scala.util.Try
 class WebapiConfig private(val bindHost: String,
                            val bindPort: Int,
                            val analysisQueueConnectionName: String,
-                           val entityQueueConnectionName: String) {
+                           val entityQueueConnectionName: String,
+                           val jreDataDir: String) {
   def asMinerQueuePublishConfig: MqDirectQueuePublishConfiguration = MqConfigurationBuilder.entityWriteConfig(entityQueueConnectionName)
   def asAnalysisQueuePublishConfig: MqDirectQueuePublishConfiguration = MqConfigurationBuilder.analysisWriteConfig(analysisQueueConnectionName)
 }
@@ -22,6 +23,8 @@ object WebapiConfig {
   private final val analysisQConnKey = prefix + "analysis-queue-connection-name"
   private final val entityQConnKey = prefix + "entity-queue-connection-name"
 
+  private final val jreDataDirKey = "spa-reuse.runner.jre-data-dir"
+
   def fromConfig(c: Config): Try[WebapiConfig] = Try {
     if(!c.hasPath(bindHostKey) || !c.hasPath(bindPortKey))
       throw new IllegalArgumentException("Webapi configuration incomplete. Required are: bind-host, bind-port")
@@ -30,7 +33,9 @@ object WebapiConfig {
 
     val entityConnName = if(c.hasPath(entityQConnKey)) c.getString(entityQConnKey) else "spar-webapi"
 
-    new WebapiConfig(c.getString(bindHostKey), c.getInt(bindPortKey), analysisConnName, entityConnName)
+    val jreDataDir = if(c.hasPath(jreDataDirKey)) c.getString(jreDataDirKey) else "jre-data"
+
+    new WebapiConfig(c.getString(bindHostKey), c.getInt(bindPortKey), analysisConnName, entityConnName, jreDataDir)
   }
 
 }

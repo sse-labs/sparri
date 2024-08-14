@@ -26,8 +26,9 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
     oracleApiClient.close()
   }
 
-  override protected[analyses] def requirements: Seq[AnalysisRequirement] =  Seq(AnalysisRequirement("org.apache.maven.indexer:indexer-core!org.apache.maven.indexer:indexer-core:6.0.0", remoteAnalysisName, remoteAnalysisVersion),
-    AnalysisRequirement("ch.qos.logback:logback-classic!ch.qos.logback:logback-classic:1.4.4", remoteAnalysisName, remoteAnalysisVersion)) //TODO: Use real code once dependency extraction works
+  override protected[analyses] def requirements: Seq[AnalysisRequirement] =
+    Seq(AnalysisRequirement("com.google.code.gson:gson!com.google.code.gson:gson:2.11.0", remoteAnalysisName, remoteAnalysisVersion),
+      AnalysisRequirement("com.google.errorprone:error_prone_annotations!com.google.errorprone:error_prone_annotations:2.27.0", remoteAnalysisName, remoteAnalysisVersion)) //TODO: Use real code once dependency extraction works
     /*getAllDependencies
       .map(dep => AnalysisRequirement(dep.identifier.toString, remoteAnalysisName, remoteAnalysisVersion))
       .toSeq*/
@@ -35,7 +36,7 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
   override def execute(): Try[Int] = Try {
     val p = getOpalProject(loadJre = false)
 
-    val fakeDependencies = Set("ch.qos.logback:logback-classic:1.4.4", "org.apache.maven.indexer:indexer-core:6.0.0")
+    val fakeDependencies = Set("com.google.code.gson:gson:2.11.0", "com.google.errorprone:error_prone_annotations:2.27.0")
 
     val typeNodeRepresentations = p
       .allProjectClassFiles
@@ -50,7 +51,7 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
       .map(_.asNEW.objectType.fqn)
       .toSet
 
-    Try(oracleApiClient.startOracleSession(fakeDependencies, typeNodeRepresentations, allTypesInitialized, 0, None)) match {
+    Try(oracleApiClient.startOracleSession(fakeDependencies, typeNodeRepresentations, allTypesInitialized, 0, Some("17"))) match {
       case Success(_) =>
         log.info(s"Successfully started resolution session with server, session-id = ${oracleApiClient.getToken.getOrElse("<NONE>")}")
 
@@ -62,10 +63,10 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
           val currentEntry = entryPointsToProcess.pop()
           Try(oracleApiClient.startResolutionAt(currentEntry.callingContext, currentEntry.ccPC, currentEntry.typesInitialized)).flatten match {
             case Success(_) =>
-              log.info(s"Successfully started resolution at entrypoint: <TBA>")
+              log.info(s"Successfully started resolution at entrypoint: ${currentEntry.callingContext.descriptor.toJava(currentEntry.callingContext.name)}")
               handleOracleInteractionUntilFinished(currentEntry)
             case Failure(ex) =>
-              log.error(s"Failed to start resolution at entrypoint: <TBA>", ex)
+              log.error(s"Failed to start resolution at entrypoint: ${currentEntry.callingContext.descriptor.toJava(currentEntry.callingContext.name)}", ex)
           }
         }
 
@@ -79,10 +80,30 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
 
   private def getLibraryEntryPoints(project: Project[URL]): Set[EntryPoint] = {
     //TODO: Implement detection of potential entry points
+    // Currently this is just a demo that collects invocations from any main method
     val cg = project.get(CFA_1_1_CallGraphKey)
 
+    cg
+      .reachableMethods()
+      .filter(_.method.name == "main")
+      .filter(_.method.hasSingleDefinedMethod)
+      .flatMap{ ctx =>
+        ctx
+          .method
+          .definedMethod
+          .body
+          .map( code => code
+            .instructions
+            .zipWithIndex
+            .filter(t => t._1.isInvocationInstruction)
+            .map(_._2)
+            .toSeq
+          )
+          .getOrElse(Seq.empty)
+          .map( EntryPoint(ctx.method.definedMethod, _, Set.empty) )
 
-    ???
+      }
+      .toSet
   }
 
   //TODO: Manage session lifecycle

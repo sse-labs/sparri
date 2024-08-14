@@ -5,6 +5,7 @@ import akka.stream.Materializer
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
 import org.anon.spareuse.core.utils.rabbitmq.MqMessageWriter
+import org.anon.spareuse.execution.analyses.impl.cg.JreModelLoader
 import org.anon.spareuse.webapi.core.{OracleResolutionRequestHandler, RequestHandler}
 import org.anon.spareuse.webapi.server.ApiServer
 import org.slf4j.{Logger, LoggerFactory}
@@ -29,6 +30,9 @@ class ClassfileWebApi(private val configuration: WebapiConfig) {
   private var dbInitialized = false
 
   def initialize(): Boolean = {
+
+    JreModelLoader.indexJreData(configuration.jreDataDir)
+
     // Cascaded lazy-vals will throw any db related error here.
     Try(dataAccessor.initialize()) match {
       case Success(_) =>

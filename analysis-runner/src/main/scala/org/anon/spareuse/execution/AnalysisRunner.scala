@@ -38,7 +38,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
   override def initialize(): Unit = {
     // Load information about JRE representations. Representations themselves will be index lazily
-    JreModelLoader.indexJreData(configuration)
+    JreModelLoader.indexJreData(configuration.jreDataDir)
 
     AnalysisRegistry.registerRegularAnalysis(MvnConstantClassAnalysisImpl, () => new MvnConstantClassAnalysisImpl)
     AnalysisRegistry.registerRegularAnalysis(MvnDependencyAnalysisImpl, () => new MvnDependencyAnalysisImpl)

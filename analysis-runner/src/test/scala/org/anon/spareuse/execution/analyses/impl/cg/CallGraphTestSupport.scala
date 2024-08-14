@@ -30,7 +30,7 @@ trait CallGraphTestSupport {
 
   protected def resetModelLoader(): Unit = {
     JreModelLoader.clear()
-    JreModelLoader.indexJreData(new AnalysisRunnerConfig("", 3, false, "jre-data"))
+    JreModelLoader.indexJreData("jre-data")
   }
 
 }

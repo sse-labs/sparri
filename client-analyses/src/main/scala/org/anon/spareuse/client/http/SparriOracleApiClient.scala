@@ -62,6 +62,8 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport{
       case Success(_) =>
         log.info(s"Successfully started resolution for entry point ${apiMethod.ident.declType}.${opalMethod.name}")
         Success(())
+
+      case Failure(ex) => Failure(ex)
     }
 
   }

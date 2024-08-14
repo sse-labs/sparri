@@ -7,9 +7,8 @@ class JreModelLoaderTest extends AnyFunSpec {
 
   describe("The JRE model loader") {
     it("should correctly index all versions available"){
-      val config = new AnalysisRunnerConfig("", 10, true, "jre-data")
 
-      JreModelLoader.indexJreData(config) // Would throw exception if there is an error
+      JreModelLoader.indexJreData("jre-data") // Would throw exception if there is an error
 
       assert(JreModelLoader.jreVersionMap.size == 1)
       assert(JreModelLoader.jreVersionMap.contains("17"))

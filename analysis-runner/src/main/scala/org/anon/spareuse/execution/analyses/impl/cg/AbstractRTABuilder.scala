@@ -50,7 +50,7 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
       .flatMap { version =>
         if (JreModelLoader.hasJre(version)) tryToOpt(JreModelLoader.getJre(version))
         else {
-          log.warn(s"Requested JRE version $version to available, using default.")
+          log.warn(s"Requested JRE version $version not available, using default.")
           tryToOpt(JreModelLoader.getDefaultJre)
         }
       }
