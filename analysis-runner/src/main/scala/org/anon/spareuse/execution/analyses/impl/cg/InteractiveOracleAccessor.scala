@@ -157,8 +157,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
   private[cg] def runBuilderLoop(cc: ApplicationMethod, ccPC: Int, typesInstantiated: Set[String]): Unit = {
 
     var lastResponseTime = System.currentTimeMillis()
-    var hasNewResponses = incomingResponsesBuffer.synchronized{ incomingResponsesBuffer.nonEmpty }
-    var isWaitingForResponses = unansweredRequestIds.synchronized{ unansweredRequestIds.nonEmpty }
+
 
     Try {
       oracleCGBuilderOpt.get.buildFromApplicationMethod(cc, typesInstantiated, ccPC)
@@ -169,6 +168,13 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
         // Will immediately skip following loop, as this is a fatal error
         val error = OracleInteractionError(s"Internal error during initial computations starting at ${cc.definingTypeName}.${cc.methodName} PC $ccPC: ${ex.getMessage}", isFatal = true, isUserError = false, interactionType = Internal)
         logError(error)
+    }
+
+    var hasNewResponses = incomingResponsesBuffer.synchronized {
+      incomingResponsesBuffer.nonEmpty
+    }
+    var isWaitingForResponses = unansweredRequestIds.synchronized {
+      unansweredRequestIds.nonEmpty
     }
 
     while((hasNewResponses || isWaitingForResponses) && !hasFatalErrors){
@@ -191,6 +197,8 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
 
       hasNewResponses = incomingResponsesBuffer.synchronized{ incomingResponsesBuffer.nonEmpty }
       isWaitingForResponses = unansweredRequestIds.synchronized{ unansweredRequestIds.nonEmpty }
+
+      log.info(s"new-responses: $hasNewResponses (cnt: ${incomingResponsesBuffer.size}), waiting: $isWaitingForResponses (cnt: ${unansweredRequestIds.size}), fatals: $hasFatalErrors")
     }
 
     if(hasFatalErrors){
@@ -268,8 +276,8 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
 
   def isResolving: Boolean = isRunning.get()
 
-  def succeeded: Boolean = resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isSuccess)
-  def failed: Boolean = resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isFailure)
+  def succeeded: Boolean = !hasFatalErrors && resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isSuccess)
+  def failed: Boolean = hasFatalErrors || resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isFailure)
 
 }
 

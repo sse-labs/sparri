@@ -3,6 +3,7 @@ package org.anon.spareuse.client
 import org.anon.spareuse.client.analyses.IFDSTaintFlowAnalysis
 
 import java.io.File
+import scala.util.{Failure, Success}
 
 object ClientAnalysisApplication {
 
@@ -14,7 +15,13 @@ object ClientAnalysisApplication {
     if(theAnalysis.checkRequirements()){
       println("Analysis requirements are met.")
       theAnalysis.initialize()
-      theAnalysis.execute()
+      theAnalysis.execute() match {
+        case Success(_) =>
+          println(s"Successfully finished analysis execution")
+        case Failure(ex) =>
+          println(s"Error while analyzing project: ${ex.getMessage}")
+          ex.printStackTrace()
+      }
       theAnalysis.close()
     } else {
       println("Analysis requirements not satisfied")

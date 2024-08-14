@@ -55,6 +55,10 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
       case Success(_) =>
         log.info(s"Successfully started resolution session with server, session-id = ${oracleApiClient.getToken.getOrElse("<NONE>")}")
 
+        // Give oracle time to fully initialize
+        //TODO: Replace this with polling?
+        Thread.sleep(1000)
+
         // Add all library entry points to a work stack
         val entryPointsToProcess = mutable.Stack.from(getLibraryEntryPoints(p))
 
@@ -95,7 +99,7 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
           .map( code => code
             .instructions
             .zipWithIndex
-            .filter(t => t._1 != null && t._1.isInvocationInstruction)
+            .filter(t => t._1 != null && t._1.isInvocationInstruction && t._2 == 21)
             .map(_._2)
             .toSeq
           )
@@ -113,8 +117,31 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
     }
   }
 
-  //TODO: Manage session lifecycle
-  private def handleOracleInteractionUntilFinished(entry: EntryPoint): Unit = ???
+  private def handleOracleInteractionUntilFinished(entry: EntryPoint): Unit = {
+    var statusResponse = oracleApiClient.pullStatus()
+
+    while(statusResponse.isSuccess && !statusResponse.get.hasFailed && statusResponse.get.isResolving) {
+
+      val status = statusResponse.get
+
+      if(status.requests.nonEmpty){
+        log.info(s"Oracle has requested ${status.requests.size} method definitions from us.")
+        //TODO: Send response
+      } else {
+        // Wait until action is needed
+        Thread.sleep(1000)
+      }
+      statusResponse = oracleApiClient.pullStatus()
+    }
+
+    if(statusResponse.isFailure){
+      log.error(s"Failed to pull oracle status from server", statusResponse.failed.get)
+    } else if(statusResponse.get.hasFailed){
+      log.error(s"Oracle encountered a fatal error: ${statusResponse.get.fatalError.getOrElse("NO INFO")}")
+    } else {
+      log.info(s"Done resolving entry point ${entry.callingContext.descriptor.toJava(entry.callingContext.name)}")
+    }
+  }
 
   private case class EntryPoint(callingContext: Method, ccPC: Int, typesInitialized: Set[String])
 }

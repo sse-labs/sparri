@@ -3,7 +3,7 @@ package org.anon.spareuse.client.http
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, InternalServerError}
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaInvocationType
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.ApplicationMethod
-import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodRepr, InitializeResolutionRequest, InvokeStmtRepr, MethodIdentifierRepr, OracleJsonSupport, StartResolutionRequest, TypeNodeRepr}
+import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodRepr, InitializeResolutionRequest, InvokeStmtRepr, MethodIdentifierRepr, OracleJsonSupport, PullLookupRequestsResponse, StartResolutionRequest, TypeNodeRepr}
 import org.apache.http.client.HttpResponseException
 import org.opalj.br.instructions.{INVOKEDYNAMIC, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL, NEW}
 import org.opalj.br.{DefinedMethod, Method}
@@ -60,12 +60,21 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport{
         Failure(hrx)
 
       case Success(_) =>
-        log.info(s"Successfully started resolution for entry point ${apiMethod.ident.declType}.${opalMethod.name}")
         Success(())
 
       case Failure(ex) => Failure(ex)
     }
 
+  }
+
+  def pullStatus(): Try[PullLookupRequestsResponse] = Try {
+    getAsString("/api/oracle/pull-status", rawHeader = Map("session-id" -> sessionToken.get)) match {
+      case Success(stringResponse) =>
+        log.info(s"DEBUG: $stringResponse")
+        stringResponse.parseJson.convertTo[PullLookupRequestsResponse]
+      case Failure(ex) =>
+        throw ex
+    }
   }
 
 
