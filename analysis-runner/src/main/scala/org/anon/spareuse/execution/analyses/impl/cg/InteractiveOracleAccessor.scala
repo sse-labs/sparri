@@ -138,6 +138,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       logError(error)
       Right(error)
     } else {
+      log.info(s"Starting resolution at new entrypoint: ${callingContext.definingTypeName}.${callingContext.methodName} [PC=$ccPC]")
       isRunning.set(true)
       resolverLoopFuture = Some(Future(runBuilderLoop(callingContext, ccPC, typesInstantiated)))
       Left(())
@@ -223,6 +224,8 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
         }
 
         unansweredRequestIds.synchronized{ unansweredRequestIds.add(id) }
+
+        log.info(s"Queued a new lookup request with id $id")
       } else {
         log.warn(s"Skipping request that has already been sent to client")
       }
@@ -236,6 +239,9 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
    * @param response The (data-minimal) response representation
    */
   def pushResponse(response: LookupResponseRepresentation): Unit = {
+
+    log.info(s"Got a resposne for lookup request with id ${response.requestId}")
+
     val originalRequest = outgoingRequestIdMap.synchronized{ outgoingRequestIdMap(response.requestId) }
 
     val responseObj = LookupApplicationMethodResponse(originalRequest.ccIdent, originalRequest.ccPC,

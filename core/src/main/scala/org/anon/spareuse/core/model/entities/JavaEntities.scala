@@ -197,6 +197,8 @@ object JavaEntities {
     val targetTypeName: String = declaredTypeFqn
     val isStaticMethod: Boolean = invocationType == JavaInvocationType.Static
     val invokeStatementType: JavaInvocationType = invocationType
+
+    override def toString: String = s"[${invokeStatementType.toString}] $declaredTypeFqn.$methodName : $jvmDescriptor"
   }
 
   class JavaFieldAccessStatement(fieldName: String,

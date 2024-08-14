@@ -83,7 +83,7 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
     // Currently this is just a demo that collects invocations from any main method
     val cg = project.get(CFA_1_1_CallGraphKey)
 
-    cg
+    Try(cg
       .reachableMethods()
       .filter(_.method.name == "main")
       .filter(_.method.hasSingleDefinedMethod)
@@ -95,7 +95,7 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
           .map( code => code
             .instructions
             .zipWithIndex
-            .filter(t => t._1.isInvocationInstruction)
+            .filter(t => t._1 != null && t._1.isInvocationInstruction)
             .map(_._2)
             .toSeq
           )
@@ -103,7 +103,14 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
           .map( EntryPoint(ctx.method.definedMethod, _, Set.empty) )
 
       }
-      .toSet
+      .toSet) match {
+      case Success(result) =>
+        log.info(s"Found ${result.size} distinct library entry points.")
+        result
+      case Failure(ex) =>
+        log.error("Failed to get library entry points", ex)
+        Set.empty
+    }
   }
 
   //TODO: Manage session lifecycle
