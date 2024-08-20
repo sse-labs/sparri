@@ -30,7 +30,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
 
   private final val log: Logger = LoggerFactory.getLogger(getClass)
 
-  private final val clientResponseTimeoutMillis: Long = 30000
+  private final val clientResponseTimeoutMillis: Long = 90000
 
   private[cg] var oracleCGBuilderOpt: Option[OracleCallGraphBuilder] = None
 
@@ -181,6 +181,8 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
 
       if(hasNewResponses){
         val response = incomingResponsesBuffer.synchronized{ incomingResponsesBuffer.dequeue() }
+
+        log.info(s"Processing new client response for method ${response.mName}...")
 
         lastResponseTime = System.currentTimeMillis()
 

@@ -405,7 +405,7 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
         actualTargets
 
       case JavaInvocationType.Special =>
-
+        //TODO: This needs some more lookup logic
         val declTypeM = findMethodOn(jis, declType)
 
         if (declTypeM.isDefined) declTypeM.toSet

@@ -2,16 +2,17 @@ package org.anon.spareuse.client.http
 
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, InternalServerError}
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaInvocationType
+import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.LookupResponseRepresentation
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.ApplicationMethod
-import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodRepr, InitializeResolutionRequest, InvokeStmtRepr, MethodIdentifierRepr, OracleJsonSupport, PullLookupRequestsResponse, StartResolutionRequest, TypeNodeRepr}
+import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodRepr, InitializeResolutionRequest, InvokeStmtRepr, LookupResponse, MethodIdentifierRepr, OracleJsonSupport, PullLookupRequestsResponse, StartResolutionRequest, TypeNodeRepr}
 import org.apache.http.client.HttpResponseException
 import org.opalj.br.instructions.{INVOKEDYNAMIC, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL, NEW}
-import org.opalj.br.{DefinedMethod, Method}
+import org.opalj.br.{Code, DefinedMethod, Method}
 import spray.json.{JsObject, JsString, enrichAny, enrichString, jsonReader}
 
 import scala.util.{Failure, Success, Try}
 
-class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport{
+class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
 
   private[http] var sessionToken: Option[String] = None
 
@@ -67,49 +68,84 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport{
 
   }
 
+  def isReadyForInteraction: Boolean = {
+    getAsString("/api/oracle/pull-status", rawHeader = Map("session-id" -> sessionToken.get)) match {
+      case Failure(hrx: HttpResponseException) if hrx.getStatusCode == 400 && hrx.getReasonPhrase.contains("needs to be initialized") =>
+        false
+      case Success(_) =>
+        true
+      case Failure(ex) =>
+        log.error(s"Error checking for interaction readiness", ex)
+        false
+    }
+  }
+
   def pullStatus(): Try[PullLookupRequestsResponse] = Try {
     getAsString("/api/oracle/pull-status", rawHeader = Map("session-id" -> sessionToken.get)) match {
       case Success(stringResponse) =>
-        log.info(s"DEBUG: $stringResponse")
         stringResponse.parseJson.convertTo[PullLookupRequestsResponse]
       case Failure(ex) =>
         throw ex
     }
   }
 
+  def pushResponse(response: LookupResponse): Try[Unit] = Try {
+    val json = response.toJson.compactPrint
+
+    val httpResponse = postJsonRaw("/api/oracle/push-update", Some(json), Map("session-id" -> sessionToken.get)).get
+
+    httpResponse.close()
+
+    log.debug(s"Successfully pushed update to oracle")
+  }
+
+  def finalizeSession(): Try[Unit] = Try {
+    val httpResponse = postJsonRaw("/api/oracle/finalize", None, Map("session-id" -> sessionToken.get)).get
+
+    httpResponse.close()
+
+    log.debug(s"Session finalized: ${sessionToken.get}")
+
+    sessionToken = None
+  }
+
 
 
   def getToken: Option[String] = sessionToken
 
-  private def opalToApiModel(opalMethod: Method): ApplicationMethodRepr = {
+  def opalToApiModel(opalMethod: Method): ApplicationMethodRepr = {
     val ident = MethodIdentifierRepr(opalMethod.classFile.fqn, opalMethod.name, opalMethod.descriptor.toJVMDescriptor)
     val types = opalMethod.body.map(c => c.instructions.filter(_.isInstanceOf[NEW]).map(_.asNEW.objectType.fqn).toList).getOrElse(List.empty)
-    val invokes = opalMethod.body.map(c => c
+    val invokes = opalMethod.body.map(getAllInvocationInstructionsAsApiModel).getOrElse(Seq.empty)
+    ApplicationMethodRepr(ident, opalMethod.isStatic, types, invokes)
+  }
+
+  def getAllInvocationInstructionsAsApiModel(code: Code): List[InvokeStmtRepr] = {
+    code
       .instructions
       .zipWithIndex
-      .filter{ t => t._1 != null && t._1.isInvocationInstruction}
-      .flatMap{
+      .filter { t => t._1 != null && t._1.isInvocationInstruction }
+      .flatMap {
 
-      case (virt: INVOKEVIRTUAL, pc: Int) =>
+        case (virt: INVOKEVIRTUAL, pc: Int) =>
           val i = MethodIdentifierRepr(virt.declaringClass.toJVMTypeName, virt.name, virt.methodDescriptor.toJVMDescriptor)
           Some(InvokeStmtRepr(i, JavaInvocationType.Virtual.id, pc))
-      case (static: INVOKESTATIC, pc: Int) =>
-          val i = MethodIdentifierRepr(static.declaringClass.fqn, static.name, static.methodDescriptor.toJVMDescriptor)
+        case (static: INVOKESTATIC, pc: Int) =>
+          val i = MethodIdentifierRepr(static.declaringClass.toJVMTypeName, static.name, static.methodDescriptor.toJVMDescriptor)
           Some(InvokeStmtRepr(i, JavaInvocationType.Static.id, pc))
-      case (iinvoke: INVOKEINTERFACE, pc: Int) =>
-          val i = MethodIdentifierRepr(iinvoke.declaringClass.fqn, iinvoke.name, iinvoke.methodDescriptor.toJVMDescriptor)
+        case (iinvoke: INVOKEINTERFACE, pc: Int) =>
+          val i = MethodIdentifierRepr(iinvoke.declaringClass.toJVMTypeName, iinvoke.name, iinvoke.methodDescriptor.toJVMDescriptor)
           Some(InvokeStmtRepr(i, JavaInvocationType.Interface.id, pc))
-      case (special: INVOKESPECIAL, pc: Int) =>
-          val i = MethodIdentifierRepr(special.declaringClass.fqn, special.name, special.methodDescriptor.toJVMDescriptor)
+        case (special: INVOKESPECIAL, pc: Int) =>
+          val i = MethodIdentifierRepr(special.declaringClass.toJVMTypeName, special.name, special.methodDescriptor.toJVMDescriptor)
           Some(InvokeStmtRepr(i, JavaInvocationType.Special.id, pc))
-      case (dynamic: INVOKEDYNAMIC, pc: Int) =>
+        case (dynamic: INVOKEDYNAMIC, pc: Int) =>
           val i = MethodIdentifierRepr("<unknown-dynamic>", dynamic.name, dynamic.methodDescriptor.toJVMDescriptor)
           Some(InvokeStmtRepr(i, JavaInvocationType.Dynamic.id, pc))
-      case _ =>
+        case _ =>
           None
 
-    }.toSeq).getOrElse(Seq.empty)
-    ApplicationMethodRepr(ident, opalMethod.isStatic, types, invokes)
+      }.toList
   }
 
 }

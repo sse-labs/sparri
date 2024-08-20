@@ -9,4 +9,13 @@ public class User {
         this.userId = id;
         this.userName = name;
     }
+
+    @Override
+    public String toString(){
+        return buildIdent();
+    }
+
+    private String buildIdent() {
+        return "[USER: #" + userId + " - " + userName + "]";
+    }
 }
