@@ -21,6 +21,6 @@ package object oracle {
   def toModel(nodeRepr: TypeNodeRepr): TypeNode = new TypeNode(nodeRepr.fqn, nodeRepr.superFqn, nodeRepr.interfaceFqns, nodeRepr.isInterface)
 
   def toModel(response: LookupResponse): LookupResponseRepresentation = LookupResponseRepresentation(response.requestId,
-    response.targets.map(toModel), response.noDefs)
+    response.targets.map(toModel), response.noDefs, response.hasFatalErrors)
 
 }

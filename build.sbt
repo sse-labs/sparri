@@ -111,6 +111,7 @@ lazy val `client-analyses` = (project in file("client-analyses"))
 	.settings(
 
 		libraryDependencies += dependencies.logback,
+		libraryDependencies += dependencies.mvninvoker,
 
 		assembly / mainClass := Some("org.anon.spareuse.client.ClientAnalysisApplication"),
 		assembly / assemblyJarName := "client-analyses.jar",
@@ -190,6 +191,7 @@ lazy val dependencies = new {
 	
 	val jeka = "dev.jeka" % "jeka-core" % "0.9.15.RELEASE"
 	val mvnarcheologist = "com.squareup.tools.build" % "maven-archeologist" % "0.0.10"
+	val mvninvoker = "org.apache.maven.shared" % "maven-invoker" % "3.3.0"
 
 	val mvnIndexer = "org.apache.maven.indexer" % "indexer-reader" % "6.2.2"
 	

@@ -274,87 +274,87 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
     jis.invokeStatementType match {
 
-      // If we have an in-hierarchy static call to an application type:
-      //  - We need to locate the implementation of the method. It may be in the current type, or in the parent hierarchy.
-      //  - As soon as *one* parent defines the static method, only children of that node could potentially override it.
-      case JavaInvocationType.Static if staticCallWithinHierarchy =>
 
-        val definitionOnDeclaredTypeOpt = findMethodOn(jis, declType)
+      case JavaInvocationType.Static | JavaInvocationType.Special =>
 
-        if(definitionOnDeclaredTypeOpt.isDefined) {
-          // If we know a matching method definition on the declared type, it must be the target
-          Set(definitionOnDeclaredTypeOpt.get)
-        } else {
+        if(staticCallWithinHierarchy || jis.invokeStatementType == JavaInvocationType.Special){
+          // If we have an in-hierarchy static call or a special call:
+          //  - We need to locate the implementation of the method. It may be in the current type, or in the parent hierarchy.
+          //  - As soon as *one* parent defines the static method, only children of that node could potentially override it.
 
-          val declaredTypeCouldDefineMethod = typeExtern && !applicationMethodKnown(declType)
+          val definitionOnDeclaredTypeOpt = findMethodOn(jis, declType)
 
-          // If we know that the method does not exist on the defined type OR do not know whether it exists,
-          // we look for the one that would currently be valid - and query all types that might have a more specific
-          // definition available.
-
-          // This finds the index of the parent that *currently* would have the valid implementation for the method
-          val firstDefinitionSiteInParent = declType
-            .allParents
-            .zipWithIndex
-            .find { parent =>
-              // Find the first parent for which we know that is has a matching method definition
-              findMethodOn(jis, parent._1).isDefined
-            }
-            // Return its index
-            .map(_._2)
-
-          // The set of types that might have a more recent definition of the required method
-          val typesToConsider = if(firstDefinitionSiteInParent.isEmpty) declType.allParents else declType.allParents.splitAt(firstDefinitionSiteInParent.get)._1
-
-          // The names of those types that we need to retrieve from the client: Application nodes for which we have not
-          // yet queried the current method signature
-          var typeNamesToLookup = typesToConsider
-            .filter(isApplicationNode)
-            .filterNot(applicationMethodKnown)
-            .map(_.thisType)
-            .toSet
-
-          // If we do not know if the declared type defines the required method, we need to request the definition at
-          // the client, too.
-          if(declaredTypeCouldDefineMethod)
-            typeNamesToLookup = typeNamesToLookup ++ Set(declType.thisType)
-
-
-          if(typeNamesToLookup.nonEmpty){
-            // If there are any types to lookup with the client, we place an appropriate lookup request and return no targets yet
-            val request = LookupApplicationMethodRequest(jis.invokeStatementType.id, jis.targetMethodName, jis.targetDescriptor, typeNamesToLookup, jis.instructionPc, ccIdent)
-            requestApplicationMethodLookup(request)
-            Set.empty
-          } else if(firstDefinitionSiteInParent.isEmpty){
-            // We know that no parent defines the method, and there is no type to query that might
-            // define it. That means we are missing an implementation for this static call.
-            log.error(s"Cannot resolve any targets for static call within class hierarchy: $jis")
-            Set.empty
+          if (definitionOnDeclaredTypeOpt.isDefined) {
+            // If we know a matching method definition on the declared type, it must be the target
+            Set(definitionOnDeclaredTypeOpt.get)
           } else {
-            // There are no types to request method definition for, that means the most recent parent it fact has the
-            // implementation we are looking for.
-            val targetType = declType.allParents(firstDefinitionSiteInParent.get)
-            Set(findMethodOn(jis, targetType).get)
+
+            val declaredTypeCouldDefineMethod = typeExtern && !applicationMethodKnown(declType)
+
+            // If we know that the method does not exist on the defined type OR do not know whether it exists,
+            // we look for the one that would currently be valid - and query all types that might have a more specific
+            // definition available.
+
+            // This finds the index of the parent that *currently* would have the valid implementation for the method
+            val firstDefinitionSiteInParent = declType
+              .allParents
+              .zipWithIndex
+              .find { parent =>
+                // Find the first parent for which we know that is has a matching method definition
+                findMethodOn(jis, parent._1).isDefined
+              }
+              // Return its index
+              .map(_._2)
+
+            // The set of types that might have a more recent definition of the required method
+            val typesToConsider = if (firstDefinitionSiteInParent.isEmpty) declType.allParents else declType.allParents.splitAt(firstDefinitionSiteInParent.get)._1
+
+            // The names of those types that we need to retrieve from the client: Application nodes for which we have not
+            // yet queried the current method signature
+            var typeNamesToLookup = typesToConsider
+              .filter(isApplicationNode)
+              .filterNot(applicationMethodKnown)
+              .map(_.thisType)
+              .toSet
+
+            // If we do not know if the declared type defines the required method, we need to request the definition at
+            // the client, too.
+            if (declaredTypeCouldDefineMethod)
+              typeNamesToLookup = typeNamesToLookup ++ Set(declType.thisType)
+
+
+            if (typeNamesToLookup.nonEmpty) {
+              // If there are any types to lookup with the client, we place an appropriate lookup request and return no targets yet
+              val request = LookupApplicationMethodRequest(jis.invokeStatementType.id, jis.targetMethodName, jis.targetDescriptor, typeNamesToLookup, jis.instructionPc, ccIdent)
+              requestApplicationMethodLookup(request)
+              Set.empty
+            } else if (firstDefinitionSiteInParent.isEmpty) {
+              // We know that no parent defines the method, and there is no type to query that might
+              // define it. That means we are missing an implementation for this static call.
+              log.error(s"Cannot resolve any targets for static / special call within class hierarchy: $jis")
+              Set.empty
+            } else {
+              // There are no types to request method definition for, that means the most recent parent it fact has the
+              // implementation we are looking for.
+              val targetType = declType.allParents(firstDefinitionSiteInParent.get)
+              Set(findMethodOn(jis, targetType).get)
+            }
+
           }
-
-        }
-
-
-
-      // If we have a "normal" static call, we either find the target directly, or request its definition iff the
-      // the declared type is an application type (and not known yet).
-      case JavaInvocationType.Static =>
-
-        findMethodOn(jis, declType) match {
-          case Some(targetMethod) =>
-            Set(targetMethod)
-          case None if typeExtern  && !applicationMethodKnown(declType) =>
-            val request = LookupApplicationMethodRequest(jis.invokeStatementType.id, jis.targetMethodName, jis.targetDescriptor, Set(declType.thisType), jis.instructionPc, ccIdent)
-            requestApplicationMethodLookup(request)
-            Set.empty
-          case None =>
-            log.error(s"Cannot resolve any targets for static call: $jis")
-            Set.empty
+        } else {
+          // If we have a "normal" static call, we either find the target directly, or request its definition iff the
+          // the declared type is an application type (and not known yet).
+          findMethodOn(jis, declType) match {
+            case Some(targetMethod) =>
+              Set(targetMethod)
+            case None if typeExtern && !applicationMethodKnown(declType) =>
+              val request = LookupApplicationMethodRequest(jis.invokeStatementType.id, jis.targetMethodName, jis.targetDescriptor, Set(declType.thisType), jis.instructionPc, ccIdent)
+              requestApplicationMethodLookup(request)
+              Set.empty
+            case None =>
+              log.error(s"Cannot resolve any targets for static call: $jis")
+              Set.empty
+          }
         }
 
       case JavaInvocationType.Virtual | JavaInvocationType.Interface =>
@@ -403,23 +403,6 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
         // Return those targets that we know are valid
         actualTargets
-
-      case JavaInvocationType.Special =>
-        //TODO: This needs some more lookup logic
-        val declTypeM = findMethodOn(jis, declType)
-
-        if (declTypeM.isDefined) declTypeM.toSet
-        else if (!declType.isInterface && declType.hasParent) {
-          findMethodDefinition(jis, declType, recurseParents = true).toSet
-        } else {
-          val dmOnObjOpt = getMethodOnObjectType(jis)
-          if (declType.isInterface && dmOnObjOpt.isDefined) {
-            dmOnObjOpt.toSet
-          } else {
-            log.warn(s"Failed to resolve INVOKESPECIAL: No implementation found for ${jis.targetTypeName}->${jis.targetMethodName}")
-            Set.empty
-          }
-        }
 
       case _ =>
         log.error(s"Unhandled invocation type: ${jis.invokeStatementType}")

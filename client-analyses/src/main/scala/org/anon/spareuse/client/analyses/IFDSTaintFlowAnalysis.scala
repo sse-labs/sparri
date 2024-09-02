@@ -28,16 +28,15 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
   }
 
   override protected[analyses] def requirements: Seq[AnalysisRequirement] =
-    Seq(AnalysisRequirement("com.google.code.gson:gson!com.google.code.gson:gson:2.11.0", remoteAnalysisName, remoteAnalysisVersion),
-      AnalysisRequirement("com.google.errorprone:error_prone_annotations!com.google.errorprone:error_prone_annotations:2.27.0", remoteAnalysisName, remoteAnalysisVersion)) //TODO: Use real code once dependency extraction works
-    /*getAllDependencies
-      .map(dep => AnalysisRequirement(dep.identifier.toString, remoteAnalysisName, remoteAnalysisVersion))
-      .toSeq*/
+    getAllDependencies
+      .get // Note that any exceptions thrown here will be caught by the calling (final) method ClientAnalysis.checkRequirements()
+      .map(dep => AnalysisRequirement(dep.identifier.toGA + "!" + dep.identifier.toString, remoteAnalysisName, remoteAnalysisVersion))
+      .toSeq
 
   override def execute(): Try[Int] = Try {
     val p = getOpalProject(loadJre = false)
 
-    val fakeDependencies = Set("com.google.code.gson:gson:2.11.0", "com.google.errorprone:error_prone_annotations:2.27.0")
+    val dependencies = getAllDependencies.get.map(_.identifier.toString)
 
     val projectTypeMap = p
       .allProjectClassFiles
@@ -57,7 +56,7 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
       .map(_.asNEW.objectType.fqn)
       .toSet
 
-    Try(oracleApiClient.startOracleSession(fakeDependencies, projectTypeNodes, allTypesInitialized, 0, Some("17"))) match {
+    Try(oracleApiClient.startOracleSession(dependencies, projectTypeNodes, allTypesInitialized, 0, Some("17"))) match {
       case Success(_) =>
         log.info(s"Successfully started resolution session with server, session-id = ${oracleApiClient.getToken.getOrElse("<NONE>")}")
 
@@ -155,7 +154,7 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
               }
             case Failure(ex) =>
               log.error(s"Failed to generate response for request #${request.requestId}", ex)
-              // TODO: Send error (N)ACK
+              oracleApiClient.pushResponse(LookupResponse(request.requestId, Set.empty, Set.empty, hasFatalErrors = true))
           }
         }
       } else {
@@ -195,7 +194,7 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
       }
     }
 
-    LookupResponse(request.requestId, targetsFound.toSet, typesWithNoDef.toSet)
+    LookupResponse(request.requestId, targetsFound.toSet, typesWithNoDef.toSet, hasFatalErrors = false)
   }
 
   private case class EntryPoint(callingContext: Method, ccPC: Int, typesInitialized: Set[String])

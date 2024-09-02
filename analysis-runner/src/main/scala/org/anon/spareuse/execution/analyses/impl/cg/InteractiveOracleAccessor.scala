@@ -5,8 +5,8 @@ import org.anon.spareuse.core.model.entities.JavaEntities
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
-import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.InteractionType.{Initialization, InteractionType, MethodRequest, Internal}
-import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{LookupRequestRepresentation, LookupResponseRepresentation, OracleInteractionError}
+import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.InteractionType.{Initialization, InteractionType, Internal, MethodRequest}
+import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{InteractionType, LookupRequestRepresentation, LookupResponseRepresentation, OracleInteractionError}
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, LookupApplicationMethodRequest, LookupApplicationMethodResponse}
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphResolutionMode.{CHA, NaiveRTA, OracleCallGraphResolutionMode, RTA}
 import org.slf4j.{Logger, LoggerFactory}
@@ -250,17 +250,25 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
    */
   def pushResponse(response: LookupResponseRepresentation): Unit = {
 
-    log.info(s"Got a resposne for lookup request with id ${response.requestId}")
+    log.info(s"Got a response for lookup request with id ${response.requestId}")
 
     val originalRequest = outgoingRequestIdMap.synchronized{ outgoingRequestIdMap(response.requestId) }
 
-    val responseObj = LookupApplicationMethodResponse(originalRequest.ccIdent, originalRequest.ccPC,
-      originalRequest.mName, originalRequest.mDescriptor, originalRequest.types, response.targetMethods,
-      response.typesWithoutMethodDefinition)
+    if(response.fatalErrors){
+      log.warn(s"Client reported fatal error during lookup for request #${response.requestId}")
+      errors.addOne(OracleInteractionError(s"Client failed to lookup method for request: ${originalRequest.mName} : ${originalRequest.mDescriptor}", isFatal = true, isUserError = true, InteractionType.MethodRequest))
+    } else {
+      val responseObj = LookupApplicationMethodResponse(originalRequest.ccIdent, originalRequest.ccPC,
+        originalRequest.mName, originalRequest.mDescriptor, originalRequest.types, response.targetMethods,
+        response.typesWithoutMethodDefinition)
 
-    incomingResponsesBuffer.synchronized {
-      incomingResponsesBuffer.enqueue(responseObj)
-      unansweredRequestIds.synchronized{ unansweredRequestIds.remove(response.requestId) }
+      incomingResponsesBuffer.synchronized {
+        incomingResponsesBuffer.enqueue(responseObj)
+      }
+    }
+
+    unansweredRequestIds.synchronized {
+      unansweredRequestIds.remove(response.requestId)
     }
 
   }
@@ -291,7 +299,7 @@ object InteractiveOracleAccessor {
 
   case class LookupRequestRepresentation(requestId: Int, invocationTypeId: Int, mName: String, mDescriptor: String, targetTypes: Set[String])
 
-  case class LookupResponseRepresentation(requestId: Int, targetMethods: Set[ApplicationMethod], typesWithoutMethodDefinition: Set[String])
+  case class LookupResponseRepresentation(requestId: Int, targetMethods: Set[ApplicationMethod], typesWithoutMethodDefinition: Set[String], fatalErrors: Boolean)
 
 
   object InteractionType extends Enumeration {
