@@ -70,15 +70,17 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
         // Add all library entry points to a work stack
         val entryPointsToProcess = mutable.Stack.from(getLibraryEntryPoints(p))
 
+        log.info(s"Found a total of ${entryPointsToProcess.size} library entry points.")
+
         // Handle one entry point after the other
         while(entryPointsToProcess.nonEmpty){
           val currentEntry = entryPointsToProcess.pop()
           Try(oracleApiClient.startResolutionAt(currentEntry.callingContext, currentEntry.ccPC, currentEntry.typesInitialized)).flatten match {
             case Success(_) =>
-              log.info(s"Successfully started resolution at entrypoint: ${currentEntry.callingContext.descriptor.toJava(currentEntry.callingContext.name)}")
+              log.info(s"Successfully started resolution at entrypoint: ${currentEntry.callingContext.descriptor.toJava(currentEntry.callingContext.name)} , PC=${currentEntry.ccPC}")
               handleOracleInteractionUntilFinished(currentEntry, projectTypeMap)
             case Failure(ex) =>
-              log.error(s"Failed to start resolution at entrypoint: ${currentEntry.callingContext.descriptor.toJava(currentEntry.callingContext.name)}", ex)
+              log.error(s"Failed to start resolution at entrypoint: ${currentEntry.callingContext.descriptor.toJava(currentEntry.callingContext.name)} , PC=${currentEntry.ccPC}", ex)
           }
         }
 
@@ -98,38 +100,19 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
   }
 
   private def getLibraryEntryPoints(project: Project[URL]): Set[EntryPoint] = {
-    //TODO: Implement detection of potential entry points
-    // Currently this is just a demo that collects invocations from any main method
     val cg = project.get(CFA_1_1_CallGraphKey)
 
-    Try(cg
+    cg
       .reachableMethods()
-      .filter(_.method.name == "main")
-      .filter(_.method.hasSingleDefinedMethod)
-      .flatMap{ ctx =>
-        ctx
-          .method
-          .definedMethod
-          .body
-          .map( code => code
-            .instructions
-            .zipWithIndex
-            .filter(t => t._1 != null && t._1.isInvocationInstruction && t._2 == 21)
-            .map(_._2)
-            .toSeq
-          )
-          .getOrElse(Seq.empty)
-          .map( EntryPoint(ctx.method.definedMethod, _, Set.empty) )
-
-      }
-      .toSet) match {
-      case Success(result) =>
-        log.info(s"Found ${result.size} distinct library entry points.")
-        result
-      case Failure(ex) =>
-        log.error("Failed to get library entry points", ex)
-        Set.empty
+      .flatMap(ctx => cg.calleesOf(ctx.method).flatMap(t => t._2.map(t2 => (ctx, t._1, t2))))
+      .filter{
+        case (_, _, callee) =>
+          callee.hasContext && !project.isProjectType(callee.method.declaringClassType) && !callee.method.declaringClassType.fqn.startsWith("java")
+      }.map{
+      case (callerCtx, pc, _) =>
+        EntryPoint(callerCtx.method.definedMethod, pc, Set.empty)
     }
+      .toSet
   }
 
   private def handleOracleInteractionUntilFinished(entry: EntryPoint, projectTypes: Map[String, ClassFile]): Unit = {

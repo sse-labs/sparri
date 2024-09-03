@@ -3,8 +3,8 @@ package org.anon.spareuse.webapi.core
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.execution.analyses.impl.cg.{InteractiveOracleAccessor, OracleCallGraphResolutionMode}
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{LookupRequestRepresentation, OracleInteractionError}
-import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.OracleSessionPhase.OracleSessionPhase
-import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.{ClientOracleInteractionException, InvalidSessionException, OracleSessionPhase, OracleSessionState}
+import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.OracleState.OracleState
+import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.{ClientOracleInteractionException, InvalidSessionException, OracleSessionState, OracleState}
 import org.anon.spareuse.webapi.model.Session
 import org.anon.spareuse.webapi.model.oracle.{InitializeResolutionRequest, LookupResponse, PullLookupRequestsResponse, StartResolutionRequest, toModel}
 
@@ -44,7 +44,7 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
         OracleCallGraphResolutionMode.fromId(initRequest.mode)) match {
         case Left(_) =>
           log.info(s"[${theSession.uid}] Successfully initialized accessor for session.")
-          theSession.sessionState.currentPhase = OracleSessionPhase.Initialized
+          theSession.sessionState.currentState = OracleState.Initialized
         case Right(error) =>
           invalidateSession()
           theSession.sessionState.errors.addOne(error)
@@ -64,12 +64,11 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
       if(!sessionOracleAccessors.contains(session.uid))
         throw new RuntimeException(s"Corrupt session state")
 
-      if(session.getState.currentPhase != OracleSessionPhase.Initialized)
+      if(session.getState.currentState != OracleState.Initialized)
         throw ClientOracleInteractionException(session, s"Accessor needs to be initialized and not busy to process entry points")
 
       sessionOracleAccessors(session.uid).startResolution(toModel(startRequest.cc), startRequest.ccPC, startRequest.types) match {
         case Left(_) =>
-          session.getState.currentPhase = OracleSessionPhase.ProcessingEntryPoint
         case Right(error) =>
           log.warn(s"[$sessionUid] Cannot resolve from entrypoint: ${error.toString}")
           throw ClientOracleInteractionException(session, error.toString)
@@ -82,7 +81,7 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
       if(!sessionOracleAccessors.contains(session.uid))
         throw new RuntimeException(s"Corrupt session state")
 
-      if(session.getState.currentPhase == OracleSessionPhase.NotInitialized)
+      if(session.getState.currentState != OracleState.Initialized)
         throw ClientOracleInteractionException(session, s"Accessor needs to be initialized to check its state")
 
       val accessor = sessionOracleAccessors(session.uid)
@@ -124,8 +123,8 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
     if (!sessionOracleAccessors.contains(session.uid))
       throw new RuntimeException(s"Corrupt session state")
 
-    if (session.getState.currentPhase != OracleSessionPhase.ProcessingEntryPoint)
-      throw ClientOracleInteractionException(session, s"Accessor must be processing an entrypoint in order to push results")
+    if (session.getState.currentState != OracleState.Initialized)
+      throw ClientOracleInteractionException(session, s"Accessor must be initialized in order to push results")
 
     Try {
       sessionOracleAccessors(session.uid).pushResponse(toModel(response))
@@ -133,6 +132,8 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
   }
 
   def finalize(sessionUid: String): Try[Any] = ensureValidSession(sessionUid){ session =>
+    session.getState.currentState = OracleState.Finalized
+    invalidateSession(sessionUid)
     Try { throw new RuntimeException("Not implemented")}
     //TODO:set new state, finalize summary generation
   }
@@ -171,7 +172,7 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
 object OracleResolutionRequestHandler {
   class OracleSessionState private[core]() {
 
-    var currentPhase: OracleSessionPhase = OracleSessionPhase.NotInitialized
+    var currentState: OracleState = OracleState.NotInitialized
 
     var isValid: Boolean = true
 
@@ -181,13 +182,12 @@ object OracleResolutionRequestHandler {
 
   }
 
-  object OracleSessionPhase extends Enumeration {
-    type OracleSessionPhase = Value
+  object OracleState extends Enumeration {
+    type OracleState = Value
 
     val NotInitialized: Value = Value(0) // Client needs to send initial information to initialize accessor
     val Initialized: Value = Value(1) // Accessor is ready for entrypoints to be uploaded to start processing
-    val ProcessingEntryPoint: Value = Value(2) // Accessor is currently working on processing an entrypoint
-    val Finished: Value = Value(3) // Accessor is finished and client confirmed that no more entrypoints are waiting for processing
+    val Finalized: Value = Value(2) // Accessor is finished and client confirmed that no more entrypoints are waiting for processing
   }
 
   case class InvalidSessionException(uid: String, reasonPhrase: String) extends Exception {
