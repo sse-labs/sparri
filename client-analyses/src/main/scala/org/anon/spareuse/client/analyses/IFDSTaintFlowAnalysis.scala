@@ -1,12 +1,13 @@
 package org.anon.spareuse.client.analyses
 
 import org.anon.spareuse.client.http.SparriOracleApiClient
-import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{LookupRequestRepresentation, LookupResponseRepresentation}
-import org.anon.spareuse.execution.analyses.impl.ifds.IFDSTaintFlowSummaryBuilderImpl
-import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodRepr, LookupResponse, MethodIdentifierRepr, StartResolutionRequest, TypeNodeRepr}
+import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.LookupRequestRepresentation
+import org.anon.spareuse.execution.analyses.impl.ifds.{IFDSTaintFlowSummaryBuilderImpl, MethodTACProvider}
+import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodWithSummaryRepr, LookupResponse, TypeNodeRepr}
 import org.opalj.br.{ClassFile, Method}
 import org.opalj.br.analyses.Project
 import org.opalj.br.instructions.NEW
+import org.opalj.tac.ComputeTACAIKey
 import org.opalj.tac.cg.CFA_1_1_CallGraphKey
 
 import java.io.File
@@ -14,13 +15,16 @@ import java.net.URL
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
-//TODO: Build a return type
+//TODO: Build a return type / warning
 class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends ClientAnalysis[Int](classesDirectory, pomFile) {
 
   private val remoteAnalysisName: String = IFDSTaintFlowSummaryBuilderImpl.analysisName
   private val remoteAnalysisVersion: String = "0.0.1"
 
   private val oracleApiClient: SparriOracleApiClient = new SparriOracleApiClient
+
+  // (Ab)use the existing taint flow summary builder, which is normally used in the context of an AnalysisRunner instance
+  private val taintFlowSummaryBuilder: IFDSTaintFlowSummaryBuilderImpl = new IFDSTaintFlowSummaryBuilderImpl(None)
 
   override def close(): Unit = {
     super.close()
@@ -56,13 +60,15 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
       .map(_.asNEW.objectType.fqn)
       .toSet
 
+    implicit val provider: MethodTACProvider = p.get(ComputeTACAIKey)
+
     Try(oracleApiClient.startOracleSession(dependencies, projectTypeNodes, allTypesInitialized, 0, Some("17"))) match {
       case Success(_) =>
         log.info(s"Successfully started resolution session with server, session-id = ${oracleApiClient.getToken.getOrElse("<NONE>")}")
 
         // Give oracle time to fully initialize
         while(!oracleApiClient.isReadyForInteraction){
-          Thread.sleep(500)
+          Thread.sleep(100)
         }
 
         log.info(s"Oracle ready for interaction.")
@@ -115,7 +121,7 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
       .toSet
   }
 
-  private def handleOracleInteractionUntilFinished(entry: EntryPoint, projectTypes: Map[String, ClassFile]): Unit = {
+  private def handleOracleInteractionUntilFinished(entry: EntryPoint, projectTypes: Map[String, ClassFile])(implicit provider: MethodTACProvider): Unit = {
     var statusResponse = oracleApiClient.pullStatus()
 
     while(statusResponse.isSuccess && !statusResponse.get.hasFailed && statusResponse.get.isResolving) {
@@ -156,9 +162,9 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
     }
   }
 
-  private def handleMethodRequest(request: LookupRequestRepresentation, projectTypes: Map[String, ClassFile]): Try[LookupResponse] = Try {
+  private def handleMethodRequest(request: LookupRequestRepresentation, projectTypes: Map[String, ClassFile])(implicit provider: MethodTACProvider): Try[LookupResponse] = Try {
 
-    val targetsFound: mutable.Set[ApplicationMethodRepr] = mutable.Set.empty
+    val targetsFound: mutable.Set[ApplicationMethodWithSummaryRepr] = mutable.Set.empty
     val typesWithNoDef: mutable.Set[String] = mutable.Set.empty
 
     request.targetTypes.foreach { targetFqn =>
@@ -168,7 +174,9 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
             .methods
             .find(method => method.name == request.mName && method.descriptor.toJVMDescriptor == request.mDescriptor) match {
             case Some(method) =>
-              targetsFound.add(oracleApiClient.opalToApiModel(method))
+
+              val ifdsSummary = taintFlowSummaryBuilder.analyzeMethod(method).toResultRepresentation(true)
+              targetsFound.add(ApplicationMethodWithSummaryRepr(oracleApiClient.opalToApiModel(method), ifdsSummary))
             case None =>
               typesWithNoDef.add(targetFqn)
           }

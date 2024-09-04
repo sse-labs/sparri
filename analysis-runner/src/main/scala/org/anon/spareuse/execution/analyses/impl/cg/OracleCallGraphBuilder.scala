@@ -503,7 +503,7 @@ object OracleCallGraphBuilder {
 
   case class LookupApplicationMethodRequest(mInvokeType: Int, mName: String, mDescriptor: String, types: Set[String], ccPC: Int, ccIdent: MethodIdent)
 
-  class ApplicationMethod(identifier: MethodIdent,
+  class ApplicationMethod(val identifier: MethodIdent,
                           mIsStatic: Boolean,
                           typesInstantiated: List[String],
                           invocations: Seq[JavaInvokeStatement]) extends DefinedMethod(identifier.declaredType, identifier.methodName, identifier.methodDescriptor, mIsStatic, newTypesProvider = () => typesInstantiated, invocationProvider = () => invocations)

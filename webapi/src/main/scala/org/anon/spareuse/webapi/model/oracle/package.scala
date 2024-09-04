@@ -2,8 +2,9 @@ package org.anon.spareuse.webapi.model
 
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaInvocationType, JavaInvokeStatement}
 import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
-import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{LookupRequestRepresentation, LookupResponseRepresentation}
+import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.LookupResponseRepresentation
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, MethodIdent}
+import org.anon.spareuse.execution.analyses.impl.ifds.ApplicationMethodWithSummary
 
 package object oracle {
 
@@ -20,7 +21,10 @@ package object oracle {
 
   def toModel(nodeRepr: TypeNodeRepr): TypeNode = new TypeNode(nodeRepr.fqn, nodeRepr.superFqn, nodeRepr.interfaceFqns, nodeRepr.isInterface)
 
-  def toModel(response: LookupResponse): LookupResponseRepresentation = LookupResponseRepresentation(response.requestId,
-    response.targets.map(toModel), response.noDefs, response.hasFatalErrors)
+  def toModel(response: LookupResponse): LookupResponseRepresentation = LookupResponseRepresentation(
+    response.requestId,
+    response.targets.map(methodWithSummary => ApplicationMethodWithSummary(toModel(methodWithSummary.methodRep), methodWithSummary.summaryRepr)),
+    response.noDefs,
+    response.hasFatalErrors)
 
 }

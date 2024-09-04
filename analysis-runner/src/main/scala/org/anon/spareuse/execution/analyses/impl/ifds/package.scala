@@ -1,5 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl
 
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.ApplicationMethod
+import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
 import org.opalj.br.Method
 import org.opalj.tac.{AITACode, DUVar, DVar, Stmt, TACMethodParameter, UVar}
 import org.opalj.value.ValueInformation
@@ -20,4 +22,6 @@ package object ifds {
     override def displayName: String = "<0>"
   }
 
+
+  case class ApplicationMethodWithSummary(method: ApplicationMethod, ifdsSummary: MethodIFDSRep)
 }

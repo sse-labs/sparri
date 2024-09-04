@@ -82,39 +82,39 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
         throw new RuntimeException(s"Corrupt session state")
 
       if(session.getState.currentState != OracleState.Initialized)
-        throw ClientOracleInteractionException(session, s"Accessor needs to be initialized to check its state")
+        PullLookupRequestsResponse(isInitialized = false, isResolving = false, requests = Set.empty, hasFailed = false, fatalError = None)
+      else {
+        val accessor = sessionOracleAccessors(session.uid)
 
-      val accessor = sessionOracleAccessors(session.uid)
+        var req = accessor.nextRequest()
+        val requests = mutable.ListBuffer.empty[LookupRequestRepresentation]
 
-      var req = accessor.nextRequest()
-      val requests = mutable.ListBuffer.empty[LookupRequestRepresentation]
+        while (req.nonEmpty) {
+          requests.addOne(req.get)
+          req = accessor.nextRequest()
+        }
 
-      while (req.nonEmpty) {
-        requests.addOne(req.get)
-        req = accessor.nextRequest()
-      }
-
-      if(accessor.succeeded){
-        // We successfully processed the last entrypoint, so we are ready for another one (or finalization)
-        PullLookupRequestsResponse(isResolving = false, requests = Set.empty, hasFailed = false, fatalError = None)
-      } else if(accessor.failed){
-        PullLookupRequestsResponse(isResolving = false, requests = Set.empty, hasFailed = true,
-          fatalError = Some(accessor.firstFatalError.map(_.toString).getOrElse("<UNKNOWN>")))
-      } else if(!accessor.isResolving){
-        // We did not finish successfully, did not fail and are not working -> We are directly after initialization and
-        // ready to process entrypoints
-        PullLookupRequestsResponse(isResolving = false, requests = Set.empty, hasFailed = false, fatalError = None)
-      } else {
-        if(accessor.hasFatalErrors){
-          // Accessor thinks we are working, but has encountered fatal errors
-          PullLookupRequestsResponse(isResolving = false, requests = requests.toSet, hasFailed = true,
+        if (accessor.succeeded) {
+          // We successfully processed the last entrypoint, so we are ready for another one (or finalization)
+          PullLookupRequestsResponse(isInitialized = true, isResolving = false, requests = Set.empty, hasFailed = false, fatalError = None)
+        } else if (accessor.failed) {
+          PullLookupRequestsResponse(isInitialized = true, isResolving = false, requests = Set.empty, hasFailed = true,
             fatalError = Some(accessor.firstFatalError.map(_.toString).getOrElse("<UNKNOWN>")))
+        } else if (!accessor.isResolving) {
+          // We did not finish successfully, did not fail and are not working -> We are directly after initialization and
+          // ready to process entrypoints
+          PullLookupRequestsResponse(isInitialized = true, isResolving = false, requests = Set.empty, hasFailed = false, fatalError = None)
         } else {
-          // We are working - let client answer Lookup requests
-          PullLookupRequestsResponse(isResolving = true, requests = requests.toSet, hasFailed = false, fatalError = None)
+          if (accessor.hasFatalErrors) {
+            // Accessor thinks we are working, but has encountered fatal errors
+            PullLookupRequestsResponse(isInitialized = true, isResolving = false, requests = requests.toSet, hasFailed = true,
+              fatalError = Some(accessor.firstFatalError.map(_.toString).getOrElse("<UNKNOWN>")))
+          } else {
+            // We are working - let client answer Lookup requests
+            PullLookupRequestsResponse(isInitialized = true, isResolving = true, requests = requests.toSet, hasFailed = false, fatalError = None)
+          }
         }
       }
-
     }
 
   }
@@ -135,7 +135,7 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
     session.getState.currentState = OracleState.Finalized
     invalidateSession(sessionUid)
     Try { throw new RuntimeException("Not implemented")}
-    //TODO:set new state, finalize summary generation
+    //TODO: Get relevant summaries for libraries, stitch summaries
   }
 
 

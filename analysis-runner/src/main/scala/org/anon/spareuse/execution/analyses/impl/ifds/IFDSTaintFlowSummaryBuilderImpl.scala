@@ -8,7 +8,7 @@ import org.opalj.tac.{Assignment, BinaryExpr, Const, Expr, FunctionCall, GetFiel
 class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) extends DefaultIFDSSummaryBuilder(baselineRunOpt) {
 
   override val descriptor: AnalysisImplementationDescriptor =  IFDSTaintFlowSummaryBuilderImpl.descriptor
-  override protected[ifds] def analyzeMethod(method: Method)(implicit TACAIProvider: MethodTACProvider): IFDSMethodGraph = {
+  override def analyzeMethod(method: Method)(implicit TACAIProvider: MethodTACProvider): IFDSMethodGraph = {
     // Make sure local variable fact cache is cleared after method has been processed
     val result = super.analyzeMethod(method)
     TaintVariableFacts.clearLocals()

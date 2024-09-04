@@ -146,7 +146,7 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
    * @param TACAIProvider A TAC provider to get the three-address-code representation of a methods body
    * @return Finalized IFDSMethodGraph that contains all possible fact activations
    */
-  protected[ifds] def analyzeMethod(method: Method)(implicit TACAIProvider: MethodTACProvider): IFDSMethodGraph = {
+  def analyzeMethod(method: Method)(implicit TACAIProvider: MethodTACProvider): IFDSMethodGraph = {
 
     val theTAC = TACAIProvider(method)
     val cfg = theTAC.cfg

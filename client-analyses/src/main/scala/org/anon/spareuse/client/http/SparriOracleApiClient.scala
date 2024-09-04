@@ -70,10 +70,8 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
 
   def isReadyForInteraction: Boolean = {
     getAsString("/api/oracle/pull-status", rawHeader = Map("session-id" -> sessionToken.get)) match {
-      case Failure(hrx: HttpResponseException) if hrx.getStatusCode == 400 && hrx.getReasonPhrase.contains("needs to be initialized") =>
-        false
-      case Success(_) =>
-        true
+      case Success(content) =>
+        content.parseJson.convertTo[PullLookupRequestsResponse].isInitialized
       case Failure(ex) =>
         log.error(s"Error checking for interaction readiness", ex)
         false
