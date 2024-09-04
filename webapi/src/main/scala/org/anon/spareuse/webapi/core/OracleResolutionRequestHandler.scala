@@ -3,6 +3,8 @@ package org.anon.spareuse.webapi.core
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.execution.analyses.impl.cg.{InteractiveOracleAccessor, OracleCallGraphResolutionMode}
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{LookupRequestRepresentation, OracleInteractionError}
+import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
+import org.anon.spareuse.execution.analyses.impl.ifds.{DefaultIFDSMethodRepJsonFormat, IFDSTaintFlowSummaryBuilderImpl}
 import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.OracleState.OracleState
 import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.{ClientOracleInteractionException, InvalidSessionException, OracleSessionState, OracleState}
 import org.anon.spareuse.webapi.model.Session
@@ -10,9 +12,10 @@ import org.anon.spareuse.webapi.model.oracle.{InitializeResolutionRequest, Looku
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
-import scala.util.{Failure, Try}
+import scala.util.{Failure, Success, Try}
+import spray.json.enrichString
 
-class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit context: ExecutionContext) extends SessionBasedRequestHandler[OracleSessionState] {
+class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit context: ExecutionContext) extends SessionBasedRequestHandler[OracleSessionState] with DefaultIFDSMethodRepJsonFormat {
 
   private[core] val sessionOracleAccessors: mutable.Map[String, InteractiveOracleAccessor] = mutable.Map.empty
 
@@ -132,10 +135,43 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
   }
 
   def finalize(sessionUid: String): Try[Any] = ensureValidSession(sessionUid){ session =>
-    session.getState.currentState = OracleState.Finalized
+
+    val accessor = sessionOracleAccessors(session.uid)
+
+    val resolver: String => Try[MethodIFDSRep] = identifier => {
+      dataAccessor
+        .getJSONResultsFor(
+          identifier,
+          Some(IFDSTaintFlowSummaryBuilderImpl.analysisName, IFDSTaintFlowSummaryBuilderImpl.analysisVersion),
+          limit = 1,
+          skip = 0) match {
+        case Success(results) if results.nonEmpty =>
+          if(results.size > 1)
+            log.warn(s"More than one IFDS summary present for entity, picking one at random")
+
+          val theResult = results.head
+
+          Try(theResult.content.asInstanceOf[String].parseJson.convertTo[MethodIFDSRep])
+        case Failure(ex) =>
+          log.error(s"Error while getting IFDS summaries from database: $identifier", ex)
+          Failure(ex)
+        case _ =>
+          log.error(s"No results found when accessing IFDS summary for $identifier")
+          Success(null) //TODO: Proper handling here
+          //Failure(new IllegalStateException(s"Required summaries not found in database"))
+      }
+
+    }
+
+    val result = accessor
+      .loadRemainingSummaries(resolver)
+
     invalidateSession(sessionUid)
-    Try { throw new RuntimeException("Not implemented")}
-    //TODO: Get relevant summaries for libraries, stitch summaries
+
+    result
+
+    //Try { throw new RuntimeException("Not implemented")}
+    //TODO:stitch summaries
   }
 
 

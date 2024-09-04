@@ -22,6 +22,7 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
   private[cg] final val applicationMethodSummaries: mutable.Map[TypeNode, mutable.Map[String, mutable.Map[String, Option[ApplicationMethod]]]] = new mutable.HashMap()
 
+  def getLibraries: Set[JavaProgram] = programs
 
   private[cg] def putSummary(node: TypeNode, name: String, descriptor: String, methodOpt: Option[ApplicationMethod]): Unit = {
     if (applicationMethodSummaries.contains(node)) {

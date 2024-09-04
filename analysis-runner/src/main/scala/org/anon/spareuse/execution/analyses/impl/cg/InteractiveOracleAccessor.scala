@@ -299,6 +299,38 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
   def succeeded: Boolean = !hasFatalErrors && resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isSuccess)
   def failed: Boolean = hasFatalErrors || resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isFailure)
 
+  def loadRemainingSummaries(resolver: String => Try[MethodIFDSRep]): Try[Unit] = Try {
+    if(oracleCGBuilderOpt.isEmpty)
+      return Failure(new IllegalStateException("Cannot finalize summaries, not initialized"))
+
+    val builder = oracleCGBuilderOpt.get
+
+    val typeLookup = builder.getLibraries.flatMap(library => library.allClasses.map(c => (c.thisType, c.uid))).toMap
+
+    builder
+      .getGraph
+      .reachableMethods()
+      .filterNot(dm => dm.definingTypeName.startsWith("java") || dm.definingTypeName.startsWith("sun") || dm.definingTypeName.startsWith("jdk") || dm.definingTypeName.startsWith("com/sun"))
+      .foreach{ dm =>
+        val ident = MethodIdent(dm.definingTypeName, dm.methodName, dm.descriptor)
+        if(!summaryLookup.contains(ident)){
+          if(!typeLookup.contains(ident.declaredType))
+            log.warn(s"Failed to locate type for summary lookup: ${ident.declaredType}")
+          else{
+            val sparriClassIdent = typeLookup(ident.declaredType)
+            val sparriMethodIdent = s"$sparriClassIdent!${JavaEntities.buildMethodIdent(ident.methodName, ident.methodDescriptor)}"
+            resolver(sparriMethodIdent) match {
+              case Success(summary) =>
+                log.info(s"Successfully got summary for $sparriMethodIdent")
+                summaryLookup.put(ident, summary)
+              case Failure(ex) =>
+                log.error(s"Failed to lookup method summary for: $sparriMethodIdent", ex)
+            }
+          }
+        }
+    }
+  }
+
 }
 
 object InteractiveOracleAccessor {
