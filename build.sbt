@@ -159,6 +159,8 @@ lazy val evaluation = (project in file("evaluation"))
 	.settings(
 		libraryDependencies ++= Seq(dependencies.logback, dependencies.neo4jDriver),
 
+		publish / skip := true,
+
 		assembly / mainClass := Some ("org.anon.spareuse.eval.performance.PerformanceEvaluationApp"),
 		assembly / assemblyJarName := "spar-evaluation.jar",
 		mergeStrategySettings,
@@ -177,6 +179,14 @@ lazy val evaluation = (project in file("evaluation"))
 
 		docker / imageNames := Seq(ImageName(s"spar-evaluation:latest"))
 
+	)
+
+// The integration tests are bundled as a subproject - recommended way to go since SBT 1.9.0
+lazy val integration = (project in file("integration"))
+	.dependsOn(root)
+	.settings(
+		publish / skip := true,
+		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.tcPostgres, dependencies.tcScala, dependencies.tcRabbitMq, dependencies.logback)
 	)
 	
 lazy val dependencies = new {
@@ -201,8 +211,6 @@ lazy val dependencies = new {
 	val logback = "ch.qos.logback" % "logback-classic" % "1.2.3"
 	
 	val rabbitMQ = "com.rabbitmq" % "amqp-client" % "5.13.0"
-	
-	val scalaTest = "org.scalatest" %% "scalatest" % "3.2.9" % "test"
 
 	val apacheHttp = "org.apache.httpcomponents" % "httpclient" % "4.5.13"
 
@@ -226,4 +234,11 @@ lazy val dependencies = new {
 	val akkaHttpCors = "ch.megard" %% "akka-http-cors" % "1.1.3"
 
 	val neo4jDriver = "org.neo4j.driver" % "neo4j-java-driver" % "4.3.8"
+
+	// Test-Only dependencies
+	val testContainersScalaVersion = "0.41.4"
+	val scalaTest = "org.scalatest" %% "scalatest" % "3.2.19" % Test
+	val tcScala = "com.dimafeng" %% "testcontainers-scala-scalatest" % testContainersScalaVersion % Test
+	val tcPostgres = "com.dimafeng" %% "testcontainers-scala-postgresql" % testContainersScalaVersion % Test
+	val tcRabbitMq = "com.dimafeng" %% "testcontainers-scala-rabbitmq" % testContainersScalaVersion % Test
 }

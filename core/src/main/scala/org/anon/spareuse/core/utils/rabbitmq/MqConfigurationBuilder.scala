@@ -24,15 +24,22 @@ object MqConfigurationBuilder {
 
   type BasicConnectionInfo = (String, String, String, Int)
 
+  private def tryGetEnvOrElse(envName: String, elseProducer: () => String): String = {
+    val envValue = System.getenv(envName)
+
+    if(envValue == null) elseProducer.apply()
+    else envValue
+  }
+
   private def getBasics(conf: Config): BasicConnectionInfo = {
     if(requiredKeys.exists(key => !conf.hasPath(key)))
       throw new IllegalArgumentException(s"MQ Configuration is missing a required member: ${requiredKeys.mkString(",")}")
 
     (
-      conf.getString(userKey),
-      conf.getString(passKey),
-      conf.getString(hostKey),
-      conf.getInt(portKey)
+      tryGetEnvOrElse("SPARRI_MQ_USER", () => conf.getString(userKey)),
+      tryGetEnvOrElse("SPARRI_MQ_PASS", () => conf.getString(passKey)),
+      tryGetEnvOrElse("SPARRI_MQ_HOST", () => conf.getString(hostKey)),
+      if(System.getenv("SPARRI_MQ_PORT") != null) System.getenv("SPARRI_MQ_PORT").toInt else conf.getInt(portKey)
     )
   }
 
