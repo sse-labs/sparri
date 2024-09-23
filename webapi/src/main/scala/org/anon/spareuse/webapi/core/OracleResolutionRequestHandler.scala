@@ -171,7 +171,7 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
     result
 
     //Try { throw new RuntimeException("Not implemented")}
-    //TODO:stitch summaries
+    //TODO: stitch summaries
   }
 
 

@@ -17,8 +17,8 @@ class ClientOracleInteractionTest extends AnyFlatSpec with TestContainersForAll 
 
   private final val log: Logger = LoggerFactory.getLogger(getClass)
 
-  // Define set of containers to use for this test - PostgreSQL, Rabbit, Generic(API)
-  override type Containers = PostgreSQLContainer and RabbitMQContainer and GenericContainer
+  // Define set of containers to use for this test - PostgreSQL, Rabbit, Generic(API), Generic(Runner)
+  override type Containers = PostgreSQLContainer and RabbitMQContainer and GenericContainer and GenericContainer
 
 
 
@@ -53,12 +53,27 @@ class ClientOracleInteractionTest extends AnyFlatSpec with TestContainersForAll 
     val apiContainer = apiContainerDef.start()
     log.info(s"Successfully started SPARRI API container: ${apiContainer.containerId}")
 
-    pgContainer and mqContainer and apiContainer
+    val analysisRunnerWaitStrategy = new LogMessageWaitStrategy()
+      .withRegEx(".*(Listening for analysis commands).*")
+
+    val runnerContainerDef = GenericContainer.Def(DockerImage(Left("spar-analysis-runner:latest")), env = Map(
+      "SPARRI_MQ_USER" -> mqContainer.adminUsername,
+      "SPARRI_MQ_PASS" -> mqContainer.adminPassword,
+      "SPARRI_MQ_HOST" -> "host.testcontainers.internal",
+      "SPARRI_MQ_PORT" -> mappedMqPortOnHost.toString,
+      "SPARRI_DB_USER" -> pgUserName,
+      "SPARRI_DB_PASS" -> pgPass,
+      "SPARRI_DB_URL" -> s"jdbc:postgresql://host.testcontainers.internal:$mappedPgPortOnHost/",
+    ), waitStrategy = analysisRunnerWaitStrategy)
+
+    val runnerContainer = runnerContainerDef.start()
+    log.info(s"Successfully started SPARRI analysis runner container: ${apiContainer.containerId}")
+
+    pgContainer and mqContainer and apiContainer and runnerContainer
   }
 
   "The client analysis" should "fail when requirements are not met" in withContainers {
-    case _ and _ and api =>
-      Thread.sleep(10000)
+    case _ and _ and api and runner =>
       val apiHost = "localhost"
       val apiPort = api.mappedPort(9090)
 
