@@ -183,10 +183,10 @@ lazy val evaluation = (project in file("evaluation"))
 
 // The integration tests are bundled as a subproject - recommended way to go since SBT 1.9.0
 lazy val integration = (project in file("integration"))
-	.dependsOn(root)
+	.dependsOn(root, `client-analyses` % "test->test")
 	.settings(
 		publish / skip := true,
-		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.tcPostgres, dependencies.tcScala, dependencies.tcRabbitMq, dependencies.logback)
+		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.tcPostgres, dependencies.tcScala, dependencies.tcRabbitMq)
 	)
 	
 lazy val dependencies = new {

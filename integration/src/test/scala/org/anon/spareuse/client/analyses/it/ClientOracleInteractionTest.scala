@@ -1,4 +1,4 @@
-package org.anon.spareuse.it
+package org.anon.spareuse.client.analyses.it
 
 import com.dimafeng.testcontainers.GenericContainer.DockerImage
 import com.dimafeng.testcontainers.lifecycle.and
@@ -6,8 +6,12 @@ import com.dimafeng.testcontainers.{GenericContainer, PostgreSQLContainer, Rabbi
 import org.scalatest.flatspec.AnyFlatSpec
 import org.slf4j.{Logger, LoggerFactory}
 import com.dimafeng.testcontainers.scalatest.TestContainersForAll
+import org.anon.spareuse.client.analyses.IFDSTaintFlowAnalysis
 import org.testcontainers.Testcontainers
 import org.testcontainers.containers.wait.strategy.LogMessageWaitStrategy
+
+import java.io.File
+import java.nio.file.Paths
 
 class ClientOracleInteractionTest extends AnyFlatSpec with TestContainersForAll {
 
@@ -53,9 +57,25 @@ class ClientOracleInteractionTest extends AnyFlatSpec with TestContainersForAll 
   }
 
   "The client analysis" should "fail when requirements are not met" in withContainers {
-    case postgres and rabbitMq and api =>
+    case _ and _ and api =>
+      Thread.sleep(10000)
       val apiHost = "localhost"
       val apiPort = api.mappedPort(9090)
+
+      System.setProperty("SPARRI_API_HOST", apiHost)
+      System.setProperty("SPARRI_API_PORT", apiPort.toString)
+
+      val projectRoot = new File(getClass.getClassLoader.getResource("modular-analysis-demo-target").toURI)
+
+      val theAnalysis = new IFDSTaintFlowAnalysis(new File(Paths.get(projectRoot.getPath, "target", "classes").toAbsolutePath.toString), new File(Paths.get(projectRoot.getPath, "pom.xml").toAbsolutePath.toString))
+
+      val requirements = theAnalysis.requirements
+
+      assert(requirements.nonEmpty && requirements.exists(_.input.contains("com.google.code.gson")))
+
+      val result = theAnalysis.checkRequirements()
+
+      assert(!result)
   }
 
 }

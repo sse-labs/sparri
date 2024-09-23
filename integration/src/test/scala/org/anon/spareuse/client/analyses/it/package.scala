@@ -1,4 +1,4 @@
-package org.anon.spareuse
+package org.anon.spareuse.client.analyses
 
 import com.dimafeng.testcontainers.{PostgreSQLContainer, RabbitMQContainer}
 import org.testcontainers.utility.DockerImageName

@@ -1,6 +1,7 @@
 package org.anon.spareuse.core.utils.rabbitmq
 
 import com.typesafe.config.{Config, ConfigFactory}
+import org.anon.spareuse.core.utils.tryGetEnvOrElse
 
 object MqConfigurationBuilder {
 
@@ -24,12 +25,7 @@ object MqConfigurationBuilder {
 
   type BasicConnectionInfo = (String, String, String, Int)
 
-  private def tryGetEnvOrElse(envName: String, elseProducer: () => String): String = {
-    val envValue = System.getenv(envName)
 
-    if(envValue == null) elseProducer.apply()
-    else envValue
-  }
 
   private def getBasics(conf: Config): BasicConnectionInfo = {
     if(requiredKeys.exists(key => !conf.hasPath(key)))

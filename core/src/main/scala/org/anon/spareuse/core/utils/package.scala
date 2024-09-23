@@ -5,6 +5,13 @@ package object utils {
 
   def fromHex(hexString: String): Array[Byte] = BigInt(hexString, 16).toByteArray
 
+  def tryGetEnvOrElse(envName: String, elseProducer: () => String): String = {
+    val envValue = System.getenv(envName)
+
+    if (envValue == null) elseProducer.apply()
+    else envValue
+  }
+
   def compareSemanticVersions(version1: String, version2: String): Int = {
     val regex = """(\d+)(?:\.(\d+)(?:\.(\d+))?)?(?:-([\w\d]+(?:\.[\w\d]+)*))?(?:\+([\w\d]+(?:\.[\w\d]+)*))?""".r
 
