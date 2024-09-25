@@ -125,21 +125,21 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
       } match {
         case Success(_) =>
           log.info(s"Done processing all identifiers for $entityRef")
-
-          if (minerCommand.analysisToTrigger.isDefined) {
-            Try {
-              analysisQueueWriter.appendToQueue(minerCommand.analysisToTrigger.get.toJson.compactPrint)
-            } match {
-              case Success(_) =>
-                log.info(s"Successfully queued follow-up analysis after indexing finished")
-              case Failure(ex) =>
-                log.error(s"Failed to queue follow-up analysis for command ${minerCommand.toJson.compactPrint}", ex)
-            }
-          }
         case Failure(ex) =>
           log.error(s"Failed to enumerate identifiers for $entityRef", ex)
       }
 
+    }
+
+    if (minerCommand.analysisToTrigger.isDefined) {
+      Try {
+        analysisQueueWriter.appendToQueue(minerCommand.analysisToTrigger.get.toJson.compactPrint)
+      } match {
+        case Success(_) =>
+          log.info(s"Successfully queued follow-up analysis after indexing finished")
+        case Failure(ex) =>
+          log.error(s"Failed to queue follow-up analysis for command ${minerCommand.toJson.compactPrint}", ex)
+      }
     }
 
 
