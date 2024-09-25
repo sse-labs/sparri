@@ -22,8 +22,11 @@ class HttpDownloader {
     val result = Try {
       closeableResponse = client.execute(getRequest)
 
-      if(closeableResponse.getStatusLine.getStatusCode != 200)
-        throw  HttpDownloadException(closeableResponse.getStatusLine.getStatusCode, requestedUri, s"Non-Success status while attempting to download.")
+      if(closeableResponse.getStatusLine.getStatusCode != 200) {
+        val code = closeableResponse.getStatusLine.getStatusCode
+        closeableResponse.close()
+        throw  HttpDownloadException(code, requestedUri, s"Non-Success status while attempting to download.")
+      }
 
       val entityInputStream = closeableResponse.getEntity.getContent
 

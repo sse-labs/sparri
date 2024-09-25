@@ -28,7 +28,10 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
   override val workerName: String = "maven-entity-miner"
 
-  private final val downloader = new MavenJarDownloader()
+  private var downloader = new MavenJarDownloader()
+  private var jarCnt = 0
+
+
   private final val opalProjectHelper = new OPALProjectHelper()
   private final val storageAdapter: EntityMinerStorageAdapter = new PostgresStorageAdapter()(streamMaterializer.executionContext)
 
@@ -157,6 +160,15 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
   }
 
   def downloadJar(identifier: MavenIdentifier): Option[MavenOnlineJar] = {
+
+    // Refresh downloader instance every so often to avoid deadlocks
+    if(jarCnt >= 50){
+      downloader = new MavenJarDownloader
+      jarCnt = 0
+    }
+
+    jarCnt += 1
+
     downloader.downloadJar(identifier) match {
       case Success(jarFile) => Some(jarFile)
       case Failure(HttpDownloadException(404, _, _)) =>
