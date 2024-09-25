@@ -16,7 +16,8 @@ import org.anon.spareuse.mvnem.storage.EntityMinerStorageAdapter
 import org.anon.spareuse.mvnem.storage.impl.PostgresStorageAdapter
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 import scala.language.implicitConversions
 import scala.util.{Failure, Success, Try}
 
@@ -56,7 +57,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
     source
       .map(messageToCommand)
       .buffer(20, OverflowStrategy.backpressure)
-      .runWith(storeAllEntitiesSink)(streamMaterializer)
+      .runWith(storeAllSink)(streamMaterializer)
   }
 
   private def messageToCommand(message: String): MinerCommand = {
@@ -83,6 +84,66 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
       log.info(s"All programs already indexed for command ${command.toString}")
 
     allNewIdentifiers
+  }
+
+  def transformAndStore(minerCommand: MinerCommand): Unit = {
+    minerCommand.entityReferences.foreach { entityRef =>
+      Try {
+        val programsToProcess = messageToIdentifiers(entityRef) match {
+          case Some(identifiers) =>
+
+            val newIdents = identifiers.filterNot(i => storageAdapter.hasProgram(i.toString))
+            log.info(s"${newIdents.size} new identifiers found for message $entityRef")
+
+            newIdents
+
+          case None =>
+            log.info(s"No identifiers for message $entityRef")
+            Iterable.empty
+
+        }
+
+        programsToProcess.foreach{ identifier =>
+          Try{
+            downloadJar(identifier) match {
+              case Some(jarFile) =>
+                log.info(s"Start building index model for ${identifier.toString} ... ")
+                val representation = transform(jarFile)
+                log.info(s"Done building index model for ${identifier.toString}.")
+                Await.result(storageAdapter.storeJavaProgram(representation), 15.minutes)
+              case None =>
+                log.info(s"No JAR present for $identifier")
+            }
+          } match {
+            case Success(programName) =>
+              log.info(s"Successfully stored index model for $programName")
+            case Failure(ex) =>
+              log.error(s"Failed to process ${identifier.toString}", ex)
+          }
+        }
+
+      } match {
+        case Success(_) =>
+          log.info(s"Done processing all identifiers for $entityRef")
+
+          if (minerCommand.analysisToTrigger.isDefined) {
+            Try {
+              analysisQueueWriter.appendToQueue(minerCommand.analysisToTrigger.get.toJson.compactPrint)
+            } match {
+              case Success(_) =>
+                log.info(s"Successfully queued follow-up analysis after indexing finished")
+              case Failure(ex) =>
+                log.error(s"Failed to queue follow-up analysis for command ${minerCommand.toJson.compactPrint}", ex)
+            }
+          }
+        case Failure(ex) =>
+          log.error(s"Failed to enumerate identifiers for $entityRef", ex)
+      }
+
+    }
+
+
+    opalProjectHelper.freeOpalResources()
   }
 
 
@@ -176,6 +237,12 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
         None
       case Failure(ex) =>
         throw ex
+    }
+  }
+
+  val storeAllSink: Sink[MinerCommand, Future[Done]] = {
+    Sink.foreach{ minerCommand =>
+      transformAndStore(minerCommand)
     }
   }
 
