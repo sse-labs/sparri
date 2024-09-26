@@ -1,5 +1,7 @@
 package org.anon.spareuse.core
 
+import scala.util.Try
+
 package object utils {
   def toHex(bytes: Array[Byte]): String = bytes.map("%02X" format _).mkString
 
@@ -12,27 +14,42 @@ package object utils {
     else envValue
   }
 
-  def compareSemanticVersions(version1: String, version2: String): Int = {
-    val regex = """(\d+)(?:\.(\d+)(?:\.(\d+))?)?(?:-([\w\d]+(?:\.[\w\d]+)*))?(?:\+([\w\d]+(?:\.[\w\d]+)*))?""".r
+  private final val regex = """(\d+)(?:\.(\d+)(?:\.(\d+))?)?(?:-([\w\d]+(?:\.[\w\d]+)*))?(?:\+([\w\d]+(?:\.[\w\d]+)*))?""".r
 
-    def parseVersion(version: String): (Int, Int, Int, Option[String]) = version match {
+  case class SemVer(major: Int, minor: Int, patch: Int, preRelease: Option[String]){
+
+    def getUpdateType(toCompare: SemVer): String= {
+      if(major != toCompare.major) "MAJOR"
+      else if(minor != toCompare.minor) "MINOR"
+      else if(patch != toCompare.patch) "PATCH"
+      else if(preRelease != toCompare.preRelease) "PRERELEASE"
+      else "NONE"
+    }
+  }
+
+
+  def parseSemVer(version: String): Try[SemVer] = Try {
+    version match {
       case regex(major, minor, patch, preRelease, _) =>
-        (major.toInt, Option(minor).getOrElse("0").toInt, Option(patch).getOrElse("0").toInt, Option(preRelease))
+        SemVer(major.toInt, Option(minor).getOrElse("0").toInt, Option(patch).getOrElse("0").toInt, Option(preRelease))
       case _ => throw new IllegalArgumentException("Invalid version format")
     }
+  }
 
-    val (major1, minor1, patch1, preRelease1) = parseVersion(version1)
-    val (major2, minor2, patch2, preRelease2) = parseVersion(version2)
+  def compareSemanticVersions(version1: String, version2: String): Int = {
 
-    if (major1 != major2) {
-      major1.compareTo(major2)
-    } else if (minor1 != minor2) {
-      minor1.compareTo(minor2)
-    } else if (patch1 != patch2) {
-      patch1.compareTo(patch2)
+    val ver1 = parseSemVer(version1).get
+    val ver2 = parseSemVer(version2).get
+
+    if (ver1.major != ver2.major) {
+      ver1.major.compareTo(ver2.major)
+    } else if (ver1.minor != ver2.minor) {
+      ver1.minor.compareTo(ver2.minor)
+    } else if (ver1.patch != ver2.patch) {
+      ver1.patch.compareTo(ver2.patch)
     } else {
       // Compare pre-release versions if present
-      val preReleaseComparison = (preRelease1, preRelease2) match {
+      val preReleaseComparison = (ver1.preRelease, ver2.preRelease) match {
         case (Some(pre1), Some(pre2)) => pre1.compareTo(pre2)
         case (Some(_), None) => -1
         case (None, Some(_)) => 1
@@ -42,5 +59,15 @@ package object utils {
       preReleaseComparison
     }
   }
+
+  case class TimedResult [T] (result: T, timeMs: Long)
+
+  def wcTime[T](implicit op:() => T): TimedResult[T] = {
+    val start = System.currentTimeMillis()
+    val result = op.apply()
+    val duration = System.currentTimeMillis() - start
+    TimedResult(result, duration)
+  }
+
 
 }

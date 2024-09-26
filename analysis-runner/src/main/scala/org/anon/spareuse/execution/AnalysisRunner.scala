@@ -12,11 +12,11 @@ import org.anon.spareuse.core.maven.MavenIdentifier
 import org.anon.spareuse.core.model.analysis.{AnalysisCommand, IncrementalAnalysisCommand, RunnerCommand}
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
-import org.anon.spareuse.core.utils.http
+import org.anon.spareuse.core.utils.{http, wcTime}
 import org.anon.spareuse.core.utils.streaming.AsyncStreamWorker
 import org.anon.spareuse.execution.analyses.impl.cg.JreModelLoader
 import org.anon.spareuse.execution.analyses.impl.ifds.{DefaultIFDSSummaryBuilder, IFDSTaintFlowSummaryBuilderImpl}
-import org.anon.spareuse.execution.analyses.impl.{MvnConstantClassAnalysisImpl, MvnDependencyAnalysisImpl, MvnPartialCallgraphAnalysisImpl}
+import org.anon.spareuse.execution.analyses.impl.{MvnConstantClassAnalysisImpl, MvnConstantMethodsAnalysisImpl, MvnDependencyAnalysisImpl, MvnPartialCallgraphAnalysisImpl}
 import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisRegistry, ExistingResult, FreshResult}
 import spray.json.{enrichAny, enrichString}
 
@@ -43,6 +43,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
     AnalysisRegistry.registerRegularAnalysis(MvnConstantClassAnalysisImpl, () => new MvnConstantClassAnalysisImpl)
     AnalysisRegistry.registerRegularAnalysis(MvnDependencyAnalysisImpl, () => new MvnDependencyAnalysisImpl)
     AnalysisRegistry.registerRegularAnalysis(MvnPartialCallgraphAnalysisImpl, () => new MvnPartialCallgraphAnalysisImpl)
+    AnalysisRegistry.registerRegularAnalysis(MvnConstantMethodsAnalysisImpl, () => new MvnConstantMethodsAnalysisImpl)
     AnalysisRegistry.registerIncrementalAnalysis(IFDSTaintFlowSummaryBuilderImpl.descriptor, opt => new IFDSTaintFlowSummaryBuilderImpl(opt))
 
     entityQueueWriter.initialize()
@@ -259,12 +260,15 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       }
 
       Future {
-        analysisImpl.executeAnalysis(inputEntities.toSeq, cmd.configurationRaw) match {
+        //TODO: Use time in data model
+        val timedResult = wcTime { () => analysisImpl.executeAnalysis(inputEntities.toSeq, cmd.configurationRaw) }
+
+        timedResult.result match {
           case Success(results) =>
 
             val numberOfFreshResults = results.count( _.isFresh )
 
-            log.info(s"Analysis execution finished with ${results.size} results ($numberOfFreshResults fresh results).")
+            log.info(s"Analysis execution finished with ${results.size} results ($numberOfFreshResults fresh results) in ${timedResult.timeMs}ms.")
 
             val serializer = new CustomObjectWriter(analysisImpl.descriptor.analysisData.resultFormat)
 
@@ -292,7 +296,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
           case Failure(ex) =>
             dataAccessor.setRunState(cmd.associatedRunId, RunState.Failed, None)
-            log.error(s"Analysis execution failed.", ex)
+            log.error(s"Analysis execution failed in ${timedResult.timeMs}ms.", ex)
         }
       }(this.streamMaterializer.executionContext)
 
