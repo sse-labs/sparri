@@ -13,7 +13,7 @@ import scala.util.{Failure, Success, Try}
 
 trait EntityAccessor {
 
-  protected val awaitEntityTimeout: FiniteDuration = 60.seconds
+  protected val awaitEntityTimeout: FiniteDuration = 300.seconds
 
   def initializeEntityTables(): Unit
 
