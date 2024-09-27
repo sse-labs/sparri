@@ -14,7 +14,7 @@ import scala.collection.mutable
 import scala.util.{Success, Try}
 
 class MvnConstantMethodsAnalysisImpl extends AnalysisImplementation {
-  override val descriptor: AnalysisImplementationDescriptor = MvnConstantClassAnalysisImpl
+  override val descriptor: AnalysisImplementationDescriptor = MvnConstantMethodsAnalysisImpl
 
   override def executionPossible(inputs: Seq[SoftwareEntityData], rawConfig: String): Boolean = {
     if (inputs.exists(e => !e.isInstanceOf[JavaLibrary])) {
