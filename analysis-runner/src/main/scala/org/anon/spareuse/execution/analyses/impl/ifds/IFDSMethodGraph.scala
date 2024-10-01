@@ -1,20 +1,35 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.{FactRep, InternalActivationRep, InternalVariableRep, MethodIFDSRep, StatementRep}
-import org.opalj.br.{ArrayType, Method, MethodDescriptor, ObjectType}
+import org.anon.spareuse.execution.analyses.impl.ifds.IFDSMethodGraph.{CallTargetProvider, MethodCallTargetProvider}
+import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.{ParameterTaintVariable, TaintFunctionReturn, TaintVariable}
+import org.opalj.br.{ArrayType, Method, ObjectType}
 import org.opalj.tac.{Call, FunctionCall, InstanceFunctionCall}
+import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.mutable
 
-class IFDSMethodGraph(mName: String, mDeclaringClassFqn: String, mDescriptor: String) {
+class IFDSMethodGraph(methodIdent: MethodIdent) {
 
-  val methodName: String = mName
-  val methodDescriptor: String = mDescriptor
-  val methodDeclaringClassFqn: String = mDeclaringClassFqn
+  val methodName: String = methodIdent.methodName
+  val methodDescriptor: String = methodIdent.methodDescriptor
+  val methodDeclaringClassFqn: String = methodIdent.declaredType
+
+  val methodIdentifier: MethodIdent = methodIdent
 
   private val pcToStmtMap: mutable.Map[Int, StatementNode] = new mutable.HashMap[Int, StatementNode]()
 
+  def runWith(initialFacts: Set[IFDSFact])(implicit targetProvider: CallTargetProvider): Set[IFDSFact] = {
+    if(statementNodes.isEmpty) initialFacts
+    else {
+      statementNodes.head.run(initialFacts, methodIdentifier)
+    }
+  }
+
   def allFacts: Set[IFDSFact] = pcToStmtMap.values.flatMap(_.allFactsInvolved).toSet ++ Set(IFDSZeroFact)
+
+  def parameterFacts: Set[ParameterTaintVariable] = allFacts.collect{ case x: ParameterTaintVariable => x }
 
   def isReturnNode(pc: Int): Boolean = pcToStmtMap.contains(pc) && pcToStmtMap(pc).isReturnValue
 
@@ -179,12 +194,16 @@ class IFDSMethodGraph(mName: String, mDeclaringClassFqn: String, mDescriptor: St
 }
 
 object IFDSMethodGraph {
+
+  type MethodCallTargetProvider = Int => Set[IFDSMethodGraph]
+  type CallTargetProvider = MethodIdent => MethodCallTargetProvider
+
   def apply(method: Method): IFDSMethodGraph = {
-    new IFDSMethodGraph(method.name, method.classFile.thisType.fqn, method.descriptor.toJVMDescriptor)
+    new IFDSMethodGraph(MethodIdent(method.classFile.thisType.fqn,method.name, method.descriptor.toJVMDescriptor))
   }
 
   def apply(rep: MethodIFDSRep): IFDSMethodGraph = {
-    val theGraph = new IFDSMethodGraph(rep.name, rep.declaringClassName, rep.descriptor)
+    val theGraph = new IFDSMethodGraph(MethodIdent(rep.declaringClassName, rep.name, rep.descriptor))
     val factDict = rep.facts.map(f => (f.uid, TaintVariableFacts.parseFact(f.identifier))).toMap
 
     val stmtDict = rep.statements.map{ stmt =>
@@ -237,8 +256,6 @@ class StatementNode(val stmtPc: Int, val stmtRep: String) {
 
   private val activations: mutable.Map[IFDSFact, mutable.Set[IFDSFact]] = new mutable.HashMap
 
-  val isReturnValue: Boolean = false
-
   def setKillsFact(fact: IFDSFact): Unit = {
     assert(fact != IFDSZeroFact)
     setGeneratesOn(fact, Set.empty)
@@ -270,6 +287,82 @@ class StatementNode(val stmtPc: Int, val stmtRep: String) {
     if (!node.predecessors.contains(this)) node.predecessors.add(this)
   }
 
+  def run(initialFacts: Set[IFDSFact], currentMethod: MethodIdent)(implicit targetProvider: CallTargetProvider): Set[IFDSFact] = {
+    val factsAfter = getFactsAfter(initialFacts)
+
+    if(isReturnValue) factsAfter
+    else if(isCallNode){
+      val call = asCallNode
+
+      // Compute indexes of callee params that are tainted (according to the current caller context)
+      val taintedParameterIndices = call
+        .parameterVariables
+        .zipWithIndex
+        .filter{ case (variable, _) => initialFacts.contains(TaintVariableFacts.buildFact(variable))}
+        .map(_._2)
+
+      val targets = targetProvider(currentMethod)(stmtPc)
+
+      if(targets.isEmpty){
+        StatementNode.log.warn(s"No targets found for ${currentMethod.toString} at PC $stmtPc")
+      }
+
+      var taintReturn = false
+
+      val factsAfterCall = targets.flatMap{ targetGraph =>
+        // Select which parameters inside the called methods must be tainted (according to taints in caller)
+        val parametersToTaint = targetGraph.parameterFacts.filter(pFact => taintedParameterIndices.contains(pFact.parameterIdx))
+        // We only pass non-local facts (i.e. field taints) to callee, as well as params. All other taints are method-specific.
+        val factsToPass = initialFacts.filter(f => f == IFDSZeroFact || f.asTaintVariable.isField) ++ parametersToTaint
+
+        // "Run" the target graph and collect all facts valid after invocation (this will include local facts)
+        val callResult = targetGraph.statementNodes.head.run(factsToPass, targetGraph.methodIdentifier)
+
+        // Find all variables that may be returned by the callee graph
+        val returnVariables = targetGraph.statementNodes.filter(_.isReturnValue).flatMap(_.asReturnNode.variableReturned).map(TaintVariableFacts.buildFact)
+
+        // Find out if we need to taint the variable that this call is assigned to - that is, if any of the returned variables
+        // Is in the set of tainted variables.
+        if(callResult.exists( tainted => returnVariables.contains(tainted)))
+          taintReturn = true
+
+        // Filter any local facts from callee return - those are not valid inside the caller
+        callResult.filter(f => f == IFDSZeroFact || f.asTaintVariable.isField)
+      }
+
+      // Combine all facts together as needed. Call-to-Return (factsAfter), Return (factsAfterCall) and also add the
+      // artificial function return fact iff we found that the return could be tainted.
+      val effectivelyTaintedFacts = if(taintReturn) {
+        val retFact = allFactsInvolved
+          .find{
+            case a: TaintFunctionReturn => a.callPc == call.stmtPc
+            case _ => false
+          }
+          .toSet
+          .flatMap{ callReturnFact =>
+          getFactsActivatedBy(callReturnFact)
+        }
+
+        if(retFact.isEmpty){
+          StatementNode.log.warn(s"Could not find return fact although return is tainted")
+        }
+
+        factsAfter ++ factsAfterCall ++ retFact
+      } else
+        factsAfter ++ factsAfterCall
+
+      // Keep on running the current graph with the newly computed set of tainted facts
+      getSuccessors.flatMap { successor =>
+        successor.run(effectivelyTaintedFacts, currentMethod)
+      }
+    } else {
+      // For normal nodes, just run the successors and combine their results
+      getSuccessors.flatMap{ successor =>
+        successor.run(factsAfter, currentMethod)
+      }
+    }
+  }
+
   def getSuccessors: Set[StatementNode] = successors.toSet
 
   def allFactsInvolved: Set[IFDSFact] = activations.values.flatten.toSet ++ activations.keySet
@@ -279,6 +372,10 @@ class StatementNode(val stmtPc: Int, val stmtRep: String) {
   def isCallNode: Boolean = false
 
   def asCallNode: CallStatementNode = throw new IllegalStateException("Not a call statement")
+
+  def isReturnValue: Boolean = false
+
+  def asReturnNode: ReturnValueStatementNode = throw new IllegalStateException("Not a return statement")
 
   def hasActivation(fact: IFDSFact): Boolean = activations.contains(fact)
 
@@ -298,6 +395,9 @@ class StatementNode(val stmtPc: Int, val stmtRep: String) {
 }
 
 object StatementNode {
+
+  private[ifds] final val log: Logger = LoggerFactory.getLogger(getClass)
+
   def apply(stmt: TACStmt): StatementNode = {
 
     if(stmt.isReturnValue){
@@ -337,7 +437,9 @@ object CallStatementNode{
 class ReturnValueStatementNode(stmtPc: Int, stmtRep: String, returnVariable: Option[LocalVariable]) extends StatementNode(stmtPc, stmtRep) {
   val variableReturned: Option[LocalVariable] = returnVariable
 
-  override val isReturnValue: Boolean = true
+  override def isReturnValue: Boolean = true
+
+  override def asReturnNode: ReturnValueStatementNode = this
 }
 
 case class LocalVariable(variableName: String, defSites: Set[Int])

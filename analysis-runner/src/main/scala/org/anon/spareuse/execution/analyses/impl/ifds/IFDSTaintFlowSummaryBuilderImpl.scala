@@ -2,18 +2,13 @@ package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.core.model.AnalysisRunData
 import org.anon.spareuse.execution.analyses.AnalysisImplementationDescriptor
-import org.opalj.br.{Method, ObjectType}
-import org.opalj.tac.{Assignment, BinaryExpr, Const, Expr, FunctionCall, GetField, GetStatic, InstanceFunctionCall, PutField, PutStatic}
+import org.opalj.br.instructions.NEW
+import org.opalj.br.{Method, MethodDescriptor, ObjectType}
+import org.opalj.tac.{Assignment, BinaryExpr, Const, Expr, FunctionCall, GetField, GetStatic, InstanceFunctionCall, InstanceMethodCall, PutField, PutStatic, TACMethodParameter}
 
 class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) extends DefaultIFDSSummaryBuilder(baselineRunOpt) {
 
   override val descriptor: AnalysisImplementationDescriptor =  IFDSTaintFlowSummaryBuilderImpl.descriptor
-  override def analyzeMethod(method: Method)(implicit TACAIProvider: MethodTACProvider): IFDSMethodGraph = {
-    // Make sure local variable fact cache is cleared after method has been processed
-    val result = super.analyzeMethod(method)
-    TaintVariableFacts.clearLocals()
-    result
-  }
 
   override protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStatement: TACStmt, currentMethod: Method, graph: IFDSMethodGraph): Unit = currentStatement match {
     case Assignment(_, targetVar: TACDVar, assignedExpr) =>
@@ -28,9 +23,36 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
       val targetFact = TaintVariableFacts.buildFact(declClass, fieldType, name, isStatic = true)
       analyzeExpression(currentNode, targetFact, valueExpr, currentMethod)
 
+    case call: InstanceMethodCall[TACVar] if call.declaringClass.isObjectType && call.declaringClass.asObjectType.fqn == ObjectType.StringBuilder.fqn =>
+
+      val receiverFact = TaintVariableFacts.buildFact(call.receiver.asVar)
+
+      handleStringBuilderInvocation(currentNode, None, receiverFact, call.name, call.descriptor, call.params)
+
     case _ =>
       // Strings are immutable, so passing them to method invocations cannot ever change (ie. taint / untaint) them
       // Ergo, we only have to consider assignments / field stores
+  }
+
+  private[ifds] def handleStringBuilderInvocation(currentNode: StatementNode,
+                                                  targetVar: Option[IFDSFact],
+                                                  callReceiverVar: IFDSFact,
+                                                  name: String,
+                                                  descriptor: MethodDescriptor,
+                                                  params: Seq[Expr[TACVar]]): Unit = name match {
+    case "<init>" if descriptor.parametersCount == 1 && descriptor.parameterTypes(0) == ObjectType.String =>
+      val paramFact = TaintVariableFacts.buildFact(params.head.asVar)
+      currentNode.setGeneratesOn(callReceiverVar, Set(paramFact))
+    case "append" if descriptor.parametersCount == 1 && descriptor.parameterTypes(0) == ObjectType.String =>
+      val paramFact = TaintVariableFacts.buildFact(params.head.asVar)
+      currentNode.setGeneratesOn(callReceiverVar, Set(callReceiverVar, paramFact))
+      if(targetVar.isDefined) currentNode.setGeneratesOn(targetVar.get, Set(callReceiverVar, paramFact))
+    case "clear" =>
+      currentNode.setKillsFact(callReceiverVar)
+    case "toString" if targetVar.isDefined =>
+      currentNode.setGeneratesOn(targetVar.get, Set(callReceiverVar))
+    case n@_ =>
+      log.info(s"Untracked StringBuilder invocation: $n")
   }
 
   private[ifds] def analyzeExpression(currentNode: StatementNode, targetFact: IFDSFact, expression: Expr[TACVar], currentMethod: Method): Unit = expression match {
@@ -57,7 +79,6 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
       val enablingFact = TaintVariableFacts.buildFact(local)
       currentNode.setGeneratesOn(targetFact, Set(enablingFact))
     case BinaryExpr(_, _, _, left, right) =>
-      //TODO: Find out if this matches for TAC in case of String res = "a" + "b";
       log.info(s"Found a binary expression assigned to a string: $expression")
       analyzeExpression(currentNode, targetFact, left, currentMethod)
       analyzeExpression(currentNode, targetFact, right, currentMethod)
@@ -75,6 +96,20 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
       val sourceFact = TaintVariableFacts.buildFact(ifc.receiver.asVar)
 
       currentNode.setGeneratesOn(targetFact, paramFacts.toSet ++ Set(sourceFact))
+
+
+    case sbCall: InstanceFunctionCall[TACVar] if sbCall.declaringClass.isObjectType && sbCall.declaringClass.asObjectType == ObjectType.StringBuilder =>
+      val receiverVar = TaintVariableFacts.buildFact(sbCall.receiver.asVar)
+      handleStringBuilderInvocation(currentNode, Some(targetFact), receiverVar, sbCall.name, sbCall.descriptor, sbCall.params)
+
+    case sb: InstanceFunctionCall[TACVar] if sb.name == "toString" =>
+      if (sb.declaringClass == ObjectType.String) {
+        val receiverFact = TaintVariableFacts.buildFact(sb.receiver.asVar)
+        currentNode.setGeneratesOn(targetFact, Set(receiverFact))
+      } else {
+        //toString on anything else than Stringwill kill taint.
+        currentNode.setKillsFact(targetFact)
+      }
 
     case fc: FunctionCall[TACVar] =>
       // For the general function call: Create artificial return node to represent taint of the target variable
