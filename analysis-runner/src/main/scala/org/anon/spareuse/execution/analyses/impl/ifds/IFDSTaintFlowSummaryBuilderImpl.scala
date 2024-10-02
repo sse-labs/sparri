@@ -2,9 +2,8 @@ package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.core.model.AnalysisRunData
 import org.anon.spareuse.execution.analyses.AnalysisImplementationDescriptor
-import org.opalj.br.instructions.NEW
 import org.opalj.br.{Method, MethodDescriptor, ObjectType}
-import org.opalj.tac.{Assignment, BinaryExpr, Const, Expr, FunctionCall, GetField, GetStatic, InstanceFunctionCall, InstanceMethodCall, PutField, PutStatic, TACMethodParameter}
+import org.opalj.tac.{Assignment, BinaryExpr, Const, Expr, ExprStmt, FunctionCall, GetField, GetStatic, InstanceFunctionCall, InstanceMethodCall, PutField, PutStatic}
 
 class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) extends DefaultIFDSSummaryBuilder(baselineRunOpt) {
 
@@ -23,8 +22,12 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
       val targetFact = TaintVariableFacts.buildFact(declClass, fieldType, name, isStatic = true)
       analyzeExpression(currentNode, targetFact, valueExpr, currentMethod)
 
-    case call: InstanceMethodCall[TACVar] if call.declaringClass.isObjectType && call.declaringClass.asObjectType.fqn == ObjectType.StringBuilder.fqn =>
+    case expr: ExprStmt[TACVar] if expr.expr.isInstanceOf[InstanceFunctionCall[TACVar]] =>
+      val sbCall = expr.expr.asInstanceFunctionCall
+      val receiverVar = TaintVariableFacts.buildFact(sbCall.receiver.asVar)
+      handleStringBuilderInvocation(currentNode, None, receiverVar, sbCall.name, sbCall.descriptor, sbCall.params)
 
+    case call: InstanceMethodCall[TACVar] if call.declaringClass.isObjectType && call.declaringClass.asObjectType.fqn == ObjectType.StringBuilder.fqn =>
       val receiverFact = TaintVariableFacts.buildFact(call.receiver.asVar)
 
       handleStringBuilderInvocation(currentNode, None, receiverFact, call.name, call.descriptor, call.params)
@@ -43,12 +46,18 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
     case "<init>" if descriptor.parametersCount == 1 && descriptor.parameterTypes(0) == ObjectType.String =>
       val paramFact = TaintVariableFacts.buildFact(params.head.asVar)
       currentNode.setGeneratesOn(callReceiverVar, Set(paramFact))
-    case "append" if descriptor.parametersCount == 1 && descriptor.parameterTypes(0) == ObjectType.String =>
+    case "append" if descriptor.parametersCount == 1 && descriptor.parameterTypes(0) == ObjectType.String || descriptor.parameterTypes(0) == ObjectType.StringBuilder=>
       val paramFact = TaintVariableFacts.buildFact(params.head.asVar)
       currentNode.setGeneratesOn(callReceiverVar, Set(callReceiverVar, paramFact))
       if(targetVar.isDefined) currentNode.setGeneratesOn(targetVar.get, Set(callReceiverVar, paramFact))
-    case "clear" =>
-      currentNode.setKillsFact(callReceiverVar)
+    case "insert" if descriptor.parametersCount == 2 && descriptor.parameterTypes(1) == ObjectType.String =>
+      val stringParamFact = TaintVariableFacts.buildFact(params(1).asVar)
+      currentNode.setGeneratesOn(callReceiverVar, Set(callReceiverVar, stringParamFact))
+      if (targetVar.isDefined) currentNode.setGeneratesOn(targetVar.get, Set(callReceiverVar, stringParamFact))
+    case "replace" if descriptor.parametersCount == 3 && descriptor.parameterTypes(2) == ObjectType.String =>
+      val stringParamFact = TaintVariableFacts.buildFact(params(2).asVar)
+      currentNode.setGeneratesOn(callReceiverVar, Set(callReceiverVar, stringParamFact))
+      if(targetVar.isDefined) currentNode.setGeneratesOn(targetVar.get, Set(callReceiverVar, stringParamFact))
     case "toString" if targetVar.isDefined =>
       currentNode.setGeneratesOn(targetVar.get, Set(callReceiverVar))
     case n@_ =>
