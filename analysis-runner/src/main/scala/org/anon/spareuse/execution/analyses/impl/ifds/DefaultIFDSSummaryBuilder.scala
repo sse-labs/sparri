@@ -164,7 +164,7 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
       val stmtIdx = theTAC.pcToIndex(currentNode.stmtPc)
       val stmt = cfg.code.instructions(stmtIdx)
 
-      analyzeStatement(currentNode, stmt, method, graph)
+      analyzeStatement(currentNode, stmt, method, graph)(theTAC)
 
       cfg
         .foreachSuccessor(stmtIdx) { successorIdx =>
@@ -187,7 +187,7 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
     graph
   }
 
-  protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStatement: TACStmt, currentMethod: Method, graph: IFDSMethodGraph): Unit
+  protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStatement: TACStmt, currentMethod: Method, graph: IFDSMethodGraph)(implicit tac: MethodTAC): Unit
 
 }
 

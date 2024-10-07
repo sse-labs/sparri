@@ -2,6 +2,7 @@ package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.core.model.AnalysisRunData
 import org.anon.spareuse.execution.analyses.AnalysisImplementationDescriptor
+import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.TaintVariable
 import org.opalj.br.{Method, MethodDescriptor, ObjectType}
 import org.opalj.tac.{Assignment, BinaryExpr, Const, Expr, ExprStmt, FunctionCall, GetField, GetStatic, InstanceFunctionCall, InstanceMethodCall, PutField, PutStatic}
 
@@ -9,32 +10,39 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
 
   override val descriptor: AnalysisImplementationDescriptor =  IFDSTaintFlowSummaryBuilderImpl.descriptor
 
-  override protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStatement: TACStmt, currentMethod: Method, graph: IFDSMethodGraph): Unit = currentStatement match {
+  override protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStatement: TACStmt, currentMethod: Method, graph: IFDSMethodGraph)(implicit tac: MethodTAC): Unit = currentStatement match {
     case Assignment(_, targetVar: TACDVar, assignedExpr) =>
-      val targetFact = TaintVariableFacts.buildFact(targetVar)
+      val targetFact = TaintVariableFacts.buildFact(targetVar).asTaintVariable
       analyzeExpression(currentNode, targetFact, assignedExpr, currentMethod)
 
     case PutField(_, declClass, name, fieldType, _, valueExpr) if fieldType == ObjectType.String =>
-      val targetFact = TaintVariableFacts.buildFact(declClass, fieldType, name, isStatic = false)
+      val targetFact = TaintVariableFacts.buildFact(declClass, fieldType, name, isStatic = false).asTaintVariable
       analyzeExpression(currentNode, targetFact, valueExpr, currentMethod)
 
     case PutStatic(_, declClass, name, fieldType, valueExpr) if fieldType == ObjectType.String =>
-      val targetFact = TaintVariableFacts.buildFact(declClass, fieldType, name, isStatic = true)
+      val targetFact = TaintVariableFacts.buildFact(declClass, fieldType, name, isStatic = true).asTaintVariable
       analyzeExpression(currentNode, targetFact, valueExpr, currentMethod)
 
     case expr: ExprStmt[TACVar] if expr.expr.isInstanceOf[InstanceFunctionCall[TACVar]] =>
       val sbCall = expr.expr.asInstanceFunctionCall
-      val receiverVar = TaintVariableFacts.buildFact(sbCall.receiver.asVar)
-      handleStringBuilderInvocation(currentNode, None, receiverVar, sbCall.name, sbCall.descriptor, sbCall.params)
+      val receiverFacts = getAllReceiverFacts(sbCall.receiver.asVar)
+      receiverFacts.foreach{ rec => handleStringBuilderInvocation(currentNode, None, rec, sbCall.name, sbCall.descriptor, sbCall.params) }
 
     case call: InstanceMethodCall[TACVar] if call.declaringClass.isObjectType && call.declaringClass.asObjectType.fqn == ObjectType.StringBuilder.fqn =>
-      val receiverFact = TaintVariableFacts.buildFact(call.receiver.asVar)
-
-      handleStringBuilderInvocation(currentNode, None, receiverFact, call.name, call.descriptor, call.params)
+      val receiverFacts = getAllReceiverFacts(call.receiver.asVar)
+      receiverFacts.foreach{ rec => handleStringBuilderInvocation(currentNode, None, rec, call.name, call.descriptor, call.params) }
 
     case _ =>
       // Strings are immutable, so passing them to method invocations cannot ever change (ie. taint / untaint) them
       // Ergo, we only have to consider assignments / field stores
+  }
+
+  private[ifds] def getAllReceiverFacts(receiver: TACVar)(implicit tac: MethodTAC): Set[IFDSFact] = {
+    if (receiver.definedBy.size > 1) {
+      receiver.definedBy.map(tac.stmts).map(_.asAssignment.targetVar).map(TaintVariableFacts.buildFact)
+    } else {
+      Set(TaintVariableFacts.buildFact(receiver))
+    }
   }
 
   private[ifds] def handleStringBuilderInvocation(currentNode: StatementNode,
@@ -64,7 +72,7 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
       log.info(s"Untracked StringBuilder invocation: $n")
   }
 
-  private[ifds] def analyzeExpression(currentNode: StatementNode, targetFact: IFDSFact, expression: Expr[TACVar], currentMethod: Method): Unit = expression match {
+  private[ifds] def analyzeExpression(currentNode: StatementNode, targetFact: TaintVariable, expression: Expr[TACVar], currentMethod: Method)(implicit tac: MethodTAC): Unit = expression match {
     case _ : Const =>
       // If a constant is assigned to our current variable, all taint is cleared
       currentNode.setKillsFact(targetFact)
@@ -78,15 +86,8 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
       currentNode.setGeneratesOn(targetFact, Set(enablingFact))
     case local: TACVar =>
       // If another local variable is assigned, our current variable's taint is equal to the other variable's taint
-      val definingParameterIdx = local.definedBy.filter( _ < -1).toList.map( defIdx => -1 * defIdx - 2)
-
-      if(definingParameterIdx.nonEmpty){
-        log.info(s"Variable ${local.name} is defined by parameter with index: ${definingParameterIdx.mkString(",")}")
-        //TODO: Mark variables that originate from parameters here and in function calls!
-      }
-
-      val enablingFact = TaintVariableFacts.buildFact(local)
-      currentNode.setGeneratesOn(targetFact, Set(enablingFact))
+      val enablingFacts = getAllReceiverFacts(local)
+      currentNode.setGeneratesOn(targetFact, enablingFacts)
     case BinaryExpr(_, _, _, left, right) =>
       log.info(s"Found a binary expression assigned to a string: $expression")
       analyzeExpression(currentNode, targetFact, left, currentMethod)
@@ -96,31 +97,32 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
       currentNode.setGeneratesFact(targetFact)
 
     case ifc: InstanceFunctionCall[TACVar] if ifc.receiver.isVar && ifc.name == "concat" =>
-      // Concatinations do not need to be resolved, they are hardcoded to carry taint if the receiver or parameter carries taint
+      // Concatenations do not need to be resolved, they are hardcoded to carry taint if the receiver or parameter carries taint
       val paramFacts = ifc.params.collect {
         case localVar: TACVar =>
-          TaintVariableFacts.buildFact(localVar)
-      }
+          getAllReceiverFacts(localVar)
+      }.flatten
 
-      val sourceFact = TaintVariableFacts.buildFact(ifc.receiver.asVar)
+      val sourceFacts = getAllReceiverFacts(ifc.receiver.asVar)
 
-      currentNode.setGeneratesOn(targetFact, paramFacts.toSet ++ Set(sourceFact))
+      currentNode.setGeneratesOn(targetFact, sourceFacts ++ paramFacts)
 
 
     case sbCall: InstanceFunctionCall[TACVar] if sbCall.declaringClass.isObjectType && sbCall.declaringClass.asObjectType == ObjectType.StringBuilder =>
-      val receiverVar = TaintVariableFacts.buildFact(sbCall.receiver.asVar)
-      handleStringBuilderInvocation(currentNode, Some(targetFact), receiverVar, sbCall.name, sbCall.descriptor, sbCall.params)
+      val receiverVars = getAllReceiverFacts(sbCall.receiver.asVar)
+
+      receiverVars.foreach{ rec => handleStringBuilderInvocation(currentNode, Some(targetFact), rec, sbCall.name, sbCall.descriptor, sbCall.params) }
 
     case sb: InstanceFunctionCall[TACVar] if sb.name == "toString" =>
       if (sb.declaringClass == ObjectType.String) {
-        val receiverFact = TaintVariableFacts.buildFact(sb.receiver.asVar)
-        currentNode.setGeneratesOn(targetFact, Set(receiverFact))
+        val receiverFacts = getAllReceiverFacts(sb.receiver.asVar)
+        currentNode.setGeneratesOn(targetFact, receiverFacts)
       } else {
-        //toString on anything else than Stringwill kill taint.
+        //toString on anything else than String will kill taint.
         currentNode.setKillsFact(targetFact)
       }
 
-    case fc: FunctionCall[TACVar] =>
+    case _ : FunctionCall[TACVar] =>
       // For the general function call: Create artificial return node to represent taint of the target variable
       // TODO: Special calls to sanatizers should be handled differently
       val sourceFact = TaintVariableFacts.buildFact(currentNode.asCallNode)

@@ -32,5 +32,38 @@ public class StringConcatenation {
         return sb.toString();
     }
 
+    public String alias(String a){
+        StringBuilder sb1 = new StringBuilder();
+        StringBuilder sb2 = new StringBuilder();
+
+
+        if(Math.random() > 0.5){
+            sb2 = sb1;
+        }
+
+        sb2.append(a);
+
+        return sb1.toString();
+    }
+
+    public String transitiveAlias(String a){
+        StringBuilder sb1 = new StringBuilder();
+        StringBuilder sb2 = new StringBuilder();
+        StringBuilder sb3 = new StringBuilder();
+
+        if(Math.random() > 0.5){
+            sb3 = sb1;
+        }
+
+
+        if(Math.random() > 0.5){
+            sb2 = sb1;
+        }
+
+        sb2.append(a);
+
+        return sb3.toString();
+    }
+
 
 }

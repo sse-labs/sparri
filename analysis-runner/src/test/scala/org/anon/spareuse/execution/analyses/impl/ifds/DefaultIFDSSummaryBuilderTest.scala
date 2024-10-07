@@ -204,7 +204,7 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
 
     override val descriptor: AnalysisImplementationDescriptor = DefaultIFDSSummaryBuilder.buildDescriptor(analysisName, analysisVersion, analysisDescription)
 
-    override protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStmt: TACStmt, currentMethod: Method, graph: IFDSMethodGraph): Unit = impl(currentNode, currentMethod, graph)
+    override protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStmt: TACStmt, currentMethod: Method, graph: IFDSMethodGraph)(implicit tac: MethodTAC): Unit = impl(currentNode, currentMethod, graph)
   }
 
 }

@@ -1,5 +1,6 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.MethodIdent
 import org.opalj.br.{FieldType, ObjectType}
 
 import scala.annotation.switch
@@ -95,12 +96,28 @@ object TaintVariableFacts {
 
     override def asReturn: TaintFunctionReturn = this
   }
+  private final val objectMap: mutable.Map[MethodIdent, mutable.Map[Int, TaintObject]] = mutable.Map.empty
+  case class TaintObject private[ifds](fqn: String, defMethod: MethodIdent, defStmtIdx: Int)
+
+  object TaintObject {
+    def apply(fqn: String, defMethod: MethodIdent, defStmtIdx: Int): TaintObject = {
+      if(objectMap.contains(defMethod) && objectMap(defMethod).contains(defStmtIdx)) return objectMap(defMethod)(defStmtIdx)
+
+      val theObject = new TaintObject(fqn, defMethod, defStmtIdx)
+
+      if(objectMap.contains(defMethod)){
+        objectMap(defMethod).put(defStmtIdx, theObject)
+      } else {
+        objectMap.put(defMethod, mutable.Map(defStmtIdx -> theObject))
+      }
+
+      theObject
+    }
+  }
 
 
   private val localVarMap: mutable.Map[String, IFDSFact] = new mutable.HashMap[String, IFDSFact]()
   private val fieldMap: mutable.Map[ObjectType, mutable.Map[String, IFDSFact]] = new mutable.HashMap[ObjectType, mutable.Map[String, IFDSFact]]
-
-  def clearLocals(): Unit = localVarMap.clear()
 
   def buildFact(localVar: TACVar): IFDSFact = {
     val varName = normalizeVarName(localVar)

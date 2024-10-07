@@ -2,7 +2,6 @@ package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.{FactRep, InternalActivationRep, InternalVariableRep, MethodIFDSRep, StatementRep}
-import org.anon.spareuse.execution.analyses.impl.ifds.IFDSMethodGraph.{CallTargetProvider, MethodCallTargetProvider}
 import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.{ParameterTaintVariable, TaintFunctionReturn, TaintVariable}
 import org.opalj.br.{ArrayType, Method, ObjectType}
 import org.opalj.tac.{Call, FunctionCall, InstanceFunctionCall}
@@ -194,9 +193,6 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
 }
 
 object IFDSMethodGraph {
-
-  type MethodCallTargetProvider = Int => Set[IFDSMethodGraph]
-  type CallTargetProvider = MethodIdent => MethodCallTargetProvider
 
   def apply(method: Method): IFDSMethodGraph = {
     new IFDSMethodGraph(MethodIdent(method.classFile.thisType.fqn,method.name, method.descriptor.toJVMDescriptor))
@@ -427,7 +423,7 @@ object CallStatementNode{
   def apply(tacStmt: TACStmt, call: Call[TACVar], callReceiver: Option[TACVar]): CallStatementNode = {
     val callDeclaringClass = call.declaringClass match {
       case ot: ObjectType => ot.fqn
-      case at: ArrayType => at.toJava //TODO: Find out if we need to keep track of operations on arrays
+      case at: ArrayType => at.toJava
     }
     val callParams = call.params.filter(_.isVar).map(v => LocalVariable(v.asVar))
     new CallStatementNode(tacStmt.pc, tacStmt.toString, call.name, callDeclaringClass, call.descriptor.toJVMDescriptor, callParams, callReceiver.map(LocalVariable.apply))

@@ -159,6 +159,14 @@ class IFDSTaintFlowSummaryBuilderImplTest extends AnyFunSpec {
       assertSingleParamTaintsResults("StringConcatenation.class", "insert")
     }
 
+    it("should handle aliasing correctly") {
+      assertSingleParamTaintsResults("StringConcatenation.class", "alias")
+    }
+
+    it("should handle transitive aliasing correctly") {
+      assertSingleParamTaintsResults("StringConcatenation.class", "transitiveAlias")
+    }
+
   }
 
   private def getMethodSummariesFromFixture(fixtureName: String, methodNames: Set[String]): Set[IFDSMethodGraph] = {
