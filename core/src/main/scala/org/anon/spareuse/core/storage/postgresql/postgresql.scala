@@ -93,12 +93,12 @@ package object postgresql {
       foreignKey("FORMAT_FK", formatId, TableQuery[ResultFormats])(_.id)
   }
 
-  case class SoftwareAnalysisRunRepr(id: Long, uid:String, config: String, state: Int, isRevoked: Boolean, parentId: Long, logs: String, timestamp: String){
+  case class SoftwareAnalysisRunRepr(id: Long, uid:String, config: String, state: Int, isRevoked: Boolean, parentId: Long, logs: String, timestamp: String, duration: Long){
 
     def toAnalysisRunData(analysisName: String, analysisVersion: String, inputs: Set[SoftwareEntityData] = Set.empty,
                           results: Set[AnalysisResultData] = Set.empty): AnalysisRunData = {
       val rState = RunState(state)
-      AnalysisRunData(uid, LocalDateTime.from(DateTimeFormatter.ISO_DATE_TIME.parse(timestamp)), logs.split(";;;"),
+      AnalysisRunData(uid, LocalDateTime.from(DateTimeFormatter.ISO_DATE_TIME.parse(timestamp)), duration, logs.split(";;;"),
         config, rState, isRevoked, inputs, results, analysisName, analysisVersion)
     }
 
@@ -122,9 +122,11 @@ package object postgresql {
 
     def timestamp: Rep[String] = column[String]("TIMESTAMP")
 
+    def duration: Rep[Long] = column[Long]("DURATION")
+
 
     override def * : ProvenShape[SoftwareAnalysisRunRepr] =
-      (id, uid, configuration, state, isRevoked, parentID, logs, timestamp) <>
+      (id, uid, configuration, state, isRevoked, parentID, logs, timestamp, duration) <>
         ((SoftwareAnalysisRunRepr.apply _).tupled, SoftwareAnalysisRunRepr.unapply)
 
     def parent: ForeignKeyQuery[SoftwareAnalyses, SoftwareAnalysisRepr] =

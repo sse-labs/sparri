@@ -100,7 +100,7 @@ package object model {
   }
 
   def toRunRepr(data: AnalysisRunData): AnalysisRunRepr = {
-    AnalysisRunRepr(data.uid, data.timestamp.format(DateTimeFormatter.ISO_DATE_TIME), data.logs.toSeq, data.configuration,
+    AnalysisRunRepr(data.uid, data.timestamp.format(DateTimeFormatter.ISO_DATE_TIME), data.durationMs, data.logs.toSeq, data.configuration,
       data.state.toString, data.isRevoked, data.parentAnalysisName, data.parentAnalysisVersion, data.inputs.map(toEntityRepr).toSeq)
   }
 

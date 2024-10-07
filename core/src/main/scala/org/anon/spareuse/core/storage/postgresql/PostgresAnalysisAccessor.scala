@@ -196,6 +196,7 @@ trait PostgresAnalysisAccessor {
 
   override def setRunResults(runUid: String,
                              timeStamp: LocalDateTime,
+                             durationMs: Long,
                              logs: Array[String],
                              freshResults: Set[AnalysisResultData],
                              unchangedResultIds: Set[String])(implicit serializer: JsonWriter[Object]): Try[Unit] = Try {
@@ -207,9 +208,11 @@ trait PostgresAnalysisAccessor {
     val logsString = logs.mkString(";;;")
 
     val updateTimeStampAction = db.run(analysisRunsTable.filter(r => r.uid === runUid).map(r => r.timestamp).update(newTimeStamp))
+    val updateDurationAction = db.run(analysisRunsTable.filter(r => r.uid === runUid).map(_.duration).update(durationMs))
     val updateLogsAction = db.run(analysisRunsTable.filter(r => r.uid === runUid).map(r => r.logs).update(logsString))
 
     Await.ready(updateTimeStampAction, simpleQueryTimeout)
+    Await.ready(updateDurationAction, simpleQueryTimeout)
     Await.ready(updateLogsAction, simpleQueryTimeout)
 
     val newResultIds = freshResults.map { runResult =>
@@ -277,7 +280,7 @@ trait PostgresAnalysisAccessor {
 
     // Insert run
     val timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_DATE_TIME)
-    val runRepr = SoftwareAnalysisRunRepr(-1, getFreshRunUuid, runConfig, RunState.Created.id, isRevoked = false, analysisId, "", timestamp)
+    val runRepr = SoftwareAnalysisRunRepr(-1, getFreshRunUuid, runConfig, RunState.Created.id, isRevoked = false, analysisId, "", timestamp, 0L)
     Await.ready(db.run(idReturningAnalysisRunTable += runRepr), simpleQueryTimeout)
 
     runRepr.uid

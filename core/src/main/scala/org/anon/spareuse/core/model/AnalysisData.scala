@@ -3,7 +3,7 @@ package org.anon.spareuse.core.model
 import org.anon.spareuse.core.formats.AnalysisResultFormat
 import org.anon.spareuse.core.model.RunState.RunState
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
+import org.anon.spareuse.core.model.entities.SoftwareEntityData
 
 import java.time.LocalDateTime
 
@@ -18,7 +18,7 @@ object AnalysisData {
   }
 }
 
-case class AnalysisRunData(uid: String, timestamp: LocalDateTime, logs: Array[String], configuration: String, state: RunState, isRevoked: Boolean,
+case class AnalysisRunData(uid: String, timestamp: LocalDateTime, durationMs: Long, logs: Array[String], configuration: String, state: RunState, isRevoked: Boolean,
                            inputs: Set[SoftwareEntityData], results: Set[AnalysisResultData], parentAnalysisName: String, parentAnalysisVersion: String){
   def withResolvedGenerics(resolver: SoftwareEntityData => SoftwareEntityData, forceResolve: Boolean = false): AnalysisRunData = {
 
@@ -28,6 +28,7 @@ case class AnalysisRunData(uid: String, timestamp: LocalDateTime, logs: Array[St
     AnalysisRunData(
       uid,
       timestamp,
+      durationMs,
       logs,
       configuration,
       state,

@@ -260,7 +260,6 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       }
 
       Future {
-        //TODO: Use time in data model
         val timedResult = wcTime { () => analysisImpl.executeAnalysis(inputEntities.toSeq, cmd.configurationRaw) }
 
         timedResult.result match {
@@ -287,7 +286,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
             val dbRunId = cmd.associatedRunId
 
-            dataAccessor.setRunResults(dbRunId, LocalDateTime.now(), runLogs.toArray, freshResults, unchangedResultIds)(serializer) match {
+            dataAccessor.setRunResults(dbRunId, LocalDateTime.now(), timedResult.timeMs, runLogs.toArray, freshResults, unchangedResultIds)(serializer) match {
               case Success(_) =>
                 log.info(s"Successfully stored ${results.size} results.")
               case Failure(ex) =>

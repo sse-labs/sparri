@@ -13,7 +13,7 @@ object AnalysisTestDataFactory {
   }
 
   def analysisRun(analysisName: String, analysisVersion: String, results: Set[AnalysisResultData], inputs: Set[SoftwareEntityData], state: RunState = RunState.Finished, config: String = ""): AnalysisRunData = {
-    AnalysisRunData("NULL", LocalDateTime.now(), Array.empty, config, state, isRevoked = false, inputs, results, analysisName, analysisVersion)
+    AnalysisRunData("NULL", LocalDateTime.now(), 60000L, Array.empty, config, state, isRevoked = false, inputs, results, analysisName, analysisVersion)
   }
 
 }

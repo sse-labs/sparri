@@ -31,6 +31,7 @@ trait AnalysisAccessor {
    * Sets the results for a given run, as well as its timestamp and logs. Will set the run's state to 'Finished'.
    * @param runUid UID of the run to set results for
    * @param timeStamp Timestamp to associate with the given run
+   * @param durationMs Duration of the analysis run in millis
    * @param logs Logs to associated with the given run
    * @param freshResults Results freshly introduced with this run, i.e. not existing in the DB so far
    * @param unchangedResultIds IDs of results that already exist in the DB, and are also valid (without changes) for the given run
@@ -39,6 +40,7 @@ trait AnalysisAccessor {
    */
   def setRunResults(runUid: String,
                     timeStamp: LocalDateTime,
+                    durationMs: Long,
                     logs: Array[String],
                     freshResults: Set[AnalysisResultData],
                     unchangedResultIds: Set[String])(implicit serializer: JsonWriter[Object]): Try[Unit]
