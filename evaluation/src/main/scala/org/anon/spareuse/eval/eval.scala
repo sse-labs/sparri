@@ -9,6 +9,7 @@ import org.apache.http.entity.StringEntity
 import org.apache.http.impl.client.CloseableHttpClient
 import org.apache.http.protocol.HTTP
 import org.apache.http.util.EntityUtils
+import org.neo4j.driver.internal.shaded.io.netty.handler.codec.json.JsonObjectDecoder
 import spray.json.{JsArray, JsBoolean, JsNumber, JsObject, JsString, JsValue, enrichString}
 
 import java.nio.charset.StandardCharsets
@@ -85,7 +86,8 @@ package object eval {
                          baseUrl: String,
                          httpClient: CloseableHttpClient,
                          configuration: String = "",
-                         user: String = "test-runner"): Try[String] = {
+                         user: String = "test-runner",
+                         baselineRun: Option[String] = None): Try[String] = {
 
     val uri = baseUrl + s"analyses/$analysisName/$analysisVersion/runs"
     val execRequest: HttpPost = new HttpPost(uri)
@@ -97,9 +99,17 @@ package object eval {
     bodyBuilder.append(configuration)
     bodyBuilder.append("\", \"User\" : \"")
     bodyBuilder.append(user)
+
+    if(baselineRun.isDefined){
+      bodyBuilder.append("\", \"BaselineRun\" : \"")
+      bodyBuilder.append(baselineRun.get)
+    }
+
     bodyBuilder.append("\"}")
     val requestBody = bodyBuilder.toString()
-    execRequest.setEntity(new StringEntity(requestBody, StandardCharsets.UTF_8))
+    val entity = new  StringEntity(requestBody, StandardCharsets.UTF_8)
+    entity.setContentType("application/json")
+    execRequest.setEntity(entity)
 
     var execResponse: CloseableHttpResponse = null
 
@@ -107,8 +117,9 @@ package object eval {
       execResponse = httpClient.execute(execRequest)
       val statusCode = execResponse.getStatusLine.getStatusCode
 
-      if (statusCode != 202 && statusCode != 302) { // Accepted or Found are fine
+      if (statusCode != 200 && statusCode != 202 && statusCode != 302) { // Accepted or Found are fine
         val bodyTry = Try(EntityUtils.toString(execResponse.getEntity, StandardCharsets.UTF_8))
+        execResponse.close()
         throw HttpDownloadException(statusCode, uri, s"Non-Success status while attempting trigger analysis: ${bodyTry.getOrElse("No info")}")
       }
 
@@ -116,6 +127,8 @@ package object eval {
         .getAllHeaders
         .find(h => h.getName.equalsIgnoreCase("Location"))
         .map(h => h.getValue)
+
+      execResponse.close()
 
       locationOpt.getOrElse(throw new IllegalStateException("Expected a location header to be returned"))
     }
@@ -140,6 +153,33 @@ package object eval {
       }
 
     }
+  }
+
+  def getAllVersionsForLibrary(ga: String, baseUrl: String, httpClient: CloseableHttpClient): Try[Seq[String]] = Try {
+    val releasesRequest = new HttpGet(baseUrl + "entities/" + ga + "/children")
+    releasesRequest.setHeader("limit", "1000")
+    val response = httpClient.execute(releasesRequest)
+
+    if(response.getStatusLine.getStatusCode != 200) {
+      response.close()
+      throw new IllegalStateException(s"Failed to retrieve releases for library $ga (Status code ${response.getStatusLine.getStatusCode}) ")
+    }
+    val contentT = Try(EntityUtils.toString(response.getEntity, StandardCharsets.UTF_8).parseJson)
+    response.close()
+
+    contentT match {
+      case Success(JsArray(values)) =>
+        values.collect{
+          case jo: JsObject =>
+            val gav = jo.fields("Name").asInstanceOf[JsString].value
+            gav.split(":")(2)
+        }
+      case Failure(ex) =>
+        throw ex
+      case _ =>
+        throw new IllegalStateException(s"Invalid format returned by server")
+    }
+
   }
 
   def getAllTypesForProgram(gav: String, baseUrl: String, httpClient: CloseableHttpClient): Try[Seq[JavaClass]] = Try {
