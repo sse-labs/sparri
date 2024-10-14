@@ -1,5 +1,6 @@
 package org.anon.spareuse.core.storage.postgresql
 
+import org.anon.spareuse.core.maven.MavenIdentifier
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
@@ -17,6 +18,55 @@ trait PostgresEntityAccessor extends EntityAccessor {
   implicit val executor: ExecutionContext
 
   private final val statementKindIds = Set(SoftwareEntityKind.InvocationStatement.id, SoftwareEntityKind.FieldAccessStatement.id, SoftwareEntityKind.NewInstanceStatement.id)
+
+  def getProgramEntityId(gav: String): Option[Long] = {
+    Await.result(getProgramIdF(gav), simpleQueryTimeout)
+  }
+
+  def getClassEntityId(gav: String, classFqn: String): Option[Long] = {
+    Await.result(getClassIdF(gav, classFqn), simpleQueryTimeout)
+  }
+
+  def getMethodEntityId(gav: String, classFqn: String, methodIdent: String): Option[Long] = {
+    Await.result(getMethodIdF(gav, classFqn, methodIdent), simpleQueryTimeout)
+  }
+
+  def getLibraryIdF(ga: String): Future[Option[Long]] = {
+    db.run(entitiesTable.filter(swe => swe.parentID.isEmpty && swe.identifier === ga).take(1).map(_.id).result).map(_.headOption)
+  }
+
+  def getProgramIdF(gav: String): Future[Option[Long]] = {
+    val ident = MavenIdentifier.fromGAV(gav).get
+    val ga = ident.toGA
+    val v = ident.version
+
+    getLibraryIdF(ga).flatMap{
+      case Some(libId) =>
+        db.run(entitiesTable.filter(swe => swe.parentID === libId && swe.identifier === v).take(1).map(_.id).result).map(_.headOption)
+      case None => Future.successful(None)
+    }
+  }
+
+  def getClassIdF(gav: String, classFqn: String): Future[Option[Long]] = {
+    val packageName = classFqn.substring(classFqn.lastIndexOf("/") + 1)
+    getProgramIdF(gav).flatMap{
+      case Some(progId) =>
+        db.run(entitiesTable.filter(swe => swe.parentID === progId && swe.identifier === packageName).take(1).map(_.id).result).map(_.headOption).flatMap{
+          case Some(packageId) =>
+            db.run(entitiesTable.filter(swe => swe.parentID === packageId && swe.identifier === classFqn).take(1).map(_.id).result).map(_.headOption)
+          case None => Future.successful(None)
+        }
+      case None => Future.successful(None)
+    }
+  }
+
+  def getMethodIdF(gav: String, classFqn: String, methodIdent: String): Future[Option[Long]] = {
+    getClassIdF(gav, classFqn).flatMap{
+      case Some(classId) =>
+        db.run(entitiesTable.filter(swe => swe.parentID === classId && swe.identifier === methodIdent).take(1).map(_.id).result).map(_.headOption)
+      case None => Future.successful(None)
+    }
+  }
 
   /**
    * A lookup method that is not dependent on the fully-explicit FQN field for entities - SLOW ...
@@ -48,15 +98,15 @@ trait PostgresEntityAccessor extends EntityAccessor {
   }
 
 
-  override def hasEntity(ident: String, kind: SoftwareEntityKind): Boolean = {
-    val queryF = db.run(entitiesTable.filter(swe => swe.qualifier === ident && swe.kind === kind.id).exists.result)
+  override def hasEntity(eid: Long, kind: SoftwareEntityKind): Boolean = {
+    val queryF = db.run(entitiesTable.filter(swe => swe.id === eid && swe.kind === kind.id).exists.result)
 
     Await.result(queryF, simpleQueryTimeout)
   }
 
-  override def hasEntity(ident: String): Boolean = {
+  override def hasEntity(eid: Long): Boolean = {
     Try {
-      val queryF = db.run(entitiesTable.filter(e => e.qualifier === ident).exists.result)
+      val queryF = db.run(entitiesTable.filter(e => e.id === eid).exists.result)
       Await.result(queryF, simpleQueryTimeout)
     } match {
       case Success(value) => value
@@ -66,26 +116,24 @@ trait PostgresEntityAccessor extends EntityAccessor {
     }
   }
 
-  override def getEntityKind(entityIdent: String): Try[SoftwareEntityKind] = Try {
-    val queryF = db.run(entitiesTable.filter(swe => swe.qualifier === entityIdent).take(1).map(_.kind).result)
+  override def getEntityKind(eid: Long): Try[SoftwareEntityKind] = Try {
+    val queryF = db.run(entitiesTable.filter(swe => swe.id === eid).take(1).map(_.kind).result)
 
     SoftwareEntityKind.fromId(Await.result(queryF, simpleQueryTimeout).head)
   }
 
-  override def getEntityChildren(uid: String, skip: Int, limit: Int): Try[Seq[SoftwareEntityData]] = Try {
-    val parentEntityId = getEntityId(uid)
-
-    val queryF = db.run(entitiesTable.filter(swe => swe.parentID === parentEntityId).sortBy(_.id).drop(skip).take(limit).result)
+  override def getEntityChildren(eid: Long, skip: Int, limit: Int): Try[Seq[SoftwareEntityData]] = Try {
+    val queryF = db.run(entitiesTable.filter(swe => swe.parentID === eid).sortBy(_.id).drop(skip).take(limit).result)
 
     val entityRepResult = Await.result(queryF, longActionTimeout)
 
     buildEntities(entityRepResult)
   }
 
-  override def getEntity(ident: String, resolutionScope: SoftwareEntityKind): Future[SoftwareEntityData] = {
+  override def getEntity(eid: Long, resolutionScope: SoftwareEntityKind): Future[SoftwareEntityData] = {
 
-    def getReprFor(ident: String): Future[SoftwareEntityRepr] = {
-      db.run(entitiesTable.filter(_.qualifier === ident).take(1).result).map(_.head)
+    def getReprFor(id: Long): Future[SoftwareEntityRepr] = {
+      db.run(entitiesTable.filter(_.id === id).take(1).result).map(_.head)
     }
 
     def getEntitiesWhereParentIn(parentIds: Seq[Long]): Future[Seq[SoftwareEntityRepr]] = {
@@ -109,7 +157,7 @@ trait PostgresEntityAccessor extends EntityAccessor {
 
     // Build Future that collects all entity representations of this entity's tree (parents and children)
     val allEntityReprsAndRootEntityRepr =
-      getReprFor(ident) // Get the root element's representation
+      getReprFor(eid) // Get the root element's representation
         .flatMap { rootRepr =>
 
           // Calculate how many levels (downwards, children) we have to resolve. Zero means we only resolve the level of the root entity
@@ -279,7 +327,7 @@ trait PostgresEntityAccessor extends EntityAccessor {
 
   }
 
-  override def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Future[Seq[SoftwareEntityData]] = {
+  override def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[Long]): Future[Seq[SoftwareEntityData]] = {
 
     val rawEntityQuery = if (parentFilter.isDefined) buildEntityQueryWithParentFilter(limit, skip, parentFilter.get, kindFilter)
     else if (kindFilter.isDefined) db.run(entitiesTable.filter(e => e.kind === kindFilter.get.id).sortBy(_.id).drop(skip).take(limit).result)
@@ -292,19 +340,19 @@ trait PostgresEntityAccessor extends EntityAccessor {
 
   }
 
-  private def buildEntityQueryWithParentFilter(limit: Int, skip: Int, parentUid: String, kindFilter: Option[SoftwareEntityKind]) = {
+  private def buildEntityQueryWithParentFilter(limit: Int, skip: Int, parentEid: Long, kindFilter: Option[SoftwareEntityKind]) = {
 
     val joinQuery = if (kindFilter.isEmpty) {
       for {
         (entities, e2) <- entitiesTable join entitiesTable on ((a, b) => a.parentID === b.id)
-        if entities.parentID.isDefined && e2.qualifier === parentUid
+        if entities.parentID.isDefined && e2.id === parentEid
       } yield entities
     } else {
       val requiredKindId = kindFilter.get.id
 
       for {
         (entities, e2) <- entitiesTable join entitiesTable on ((a, b) => a.parentID === b.id)
-        if entities.parentID.isDefined && e2.qualifier === parentUid && entities.kind === requiredKindId
+        if entities.parentID.isDefined && e2.id === parentEid && entities.kind === requiredKindId
       } yield entities
 
     }
@@ -319,35 +367,19 @@ trait PostgresEntityAccessor extends EntityAccessor {
 
   protected[storage] def toGenericEntityData(repr: SoftwareEntityRepr): GenericEntityData = {
 
-    idToIdentifierCache.pushValue(repr.id, repr.fqn)
-
-    val parentIdent = repr.parentId.map(parentId => idToIdentifierCache.getWithCache(parentId, () => getUidForEntityId(parentId)))
-
     new GenericEntityData(repr.name, repr.language, SoftwareEntityKind.fromId(repr.kindId),
-      repr.repository, repr.hexHash.map(fromHex), repr.fqn, parentIdent)
+      repr.repository, repr.hexHash.map(fromHex), repr.id, repr.identifier, repr.parentId)
   }
 
-  protected[storage] def getUidForEntityId(id: Long): String = {
-    val queryF = db.run(entitiesTable.filter(e => e.id === id).map(e => e.qualifier).take(1).result)
-
-    Await.result(queryF, simpleQueryTimeout).head
-  }
-
-  protected[storage] def getEntityId(qualifier: String): Long = {
-    val queryF = db.run(entitiesTable.filter(swe => swe.qualifier === qualifier).take(1).map(_.id).result)
-
-    Await.result(queryF, simpleQueryTimeout).head
-  }
-
-  protected[storage] def getEntityRepr(ident: String,
+  protected[storage] def getEntityRepr(eid: Long,
                             kind: SoftwareEntityKind): Try[SoftwareEntityRepr] = Try {
-    val queryF = db.run(entitiesTable.filter(swe => swe.qualifier === ident).take(1).result)
+    val queryF = db.run(entitiesTable.filter(swe => swe.id === eid).take(1).result)
 
     Await.result(queryF, simpleQueryTimeout).headOption match {
       case Some(entity) if entity.kindId == kind.id =>
         entity
       case _ =>
-        throw new IllegalArgumentException(s"Entity of kind $kind with FQ $ident not found")
+        throw new IllegalArgumentException(s"Entity of kind $kind with ID $eid not found")
     }
   }
 

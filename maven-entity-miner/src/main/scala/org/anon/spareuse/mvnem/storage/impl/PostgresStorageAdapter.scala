@@ -1,6 +1,7 @@
 package org.anon.spareuse.mvnem.storage.impl
 
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod, JavaProgram, JavaStatement}
+import org.anon.spareuse.core.model.SoftwareEntityKind
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod, JavaProgram, JavaStatement, PathIdentifiableJavaEntity}
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassInterface, JavaClassInterfaces, JavaClassRepr, JavaClasses, JavaFieldAccessRepr, JavaFieldAccessStatements, JavaInvocationRepr, JavaInvocationStatements, JavaMethodDescriptor, JavaMethodDescriptors, JavaMethodRepr, JavaMethods, JavaPrograms, JavaTypeName, JavaTypeNames}
 import org.anon.spareuse.core.storage.postgresql.{SoftwareEntities, SoftwareEntityRepr}
@@ -32,23 +33,25 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   lazy val idReturningEntitiesTable = entitiesTable returning entitiesTable.map(_.id)
   lazy val idReturningTypeNameTable = typeNameTable returning typeNameTable.map(_.id)
   lazy val idReturningDescriptorTable = descriptorTable returning descriptorTable.map(_.id)
-  lazy val qualifierAndIdReturningEntitiesTable = entitiesTable returning entitiesTable.map(row => (row.qualifier, row.id))
+  lazy val identifierAndParentAndIdReturningEntitiesTable = entitiesTable returning entitiesTable.map(row => (row.identifier, row.parentID, row.id))
 
   // Converts representations of binary hashes in the core model (byte-array) to database-representations (hex-strings)
   private[mvnem] implicit def toHexOpt(byteOpt: Option[Array[Byte]]): Option[String] = byteOpt.map(toHex)
 
 
-  override def ensureNotPresent(programUid: String): Unit = {
+  override def ensureProgramNotPresent(programGav: String): Unit = {
 
-    def getIdForQualifier(fq: String): Long = {
-      val queryFuture = db.run(entitiesTable.filter(row => row.qualifier === fq).take(1).map(_.id).result)
-      Await.result(queryFuture, 10.seconds).head
+    def getProgramEntityId(gav: String): Option[Long] = {
+      val queryF = db.run(entitiesTable.filter(e => e.kind === SoftwareEntityKind.Program.id).filter(e => e.name === gav).take(1).map(_.id).result)
+      Await.result(queryF, 10.seconds).headOption
     }
 
-    if(hasEntityQualifier(programUid)){
+    val programIdOpt = getProgramEntityId(programGav)
+
+    if(programIdOpt.isDefined){
 
       Try{
-        val programId = getIdForQualifier(programUid)
+        val programId = programIdOpt.get
         val packageIds = Await.result(db.run(entitiesTable.filter(e => e.parentID === programId).map(_.id).result), 30.seconds).toSet
         val classIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet packageIds).map(_.id).result), 60.seconds).toSet
         val methodIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet classIds).map(_.id).result), 80.seconds).toSet
@@ -77,18 +80,19 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
   override def storeJavaProgram(jp: JavaProgram): Future[String] = {
 
-    def idForQualifierF(fq: String): Future[Option[Long]] = {
-      db.run(entitiesTable.filter(row => row.qualifier === fq).take(1).map(_.id).result).map(_.headOption)
+    def libraryIdF(ga: String): Future[Option[Long]] = {
+      db.run(entitiesTable.filter(e => e.parentID.isEmpty &&  e.identifier === ga).take(1).map(_.id).result).map(_.headOption)
     }
 
     // Query for parent, return id if present, create entry and return id otherwise
     val parentIdOptF = jp.getParent.map { parent =>
-      idForQualifierF(parent.uid).flatMap {
+      val libraryGA = parent.name
+      libraryIdF(libraryGA).flatMap {
         case Some(id) =>
           Future(id) // If the parent (library) is already present, we return its id
         case None =>
           storeDataAndGetId(parent, None) // If not, we try to create it and return its id
-            .recoverWith(_ => idForQualifierF(parent.uid).map(_.get)) // If that fails, it is likely because another thread created the library -> Re-try getting its id
+            .recoverWith(_ => libraryIdF(libraryGA).map(_.get)) // If that fails, it is likely because another thread created the library -> Re-try getting its id
       }
     }
 
@@ -211,7 +215,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
                                                           batchSize: Int,
                                                           typeNameLookup: Map[String, Long],
                                                           descriptorLookup: Map[String, Long]): Future[Map[String, Long]] = {
-    val entityReprs = entities.map(e => toEntityRepr(e, e.getParent.flatMap(eP => parentIdLookup.get(eP.uid))))
+    val entityReprs = entities.map(e => (e.asInstanceOf[PathIdentifiableJavaEntity].uid, toEntityRepr(e, e.getParent.flatMap(eP => parentIdLookup.get(eP.asInstanceOf[PathIdentifiableJavaEntity].uid)))))
 
     batchedEntityInsertWithMapReturn(entityReprs, batchSize).flatMap { theMap =>
       entities.headOption match {
@@ -241,17 +245,19 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
   private[storage] def storeDataAndGetId(data: SoftwareEntityData, parentIdOpt: Option[Long]): Future[Long] = {
     val res = idReturningEntitiesTable +=
-      SoftwareEntityRepr(0, data.name, data.uid, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash)
+      SoftwareEntityRepr(0, data.name, data.identifier, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash)
     db.run(res)
   }
 
-  private[storage] def batchedEntityInsertWithMapReturn(entityReprs: Iterable[SoftwareEntityRepr], batchSize: Int): Future[Map[String, Long]] = {
+  private[storage] def batchedEntityInsertWithMapReturn(entityReprs: Iterable[(String, SoftwareEntityRepr)], batchSize: Int): Future[Map[String, Long]] = {
+
+    val uidLookup = entityReprs.map(t => ((t._2.parentId, t._2.identifier), t._1)).toMap
 
     Future
       .sequence(
         entityReprs
           .grouped(batchSize)
-          .map { batch => db.run(qualifierAndIdReturningEntitiesTable ++= batch).map(resultObj => resultObj.toMap) }
+          .map { batch => db.run(identifierAndParentAndIdReturningEntitiesTable ++= batch.map(_._2)).map(resultObj => resultObj.map(triple => (uidLookup((triple._2, triple._1)), triple._3)).toMap) }
       )
       .map(seqOfMaps => seqOfMaps.flatten.toMap)
   }
@@ -279,7 +285,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
 
   private def toEntityRepr(data: SoftwareEntityData, parentIdOpt: Option[Long]): SoftwareEntityRepr = SoftwareEntityRepr(0, data.name,
-    data.uid, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash)
+    data.identifier, data.language, data.kind.id, data.repository, parentIdOpt, data.binaryHash)
 
   private def toClassRepr(jc: JavaClass, parentId: Long, typeNameLookup: Map[String, Long]): JavaClassRepr = {
     JavaClassRepr(parentId, typeNameLookup(jc.thisType), jc.superType.map(typeNameLookup), jc.isInterface, jc.isFinal, jc.isAbstract)
@@ -320,8 +326,8 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
   override def shutdown(): Unit = db.close()
 
-  override def hasEntityQualifier(fq: String): Boolean = {
-    val queryFuture = db.run(entitiesTable.filter(row => row.qualifier === fq).exists.result)
+  override def hasProgram(gav: String): Boolean = {
+    val queryFuture = db.run(entitiesTable.filter(e => e.kind === SoftwareEntityKind.Program.id).filter(_.name === gav).exists.result)
     Await.result(queryFuture, 10.seconds)
   }
 }

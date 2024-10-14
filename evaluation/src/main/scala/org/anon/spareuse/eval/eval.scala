@@ -202,7 +202,7 @@ package object eval {
             case jo: JsObject =>
               new JavaPackage(
                 jo.fields("Name").asInstanceOf[JsString].value,
-                jo.fields("Identifier").asInstanceOf[JsString].value,
+                jo.fields("ID").asInstanceOf[JsNumber].value.toLongExact,
                 jo.fields("Repository").asInstanceOf[JsString].value)
           }.flatMap { p =>
           val allTypes = getAllTypesForPackage(p.uid, baseUrl, httpClient).get
@@ -242,7 +242,7 @@ package object eval {
             new JavaClass(
               jo.fields("Name").asInstanceOf[JsString].value,
               jo.fields("ThisTypeFqn").asInstanceOf[JsString].value,
-              jo.fields("Identifier").asInstanceOf[JsString].value,
+              jo.fields("ID").asInstanceOf[JsNumber].value.toLongExact,
               jo.fields.get("SuperTypeFqn").map {
                 case s: JsString => s.value
                 case _ => throw new IllegalStateException("Invalid response format")
@@ -289,7 +289,7 @@ package object eval {
             new JavaMethod(
               jo.fields("Name").asInstanceOf[JsString].value,
               jo.fields("Descriptor").asInstanceOf[JsString].value,
-              jo.fields("Identifier").asInstanceOf[JsString].value,
+              jo.fields("ID").asInstanceOf[JsNumber].value.toLongExact,
               jo.fields("IsFinal").asInstanceOf[JsBoolean].value,
               jo.fields("IsStatic").asInstanceOf[JsBoolean].value,
               jo.fields("IsAbstract").asInstanceOf[JsBoolean].value,

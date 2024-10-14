@@ -1,12 +1,11 @@
 package org.anon.spareuse.webapi.server.routes
 
-import akka.http.scaladsl.model.StatusCodes.{Accepted, BadRequest, Found, InternalServerError, NotFound, OK}
+import akka.http.scaladsl.model.StatusCodes.{Accepted, BadRequest, InternalServerError, NotFound, OK}
 import akka.http.scaladsl.model.headers.Location
 import akka.http.scaladsl.model.{HttpRequest, Uri}
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.PathMatchers.Segment
 import akka.http.scaladsl.server.Route
-import org.anon.spareuse.webapi.model.requests.ExecuteAnalysisRequest
 import org.anon.spareuse.webapi.model.requests.ExecuteAnalysisRequest
 import spray.json.enrichAny
 
@@ -120,10 +119,13 @@ trait AnalysisRouteDefinitions extends BasicRouteDefinition {
 
   private def allAnalysisRunsRouteImpl(analysisName: String, analysisVersion: String, inputFilter: Option[String], limit: Int, skip: Int)(implicit request:HttpRequest): Route = {
 
-    if(inputFilter.isDefined && !requestHandler.hasEntity(inputFilter.get))
+    if(inputFilter.isDefined && Try(inputFilter.get.toLong).isFailure)
+      return complete(BadRequest, s"Entity id must be a Long-Value: ${inputFilter.get}")
+
+    if(inputFilter.isDefined && !requestHandler.hasEntity(inputFilter.get.toLong))
       return complete(NotFound, s"Entity that was filtered for was not found: ${inputFilter.get}")
 
-    requestHandler.getAnalysisRuns(analysisName, analysisVersion, inputFilter, limit, skip) match {
+    requestHandler.getAnalysisRuns(analysisName, analysisVersion, inputFilter.map(_.toLong), limit, skip) match {
       
       case Success(runData) =>
         complete(runData.toJson)

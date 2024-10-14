@@ -4,9 +4,7 @@ import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaFieldAccessType.JavaFieldAccessType
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaInvocationType.JavaInvocationType
-import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.opalj.br.MethodDescriptor
-import org.opalj.tac.fpcf.analyses.cg.MethodDesc
 
 object JavaEntities {
 
@@ -17,15 +15,14 @@ object JavaEntities {
     Some(s"$ga!$gav")
   }
 
-  def buildLibrary(ga: String, repoIdent: String = "mvn"): JavaLibrary = new JavaLibrary(ga, repoIdent)
+  def buildLibrary(ga: String, repoIdent: String = "mvn"): JavaLibrary = new JavaLibrary(ga, repoIdent, -1L)
 
   def buildProgram(gav: String, repoIdent: String = "mvn", uploadTime: String, hash: Array[Byte] = Array.empty): JavaProgram = {
     buildProgramFor(buildLibrary(gav.substring(0, gav.lastIndexOf(":")), repoIdent), gav, uploadTime, hash)
   }
 
   def buildProgramFor(jl: JavaLibrary, gav: String, uploadTime: String, hash: Array[Byte] = Array.empty): JavaProgram = {
-    val ident = jl.uid + "!" + gav
-    val jp = new JavaProgram(gav, gav, ident, jl.repository, uploadTime, hash)
+    val jp = new JavaProgram(gav, gav.substring(gav.lastIndexOf(":") + 1), -1L, jl.repository, uploadTime, hash)
     jp.setParent(jl)
     jp
   }
@@ -35,8 +32,7 @@ object JavaEntities {
   }
 
   def buildPackageFor(jp: JavaProgram, packageName: String): JavaPackage = {
-    val ident = jp.uid + "!" + packageName
-    val jpa = new JavaPackage(packageName, ident, jp.repository)
+    val jpa = new JavaPackage(packageName, -1L, jp.repository)
     jpa.setParent(jp)
     jpa
   }
@@ -46,22 +42,20 @@ object JavaEntities {
   }
 
   def buildClassFor(jp: JavaPackage, className: String, fqn: String, isInterface: Boolean, isFinal: Boolean, isAbstract: Boolean, superTypeFqn: Option[String] = None, interfaceFqns: Set[String] = Set.empty, hash: Array[Byte] = Array.empty): JavaClass = {
-    val ident = jp.uid + "!" + fqn
-    val classObj = new JavaClass(className, fqn, ident, superTypeFqn, interfaceFqns, isInterface, isFinal, isAbstract, jp.repository, hash)
+    val classObj = new JavaClass(className, fqn, -1L, superTypeFqn, interfaceFqns, isInterface, isFinal, isAbstract, jp.repository, hash)
     classObj.setParent(jp)
     classObj
   }
 
   def buildMethodFor(jc: JavaClass, methodName: String, descriptor: String, isFinal: Boolean, isStatic: Boolean, isAbstract: Boolean, visibility: String, hashCode: Int): JavaMethod = {
-    val ident = jc.uid + "!" + buildMethodIdent(methodName, descriptor)
-    val methodObj = new JavaMethod(methodName, descriptor, ident, isFinal, isStatic, isAbstract, visibility, jc.repository, hashCode)
+    val methodObj = new JavaMethod(methodName, descriptor, -1L, isFinal, isStatic, isAbstract, visibility, jc.repository, hashCode)
     methodObj.setParent(jc)
     methodObj
   }
 
   abstract class PathIdentifiableJavaEntity private[entities] (entityName: String,
                                                      entityIdent: String,
-                                                     entityUid: String,
+                                                     entityId: Long,
                                                      repositoryIdent: String,
                                                      hashedBytes: Option[Array[Byte]]) extends SoftwareEntityData {
     override val name: String = entityName
@@ -70,24 +64,30 @@ object JavaEntities {
 
     override val binaryHash: Option[Array[Byte]] = hashedBytes
 
-    override val uid: String = entityUid
+    override val id: Long = entityId
 
-    val identifier: String = entityIdent
+    override val identifier: String = entityIdent
+
+    lazy val uid: String = getParent.map {
+      case pije: PathIdentifiableJavaEntity => pije.uid + "!" + identifier
+      case _ => ""
+    }.getOrElse(identifier)
   }
 
   class JavaLibrary(val libraryName: String,
-                    repositoryIdent: String) extends PathIdentifiableJavaEntity(libraryName, libraryName, libraryName, repositoryIdent, None){
+                    repositoryIdent: String,
+                    entityId: Long) extends PathIdentifiableJavaEntity(libraryName, libraryName, entityId, repositoryIdent, None){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Library
 
     def getPrograms: Set[JavaProgram] = getChildren.map(_.asInstanceOf[JavaProgram])
   }
 
   class JavaProgram(val programName: String,
-                    val programIdent: String,
-                    programUid: String,
+                    val programVersion: String,
+                    entityId: Long,
                     repositoryIdent: String,
                     uploadTime: String,
-                    hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(programName, programIdent, programUid, repositoryIdent, Some(hashedBytes)) {
+                    hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(programName, programVersion, entityId, repositoryIdent, Some(hashedBytes)) {
 
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Program
 
@@ -107,8 +107,8 @@ object JavaEntities {
   }
 
   class JavaPackage(packageName: String,
-                    packageUid: String,
-                    repositoryIdent: String) extends PathIdentifiableJavaEntity(packageName, packageName, packageUid, repositoryIdent, None) {
+                    entityId: Long,
+                    repositoryIdent: String) extends PathIdentifiableJavaEntity(packageName, packageName, entityId, repositoryIdent, None) {
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Package
 
     def getClasses: Set[JavaClass] = getChildren.map(_.asInstanceOf[JavaClass])
@@ -118,14 +118,14 @@ object JavaEntities {
 
   class JavaClass(className: String,
                   thisTypeFqn: String,
-                  classUid: String,
+                  entityId: Long,
                   superTypeFqn: Option[String],
                   interfaceFqns: Set[String],
                   interfaceType: Boolean,
                   finalType: Boolean,
                   abstractType: Boolean,
                   repositoryIdent: String,
-                  hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(className, thisTypeFqn, classUid, repositoryIdent, Some(hashedBytes)){
+                  hashedBytes: Array[Byte]) extends PathIdentifiableJavaEntity(className, className, entityId, repositoryIdent, Some(hashedBytes)){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Class
 
     lazy val methodTable: Map[String, Map[String, JavaMethod]] = getMethods.groupBy(_.name).view.mapValues{ jmSet =>
@@ -147,13 +147,13 @@ object JavaEntities {
 
   class JavaMethod(methodName: String,
                    jvmDescriptor: String,
-                   methodUid: String,
+                   entityId: Long,
                    finalMethod: Boolean,
                    staticMethod: Boolean,
                    abstractMethod: Boolean,
                    methodVisibility: String,
                    repositoryIdent: String,
-                   hash: Int) extends PathIdentifiableJavaEntity(methodName, buildMethodIdent(methodName, jvmDescriptor), methodUid, repositoryIdent, None){
+                   hash: Int) extends PathIdentifiableJavaEntity(methodName, buildMethodIdent(methodName, jvmDescriptor), entityId, repositoryIdent, None){
 
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Method
 
@@ -178,8 +178,8 @@ object JavaEntities {
     override def toString: String = enclosingClass.map(_.thisType).getOrElse("<no-class>") + "->" + methodName + jvmDescriptor
   }
 
-  abstract class JavaStatement(name: String, pc: Int, stmtUid: String, repositoryIdent: String)
-    extends PathIdentifiableJavaEntity(name, String.valueOf(pc), stmtUid, repositoryIdent, None){
+  abstract class JavaStatement(name: String, pc: Int, entityId: Long, repositoryIdent: String)
+    extends PathIdentifiableJavaEntity(name, String.valueOf(pc), entityId, repositoryIdent, None){
     val instructionPc: Int = pc
   }
 
@@ -188,8 +188,8 @@ object JavaEntities {
                             jvmDescriptor: String,
                             invocationType: JavaInvocationType,
                             pc: Int,
-                            stmtUid: String,
-                            repositoryIdent: String) extends JavaStatement(methodName, pc, stmtUid, repositoryIdent) {
+                            entityId: Long,
+                            repositoryIdent: String) extends JavaStatement(methodName, pc, entityId, repositoryIdent) {
     override val kind: SoftwareEntityKind = SoftwareEntityKind.InvocationStatement
 
     val targetMethodName: String = methodName
@@ -206,8 +206,8 @@ object JavaEntities {
                                  declaredTypeFqn: String,
                                  accessType: JavaFieldAccessType,
                                  pc:Int,
-                                 stmtUid: String,
-                                 repositoryIdent: String) extends JavaStatement(fieldName, pc, stmtUid, repositoryIdent) {
+                                 entityId: Long,
+                                 repositoryIdent: String) extends JavaStatement(fieldName, pc, entityId, repositoryIdent) {
     override val kind: SoftwareEntityKind = SoftwareEntityKind.FieldAccessStatement
 
     val targetFieldName: String = fieldName
@@ -216,8 +216,8 @@ object JavaEntities {
     val fieldAccessType: JavaFieldAccessType = accessType
   }
 
-  class JavaNewInstanceStatement(typeName: String, pc: Int, stmtUid: String, repositoryIdent: String)
-    extends JavaStatement(typeName, pc, stmtUid, repositoryIdent){
+  class JavaNewInstanceStatement(typeName: String, pc: Int, entityId: Long, repositoryIdent: String)
+    extends JavaStatement(typeName, pc, entityId, repositoryIdent){
     override val kind: SoftwareEntityKind = SoftwareEntityKind.NewInstanceStatement
     val instantiatedTypeName: String = typeName
   }

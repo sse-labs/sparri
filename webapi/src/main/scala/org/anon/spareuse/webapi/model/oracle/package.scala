@@ -10,7 +10,7 @@ package object oracle {
 
   def toModel(invokeRepr: InvokeStmtRepr): JavaInvokeStatement = new JavaInvokeStatement(invokeRepr.declIdent.mName,
     invokeRepr.declIdent.declType, invokeRepr.declIdent.mDescr, JavaInvocationType.fromId(invokeRepr.invokeType), invokeRepr.pc,
-    "<CUSTOM_CODE>", "<LOCAL>")
+    -1, "<LOCAL>")
 
   def toModel(methodIdentRepr: MethodIdentifierRepr): MethodIdent =
     MethodIdent(methodIdentRepr.declType, methodIdentRepr.mName, methodIdentRepr.mDescr)

@@ -9,7 +9,7 @@ trait RunnerCommand{
 
   val userName: String
 
-  val inputEntityNames: Set[String]
+  val inputEntityIds: Set[Long]
 
   val configurationRaw: String
 
@@ -22,24 +22,24 @@ trait RunnerCommand{
 case class AnalysisCommand(override val analysisName: String,
                            override val associatedRunId: String,
                            override val userName: String,
-                           override val inputEntityNames: Set[String],
+                           override val inputEntityIds: Set[Long],
                            override val configurationRaw: String) extends RunnerCommand {
   def updateRunId(newRunId: String): RunnerCommand = {
-    AnalysisCommand(analysisName, newRunId, userName, inputEntityNames, configurationRaw)
+    AnalysisCommand(analysisName, newRunId, userName, inputEntityIds, configurationRaw)
   }
 
   def asIncremental(baselineRunId: Option[String]): RunnerCommand =
-    IncrementalAnalysisCommand(analysisName, associatedRunId, userName, inputEntityNames, configurationRaw, baselineRunId.getOrElse(""))
+    IncrementalAnalysisCommand(analysisName, associatedRunId, userName, inputEntityIds, configurationRaw, baselineRunId.getOrElse(""))
 }
 
 case class IncrementalAnalysisCommand(override val analysisName: String,
                                       override val associatedRunId: String,
                                       override val userName: String,
-                                      override val inputEntityNames: Set[String],
+                                      override val inputEntityIds: Set[Long],
                                       override val configurationRaw: String,
                                       baselineRunId: String) extends RunnerCommand {
   override def updateRunId(newRunId: String): RunnerCommand = {
-    IncrementalAnalysisCommand(analysisName, newRunId, userName, inputEntityNames, configurationRaw, baselineRunId)
+    IncrementalAnalysisCommand(analysisName, newRunId, userName, inputEntityIds, configurationRaw, baselineRunId)
   }
 }
 

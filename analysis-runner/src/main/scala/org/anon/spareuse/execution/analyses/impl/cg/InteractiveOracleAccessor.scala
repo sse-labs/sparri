@@ -2,7 +2,7 @@ package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities
-import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaProgram, gavToProgramIdent}
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.InteractionType.{Initialization, InteractionType, Internal, MethodRequest}
@@ -86,20 +86,23 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
 
     // Make sure the library GAVs are valid and stored in the index
     for(libraryGAV <- libraryGAVs){
-      JavaEntities.gavToProgramIdent(libraryGAV) match {
-        case Some(ident) if dataAccessor.hasEntity(ident, SoftwareEntityKind.Program) =>
-          // Good case, don't do anything here
-        case Some(_) =>
+
+      if(!dataAccessor.hasProgram(libraryGAV)){
+        val isValidGAV = gavToProgramIdent(libraryGAV).isDefined
+
+        if(isValidGAV){
           val error = OracleInteractionError(s"Library not in index: $libraryGAVs", isFatal = true, isUserError = false, interactionType = Initialization)
           return Right(logError(error))
-        case None =>
+        } else {
           val error = OracleInteractionError(s"Invalid library GAV: $libraryGAV", isFatal = true, isUserError = true, interactionType = Initialization)
           return Right(logError(error))
+        }
+
       }
     }
 
     Try {
-      val libraries = libraryGAVs.map(JavaEntities.gavToProgramIdent(_).get).map(dataAccessor.awaitGetEntity(_, None).get.asInstanceOf[JavaProgram])
+      val libraries = libraryGAVs.map(dataAccessor.getProgramEntityId(_).get).map(dataAccessor.awaitGetEntity(_, None).get.asInstanceOf[JavaProgram])
       val builder = new OracleCallGraphBuilder(libraries, libraryTypes, jreVersion, queueRequest)
 
       mode match {
@@ -299,13 +302,13 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
   def succeeded: Boolean = !hasFatalErrors && resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isSuccess)
   def failed: Boolean = hasFatalErrors || resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isFailure)
 
-  def loadRemainingSummaries(resolver: String => Try[MethodIFDSRep]): Try[Unit] = Try {
+  def loadRemainingSummaries(resolver: (String, String, String) => Try[MethodIFDSRep]): Try[Unit] = Try {
     if(oracleCGBuilderOpt.isEmpty)
       return Failure(new IllegalStateException("Cannot finalize summaries, not initialized"))
 
     val builder = oracleCGBuilderOpt.get
 
-    val typeLookup = builder.getLibraries.flatMap(library => library.allClasses.map(c => (c.thisType, c.uid))).toMap
+    val typeToLibraryLookup = builder.getLibraries.flatMap(library => library.allClasses.map(c => (c.thisType, (library.name, c.thisType)))).toMap
 
     builder
       .getGraph
@@ -314,12 +317,14 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       .foreach{ dm =>
         val ident = MethodIdent(dm.definingTypeName, dm.methodName, dm.descriptor)
         if(!summaryLookup.contains(ident)){
-          if(!typeLookup.contains(ident.declaredType))
+          if(!typeToLibraryLookup.contains(ident.declaredType))
             log.warn(s"Failed to locate type for summary lookup: ${ident.declaredType}")
           else{
-            val sparriClassIdent = typeLookup(ident.declaredType)
-            val sparriMethodIdent = s"$sparriClassIdent!${JavaEntities.buildMethodIdent(ident.methodName, ident.methodDescriptor)}"
-            resolver(sparriMethodIdent) match {
+            val tuple = typeToLibraryLookup(ident.declaredType)
+            val sparriLibraryName = tuple._1
+            val sparriClassIdent = tuple._2
+            val sparriMethodIdent = JavaEntities.buildMethodIdent(ident.methodName, ident.methodDescriptor)
+            resolver(sparriLibraryName, sparriClassIdent, sparriMethodIdent) match {
               case Success(summary) =>
                 log.info(s"Successfully got summary for $sparriMethodIdent")
                 summaryLookup.put(ident, summary)

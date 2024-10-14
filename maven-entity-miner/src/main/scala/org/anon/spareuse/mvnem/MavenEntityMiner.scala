@@ -321,7 +321,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
         programTry match {
           case Success(programRep) =>
-            programRep.setParent(new JavaLibrary(jarFile.identifier.toGA, "central"))
+            programRep.setParent(new JavaLibrary(jarFile.identifier.toGA, "central", -1L))
             log.info(s"Processing ${classes.size} classes in ${programRep.getChildren.size} packages @  ${jarFile.url.toString}")
             result = programRep
           case Failure(ex) =>

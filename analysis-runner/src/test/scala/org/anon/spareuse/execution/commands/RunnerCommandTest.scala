@@ -11,7 +11,7 @@ import spray.json._
 class RunnerCommandTest extends AnyFlatSpec with must.Matchers with RunnerCommandJsonSupport{
 
   "The runner command serialization" must "perform a valid roundtrip serialization" in {
-    val startCmd = AnalysisCommand("dep-analysis", "some-id", "my-user", Set("test", "entity"), "some-config=")
+    val startCmd = AnalysisCommand("dep-analysis", "some-id", "my-user", Set(42, 3), "some-config=")
 
     val json = startCmd.toJson.compactPrint
 
@@ -24,7 +24,7 @@ class RunnerCommandTest extends AnyFlatSpec with must.Matchers with RunnerComman
   }
 
   "The runner command serialization" must "correctly deserialize an IncrementalAnalysisCommand" in {
-    val startCmd = IncrementalAnalysisCommand("dep-analysis", "some-id", "my-user", Set("test", "entity"), "some-config=", "some-other-id")
+    val startCmd = IncrementalAnalysisCommand("dep-analysis", "some-id", "my-user", Set(42, 3), "some-config=", "some-other-id")
 
     val json = startCmd.toJson.compactPrint
 
@@ -40,7 +40,7 @@ class RunnerCommandTest extends AnyFlatSpec with must.Matchers with RunnerComman
     val analysisName = "name"
     val analysisVersion = "version"
     val config = ""
-    val inputs = Set("input-ident")
+    val inputs = Set(-1L)
     val dataAccessor: DataAccessor = new PostgresDataAccessor()(scala.concurrent.ExecutionContext.global)
 
     // Create new empty record for analysis run

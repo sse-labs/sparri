@@ -27,7 +27,8 @@ trait BasicRouteDefinition extends JsonSupport {
   //  |    404 UTILITIES           |
   //  ------------------------------
   protected def ensureEntityPresent(entityName: String)(implicit route: Route): Route = {
-    if(requestHandler.hasEntity(entityName)) route
+    if(entityName.toLongOption.isEmpty) complete(BadRequest, s"Entity ID must be valid Long-Value: $entityName")
+    else if(requestHandler.hasEntity(entityName.toLong)) route
     else complete(NotFound, s"Entity $entityName was not found in database")
   }
 

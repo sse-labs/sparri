@@ -17,16 +17,16 @@ trait EntityAccessor {
 
   def initializeEntityTables(): Unit
 
-  def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Future[Seq[SoftwareEntityData]]
+  def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[Long]): Future[Seq[SoftwareEntityData]]
 
-  def getEntityChildren(uid: String, skip: Int, limit:Int): Try[Seq[SoftwareEntityData]]
+  def getEntityChildren(eid: Long, skip: Int, limit:Int): Try[Seq[SoftwareEntityData]]
 
-  def getEntityKind(entityIdent: String): Try[SoftwareEntityKind]
+  def getEntityKind(eId: Long): Try[SoftwareEntityKind]
 
-  def getEntity(ident: String, resolutionDepth: Option[Int]): Future[SoftwareEntityData] = {
-    if(hasEntity(ident)){
+  def getEntity(eid: Long, resolutionDepth: Option[Int]): Future[SoftwareEntityData] = {
+    if(hasEntity(eid)){
 
-      getEntityKind(ident) match {
+      getEntityKind(eid) match {
         case Success(entityKind) =>
           // If no depth is given, resolve the entire tree
           val resolutionScope = if(resolutionDepth.isDefined)
@@ -34,25 +34,33 @@ trait EntityAccessor {
           else
             SoftwareEntityKind.InvocationStatement
 
-          getEntity(ident, resolutionScope)
+          getEntity(eid, resolutionScope)
         case Failure(ex) =>
           Future.failed(ex)
       }
 
-    } else Future.failed(new IllegalStateException(s"Entity not present: $ident"))
+    } else Future.failed(new IllegalStateException(s"Entity not present: $eid"))
   }
 
-  def awaitGetEntity(ident: String, resolutionDepth: Option[Int]): Try[SoftwareEntityData] = {
-    Try(Await.result(getEntity(ident, resolutionDepth), awaitEntityTimeout))
+  def awaitGetEntity(eid: Long, resolutionDepth: Option[Int]): Try[SoftwareEntityData] = {
+    Try(Await.result(getEntity(eid, resolutionDepth), awaitEntityTimeout))
   }
 
-  def getEntity(ident: String, resolutionScope: SoftwareEntityKind): Future[SoftwareEntityData]
+  def getEntity(eid: Long, resolutionScope: SoftwareEntityKind): Future[SoftwareEntityData]
 
-  def awaitGetEntity(ident: String, resolutionScope: SoftwareEntityKind): Try[SoftwareEntityData] = {
-    Try(Await.result(getEntity(ident, resolutionScope), awaitEntityTimeout))
+  def awaitGetEntity(eid: Long, resolutionScope: SoftwareEntityKind): Try[SoftwareEntityData] = {
+    Try(Await.result(getEntity(eid, resolutionScope), awaitEntityTimeout))
   }
-  def hasEntity(ident: String, kind: SoftwareEntityKind): Boolean
+  def hasEntity(eid: Long, kind: SoftwareEntityKind): Boolean
 
-  def hasEntity(ident: String): Boolean
+  def hasEntity(eid: Long): Boolean
+
+  def getProgramEntityId(gav: String): Option[Long]
+
+  def hasProgram(gav: String): Boolean = getProgramEntityId(gav).isDefined
+
+  def getClassEntityId(gav: String, classFqn: String): Option[Long]
+
+  def getMethodEntityId(gav: String, classFqn: String, methodIdent: String): Option[Long]
 
 }

@@ -42,10 +42,10 @@ class MvnConstantClassAnalysisImpl extends AnalysisImplementation {
         case _ => throw new IllegalArgumentException("Corrupt input entity hierarchy")
       }
 
-      val classToHashesMap = allClasses.map { jc => (jc.identifier, mutable.ListBuffer.empty[String]) }.toMap
+      val classToHashesMap = allClasses.map { jc => (jc.thisType, mutable.ListBuffer.empty[String]) }.toMap
 
-      allClasses.foreach(jc => classToHashesMap(jc.identifier).append(jc.binaryHash.map(toHex).getOrElse{
-        log.warn(s"Class without hash: ${jc.identifier}")
+      allClasses.foreach(jc => classToHashesMap(jc.thisType).append(jc.binaryHash.map(toHex).getOrElse{
+        log.warn(s"Class without hash: ${jc.name}")
         ""
       }))
 

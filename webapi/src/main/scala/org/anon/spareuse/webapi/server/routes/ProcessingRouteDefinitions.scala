@@ -29,7 +29,7 @@ trait ProcessingRouteDefinitions extends BasicRouteDefinition {
 
       log.debug(s"Entity indexing requested for ${entity.Identifiers.length} ids.")
 
-      val identifiersToProcess = entity.Identifiers.filter(ident => !requestHandler.hasEntity(ident) || requestHandler.isLibrary(ident))
+      val identifiersToProcess = entity.Identifiers.filter(requestHandler.validIndexEntity)
 
       if(identifiersToProcess.isEmpty) {
         complete(Found, s"All requested entities are already indexed.")

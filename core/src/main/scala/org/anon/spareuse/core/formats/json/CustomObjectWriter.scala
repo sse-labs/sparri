@@ -3,6 +3,7 @@ package org.anon.spareuse.core.formats.json
 import org.anon.spareuse.core.formats
 import org.anon.spareuse.core.formats.{AnyValueFormat, BaseValueFormat, ListResultFormat}
 import org.anon.spareuse.core.model.analysis.GraphResult
+import org.anon.spareuse.core.model.entities.JavaEntities.PathIdentifiableJavaEntity
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import spray.json.{DeserializationException, JsArray, JsBoolean, JsNumber, JsObject, JsString, JsValue, JsonWriter, enrichAny}
@@ -15,8 +16,8 @@ class CustomObjectWriter(format: AnyValueFormat) extends JsonWriter[Object] {
     case formats.StringFormat => JsString(obj.toString)
     case formats.NumberFormat => JsNumber(obj.toString)
     case formats.EmptyFormat => JsString("<EMPTY>")
-    case formats.EntityReferenceFormat if obj.isInstanceOf[SoftwareEntityData] =>
-      val entityLike = obj.asInstanceOf[SoftwareEntityData]
+    case formats.EntityReferenceFormat if obj.isInstanceOf[PathIdentifiableJavaEntity] =>
+      val entityLike = obj.asInstanceOf[PathIdentifiableJavaEntity]
       JsString(entityLike.uid)
     case formats.EntityReferenceFormat =>
       JsString(obj.toString)
@@ -62,8 +63,8 @@ class CustomObjectWriter(format: AnyValueFormat) extends JsonWriter[Object] {
   }
 
   private def serializeKey(key: Any, keyFormat: BaseValueFormat): String = keyFormat match {
-    case formats.EntityReferenceFormat if key.isInstanceOf[SoftwareEntityData] =>
-      val entityLike = key.asInstanceOf[SoftwareEntityData]
+    case formats.EntityReferenceFormat if key.isInstanceOf[PathIdentifiableJavaEntity] =>
+      val entityLike = key.asInstanceOf[PathIdentifiableJavaEntity]
       entityLike.uid
     case _ => key.toString
   }

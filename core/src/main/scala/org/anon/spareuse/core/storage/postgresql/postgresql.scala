@@ -16,7 +16,7 @@ import java.time.format.DateTimeFormatter
 
 package object postgresql {
 
-  case class SoftwareEntityRepr(id: Long, name: String, fqn: String, language: String, kindId: Int,
+  case class SoftwareEntityRepr(id: Long, name: String, identifier: String, language: String, kindId: Int,
                                 repository: String, parentId: Option[Long], hexHash: Option[String])
 
   class SoftwareEntities(tag: Tag) extends Table[SoftwareEntityRepr](tag, "entities") {
@@ -25,7 +25,7 @@ package object postgresql {
 
     def name: Rep[String] = column[String]("NAME")
 
-    def qualifier: Rep[String] = column[String]("FQ", O.Unique)
+    def identifier: Rep[String] = column[String]("IDENTIFIER")
 
     def language: Rep[String] = column[String]("LANG")
 
@@ -38,10 +38,12 @@ package object postgresql {
     def hash: Rep[Option[String]] = column[Option[String]]("HASH")
 
     override def * : ProvenShape[SoftwareEntityRepr] =
-      (id, name, qualifier, language, kind, repository, parentID, hash)<> ((SoftwareEntityRepr.apply _).tupled, SoftwareEntityRepr.unapply)
+      (id, name, identifier, language, kind, repository, parentID, hash)<> ((SoftwareEntityRepr.apply _).tupled, SoftwareEntityRepr.unapply)
 
     def parent: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
       foreignKey("PARENT_FK", parentID, TableQuery[SoftwareEntities])(_.id.?)
+
+    def idx = index("unique_ident", (parentID, identifier), unique = true)
   }
 
 

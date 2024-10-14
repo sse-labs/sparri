@@ -77,11 +77,11 @@ package object model {
 
     EntityRepr(
       entity.name,
-      entity.uid,
+      entity.id,
       entity.kind.toString,
       entity.language,
       entity.repository,
-      entity.getParent.map(_.uid),
+      entity.getParent.map(_.id),
       entity.binaryHash.map(toHex),
       children,
       thisTypeFqnOpt,
@@ -113,12 +113,12 @@ package object model {
       data.uid,
       data.isRevoked,
       data.content.asInstanceOf[String],
-      data.affectedEntities.map(_.uid)
+      data.affectedEntities.map(_.id)
     )
   }
 
   def genericEntityToEntityRepr(entity: GenericEntityData): EntityRepr = {
-    EntityRepr(entity.name, entity. uid, entity.kind.toString, entity.language, entity.repository, entity.parentUid,
+    EntityRepr(entity.name, entity.id, entity.kind.toString, entity.language, entity.repository, entity.parentEid,
       entity.binaryHash.map(toHex), None, None, None, None, None, None, None, None, None, None, None, None, None)
   }
 }

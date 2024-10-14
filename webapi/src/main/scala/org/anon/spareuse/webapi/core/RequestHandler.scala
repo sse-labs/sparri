@@ -1,10 +1,10 @@
 package org.anon.spareuse.webapi.core
 
-import org.anon.spareuse.webapi.model.{genericEntityToEntityRepr, toAnalysisFormatRepr, toAnalysisRepr, toEntityRepr, toResultRepr, toRunRepr}
+import org.anon.spareuse.webapi.model.{toAnalysisFormatRepr, toAnalysisRepr, toEntityRepr, toResultRepr, toRunRepr}
 import org.anon.spareuse.core.utils.rabbitmq.MqMessageWriter
 import org.anon.spareuse.core.model.{RunState, SoftwareEntityKind}
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import org.anon.spareuse.core.model.analysis.{AnalysisCommand, IncrementalAnalysisCommand, RunnerCommand, RunnerCommandJsonSupport}
+import org.anon.spareuse.core.model.analysis.{AnalysisCommand, RunnerCommandJsonSupport}
 import org.anon.spareuse.core.model.entities.{MinerCommand, MinerCommandJsonSupport}
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.webapi.WebapiConfig
@@ -20,8 +20,18 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
 
   private val log: Logger = LoggerFactory.getLogger(getClass)
 
-  def hasEntity(entityName: String): Boolean = {
-    dataAccessor.hasEntity(entityName)
+  def hasEntity(eid: Long): Boolean = {
+    dataAccessor.hasEntity(eid)
+  }
+
+  def validIndexEntity(ident: String): Boolean = {
+    val parts = ident.split(":")
+
+    parts.size match {
+      case 2 => true // Libraries can always be re-indexed to update new versions
+      case 3 => !dataAccessor.hasProgram(ident)
+      case _ => false // We only allow G:A or G:A:Vs to be indexed
+    }
   }
 
   def getAnalyses(limit: Int, skip: Int): Try[Set[AnalysisInformationRepr]] = {
@@ -48,7 +58,7 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
       .map(toAnalysisFormatRepr)
   }
 
-  def getAnalysisRuns(analysisName: String, analysisVersion: String, inputFilter: Option[String], limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
+  def getAnalysisRuns(analysisName: String, analysisVersion: String, inputFilter: Option[Long], limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
 
     if(inputFilter.isDefined){
       dataAccessor
@@ -61,9 +71,9 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     }
   }
 
-  def getAnalysisRunsForEntity(entityName: String, limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
+  def getAnalysisRunsForEntity(entityId: Long, limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
     dataAccessor
-      .getAnalysisRunsForEntity(entityName, None, skip, limit)
+      .getAnalysisRunsForEntity(entityId, None, skip, limit)
       .map(allRuns => allRuns.map(toRunRepr))
   }
 
@@ -76,7 +86,7 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     dataAccessor.hasAnalysisRun(analysisName, version, runUid)
   }
 
-  def getAllEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Future[Seq[EntityRepr]] = {
+  def getAllEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[Long]): Future[Seq[EntityRepr]] = {
 
     dataAccessor
       .getEntities(limit, skip, kindFilter, parentFilter)
@@ -85,30 +95,30 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
       }
   }
 
-  def getEntity(entityName: String, resolutionDepth: Option[Int]): Future[EntityRepr] = {
+  def getEntity(eid: Long, resolutionDepth: Option[Int]): Future[EntityRepr] = {
 
     // Make sure the default depth is 2. If somebody wants the entire tree, they need to pass a value larger than 5
     dataAccessor
-      .getEntity(entityName, Some(resolutionDepth.getOrElse(2)))
+      .getEntity(eid, Some(resolutionDepth.getOrElse(2)))
       .map(toEntityRepr)
   }
 
-  def isLibrary(entityName: String): Boolean = {
-    dataAccessor.getEntityKind(entityName).map( _ == SoftwareEntityKind.Library).getOrElse(false)
+  def isLibrary(eid: Long): Boolean = {
+    dataAccessor.getEntityKind(eid).map( _ == SoftwareEntityKind.Library).getOrElse(false)
   }
 
-  def getEntityChildren(entityName: String, skip: Int, limit: Int): Try[Seq[EntityRepr]] = Try {
-    dataAccessor.getEntityChildren(entityName, skip, limit).get.map(toEntityRepr)
+  def getEntityChildren(eid: Long, skip: Int, limit: Int): Try[Seq[EntityRepr]] = Try {
+    dataAccessor.getEntityChildren(eid, skip, limit).get.map(toEntityRepr)
   }
 
-  def getAllResultsFor(entityName: String, analysisFilter: Option[String], limit: Int, skip: Int): Try[Set[AnalysisResultRepr]] = {
+  def getAllResultsFor(eid: Long, analysisFilter: Option[String], limit: Int, skip: Int): Try[Set[AnalysisResultRepr]] = {
     val analysisNameAndVersionOpt = analysisFilter.map( s => {
       val parts = s.split(":")
       (parts(0).trim, parts(1).trim)
     })
 
     dataAccessor
-      .getJSONResultsFor(entityName, analysisNameAndVersionOpt, limit, skip)
+      .getJSONResultsFor(eid, analysisNameAndVersionOpt, limit, skip)
       .map(results => results.map(toResultRepr))
   }
 
@@ -125,7 +135,7 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
         Success(
           runs.find{ r =>
 
-            val runInputs = r.inputs.map(_.uid)
+            val runInputs = r.inputs.map(_.id)
 
             r.configuration.equals(request.Configuration) &&
             runInputs.equals(requestInputs) &&
@@ -141,6 +151,12 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
   def validateRunRequest(analysisName: String, analysisVersion: String, request: ExecuteAnalysisRequest): (Boolean, String) = {
 
     val isIncrementalAnalysis = dataAccessor.isIncrementalAnalysis(analysisName, analysisVersion)
+
+    val invalidEntityIds = request.Inputs.filterNot(id => dataAccessor.hasEntity(id))
+
+    if(invalidEntityIds.nonEmpty){
+      return (false, s"Input entity ids not found in index: ${invalidEntityIds.mkString(",")}")
+    }
 
     if(request.BaselineRun.isDefined && !isIncrementalAnalysis) {
       (false, "A baseline run cannot be specified for non-incremental analyses.")

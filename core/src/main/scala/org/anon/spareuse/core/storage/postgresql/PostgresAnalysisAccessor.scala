@@ -126,10 +126,9 @@ trait PostgresAnalysisAccessor {
     getAnalysisRuns(analysisId, analysisName, analysisVersion, includeResults, skip, limit)
   }
 
-  override def getAnalysisRunsForEntity(entityName: String, analysisFilter: Option[(String, String)], skip: Int, limit: Int): Try[Set[AnalysisRunData]] = Try {
-    val entityId = getEntityId(entityName)
+  override def getAnalysisRunsForEntity(eid: Long, analysisFilter: Option[(String, String)], skip: Int, limit: Int): Try[Set[AnalysisRunData]] = Try {
 
-    val allRunsQuery = for (((_, run), analysis) <- analysisRunInputsTable.filter(_.inputEntityID === entityId) join analysisRunsTable on (_.analysisRunID === _.id) join analysesTable on (_._2.parentID === _.id))
+    val allRunsQuery = for (((_, run), analysis) <- analysisRunInputsTable.filter(_.inputEntityID === eid) join analysisRunsTable on (_.analysisRunID === _.id) join analysesTable on (_._2.parentID === _.id))
       yield (run, analysis)
 
     val theQuery = if (analysisFilter.isDefined) {
@@ -181,13 +180,13 @@ trait PostgresAnalysisAccessor {
     Await.ready(action, simpleQueryTimeout)
   }
 
-  override def setRunState(runUid: String, state: RunState, runInputIdsOpt: Option[Set[String]]): Try[Unit] = Try {
+  override def setRunState(runUid: String, state: RunState, runInputIdsOpt: Option[Set[Long]]): Try[Unit] = Try {
     val runRepr = getRunRepr(runUid)
     setRunState(runRepr.id, state.id)
 
     if (runInputIdsOpt.isDefined) {
       // Connect inputs to run
-      val inputEntityIds = Await.result(db.run(entitiesTable.filter(e => e.qualifier inSet runInputIdsOpt.get).map(_.id).result), simpleQueryTimeout)
+      val inputEntityIds = Await.result(db.run(entitiesTable.filter(e => e.id inSet runInputIdsOpt.get).map(_.id).result), simpleQueryTimeout)
 
       val inputInsertAction = db.run(DBIO.sequence(inputEntityIds.map(id => analysisRunInputsTable += AnalysisRunInput(-1, runRepr.id, id))))
       Await.ready(inputInsertAction, simpleQueryTimeout)
@@ -224,7 +223,7 @@ trait PostgresAnalysisAccessor {
       val resultDbId = Await.result(db.run(idReturningResultTable += resultDbObj), simpleQueryTimeout)
 
       // Connect to affected entities
-      runResult.affectedEntities.map(e => getEntityRepr(e.uid, e.kind).get.id).foreach { affectedEntityId =>
+      runResult.affectedEntities.map(e => getEntityRepr(e.id, e.kind).get.id).foreach { affectedEntityId =>
         Await.ready(db.run(resultValiditiesTable += AnalysisResultValidity(-1, resultDbId, affectedEntityId)), simpleQueryTimeout)
       }
 
@@ -316,10 +315,7 @@ trait PostgresAnalysisAccessor {
     uuid
   }
 
-  override def getJSONResultsFor(entityName: String, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]] = Try {
-
-
-    val eid = getEntityId(entityName)
+  override def getJSONResultsFor(eid: Long, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]] = Try {
 
     // Get all results associated with this entity
     val allEntityResultsQuery =

@@ -21,7 +21,7 @@ trait AnalysisAccessor {
 
   def getAnalysisRuns(analysisName: String, analysisVersion: String, includeResults: Boolean = false, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisRunData]]
 
-  def getAnalysisRunsForEntity(entityName: String, analysisFilter: Option[(String, String)], skip: Int = 0, limit: Int = 100): Try[Set[AnalysisRunData]]
+  def getAnalysisRunsForEntity(eid: Long, analysisFilter: Option[(String, String)], skip: Int = 0, limit: Int = 100): Try[Set[AnalysisRunData]]
 
   def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false): Try[AnalysisRunData]
 
@@ -56,7 +56,7 @@ trait AnalysisAccessor {
    */
   def getRunResultsAsJSON(runUid: String, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]]
 
-  def setRunState(runUid: String, state: RunState, runInputIdsOpt: Option[Set[String]]): Try[Unit]
+  def setRunState(runUid: String, state: RunState, runInputIdsOpt: Option[Set[Long]]): Try[Unit]
 
   def getFreshResultUuids(noOfUuids: Int): Set[String]
 
@@ -76,14 +76,14 @@ trait AnalysisAccessor {
    * use-cases in the API, where results will be retrieved, serialized and returned to the user either way, thus saving a
    * deserialization-serialization roundtrip.
    *
-   * @param entityName Unique entity name to retrieve results for
+   * @param eid Unique entity ID to retrieve results for
    * @param analysisFilter Optional filter for a given pair of analysis name and version
    * @param limit pagination: Number of results to retrieve
    * @param skip pagination: Number of results to skip
    * @return Try of the set of results for this entity. The 'content: Object' attribute will hold the result contents as
    *         a PLAIN JSON STRING
    */
-  def getJSONResultsFor(entityName: String, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]]
+  def getJSONResultsFor(eid: Long, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]]
 
   def getAllResults(analysisName: String, analysisVersion: String, limit: Int, skip: Int): Future[Set[AnalysisResultData]]
 

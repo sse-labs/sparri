@@ -255,11 +255,11 @@ abstract class AbstractRTABuilder(programs: Set[JavaProgram], jreVersionToLoad: 
             if(at.isObjectType){
               // hashCode, equals and toString on array types involve calling the respective method on their component type!
               // Hence, we rewrite the invoke statement to point to the component type instead
-              val correctedInvocation = new JavaInvokeStatement(jis.targetMethodName, at.toJVMTypeName, jis.targetDescriptor, jis.invokeStatementType, jis.instructionPc, jis.uid, jis.repository)
+              val correctedInvocation = new JavaInvokeStatement(jis.targetMethodName, at.toJVMTypeName, jis.targetDescriptor, jis.invokeStatementType, jis.instructionPc, jis.id, jis.repository)
               resolveInvocation(correctedInvocation, callingContext, typeSelectable, simpleCaching)
             } else {
               // if one of the three methods is invoked on a primitive component type, we refer to object as the declaring type
-              val correctedInvocation = new JavaInvokeStatement(jis.targetMethodName, "java/lang/Object", jis.targetDescriptor, jis.invokeStatementType, jis.instructionPc, jis.uid, jis.repository)
+              val correctedInvocation = new JavaInvokeStatement(jis.targetMethodName, "java/lang/Object", jis.targetDescriptor, jis.invokeStatementType, jis.instructionPc, jis.id, jis.repository)
               resolveInvocation(correctedInvocation, callingContext, typeSelectable, simpleCaching)
             }
           case _ =>

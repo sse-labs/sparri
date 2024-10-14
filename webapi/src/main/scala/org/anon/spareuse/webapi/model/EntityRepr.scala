@@ -4,11 +4,11 @@ import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import spray.json.{DefaultJsonProtocol, JsonFormat}
 
 final case class EntityRepr (Name: String,
-                             Identifier: String,
+                             ID: Long,
                              Kind: String,
                              Language: String,
                              Repository: String,
-                             ParentId: Option[String],
+                             ParentId: Option[Long],
                              Hash: Option[String],
                              Children: Option[Array[EntityRepr]],
                              ThisTypeFqn: Option[String],
