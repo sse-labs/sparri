@@ -56,7 +56,6 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
   override protected def buildStreamPipeline(source: Source[String, NotUsed]): Future[Done] = {
     source
       .map(messageToCommand)
-      .buffer(20, OverflowStrategy.backpressure)
       .runWith(storeAllSink)(streamMaterializer)
   }
 
