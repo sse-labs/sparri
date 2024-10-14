@@ -107,6 +107,20 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
     val allMethods = allClasses.flatMap(_.getChildren)
     val allStatements = allMethods.flatMap(_.getChildren)
 
+    def insertNamesBatchF(batch: Set[String]): Future[Set[(String, Long)]] = {
+      Future.sequence(batch.map { name =>
+        db.run(typeNameTable.filter(_.name === name).take(1).map(_.id).result).flatMap { idSeq =>
+          if (idSeq.isEmpty) {
+            db
+              .run(idReturningTypeNameTable += JavaTypeName(0, name))
+              .map(idResult => (name, idResult))
+          } else {
+            Future.successful((name, idSeq.head))
+          }
+        }
+      })
+    }
+
     val allTypeNames = allClasses.flatMap {
       case jc: JavaClass =>
         Set(jc.thisType) ++ jc.superType.toSet ++ jc.interfaceTypes
@@ -117,19 +131,22 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
         Set(field.targetFieldTypeName, field.targetTypeName)
     }.flatten
 
-    val allNamesFuture = Future.sequence(allTypeNames.map{ name =>
-      db.run(typeNameTable.filter(_.name === name).take(1).map(_.id).result).flatMap{ idSeq =>
-        if(idSeq.isEmpty){
-          db
-            .run(idReturningTypeNameTable += JavaTypeName(0, name))
-            .map(idResult => (name, idResult))
-        } else {
-          Future.successful((name, idSeq.head))
-        }
-      }
-    })
+    val allTypeNameBatches = allTypeNames.grouped(100)
 
-    val typeNameLookup = Await.result(allNamesFuture, 60.seconds).toMap
+    val typeNameLookup = if(allTypeNameBatches.nonEmpty){
+      var allNamesFuture: Future[Set[(String, Long)]] = null
+
+      allTypeNameBatches.foreach { batch =>
+        if (allNamesFuture == null)
+          allNamesFuture = insertNamesBatchF(batch)
+        else
+          allNamesFuture = allNamesFuture.flatMap { results =>
+            insertNamesBatchF(batch).map(newResult => newResult ++ results)
+          }
+      }
+
+      Await.result(allNamesFuture, 60.seconds).toMap
+    } else Map.empty[String, Long]
 
     log.debug(s"Successfully indexed ${typeNameLookup.size} type names for program ${jp.name}")
 
@@ -149,7 +166,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
     }
 
     val allDescriptorBatches = (allMethods.map { case jm: JavaMethod => jm.descriptor } ++
-      allStatements.collect { case invoke: JavaInvokeStatement => invoke.targetDescriptor }).grouped(50).toSeq
+      allStatements.collect { case invoke: JavaInvokeStatement => invoke.targetDescriptor }).grouped(100).toSeq
 
     val descriptorLookup = if(allDescriptorBatches.nonEmpty){
       var allDescriptorsFuture: Future[Set[(String, Long)]] = null
