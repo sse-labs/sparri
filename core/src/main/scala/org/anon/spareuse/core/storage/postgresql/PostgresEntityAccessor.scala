@@ -3,7 +3,7 @@ package org.anon.spareuse.core.storage.postgresql
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityData}
-import org.anon.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassRepr, JavaFieldAccessRepr, JavaInvocationRepr, JavaMethodRepr, JavaProgramRepr}
+import org.anon.spareuse.core.storage.postgresql.JavaDefinitions.{JavaClassInterface, JavaClassRepr, JavaFieldAccessRepr, JavaInvocationRepr, JavaMethodDescriptor, JavaMethodRepr, JavaProgramRepr, JavaTypeName}
 import org.anon.spareuse.core.storage.EntityAccessor
 import org.anon.spareuse.core.utils.fromHex
 import slick.jdbc.PostgresProfile.api._
@@ -15,6 +15,38 @@ trait PostgresEntityAccessor extends EntityAccessor {
   this: PostgresSparriSupport =>
 
   implicit val executor: ExecutionContext
+
+  private final val statementKindIds = Set(SoftwareEntityKind.InvocationStatement.id, SoftwareEntityKind.FieldAccessStatement.id, SoftwareEntityKind.NewInstanceStatement.id)
+
+  /**
+   * A lookup method that is not dependent on the fully-explicit FQN field for entities - SLOW ...
+   * @param ident Fully-Explicit entity FQN (old format, "!"-separated)
+   * @return Option holding the EntityRepr if it exists
+   */
+  private def getEntityDataFromIdent(ident: String): Option[SoftwareEntityRepr] = {
+    val identParts = ident.split("!").zipWithIndex
+
+    var query: Query[SoftwareEntities, SoftwareEntities#TableElementType, Seq] = null
+
+    for((currIdent, currLevel) <- identParts){
+
+      if(query == null){
+        query = if (currLevel < SoftwareEntityKind.InvocationStatement.id) {
+          entitiesTable.filter(swe => swe.kind === currLevel && swe.name === currIdent).take(1)
+        } else {
+          entitiesTable.filter(swe => swe.name === currIdent && swe.kind.inSet(statementKindIds)).take(1)
+        }
+      } else {
+        val kindSet = if(currLevel < SoftwareEntityKind.InvocationStatement.id) Set(currLevel) else statementKindIds
+        query = (for{ (_, child) <- query join entitiesTable on (_.id === _.parentID) if child.name === currIdent && child.kind.inSet(kindSet) } yield child).take(1)
+      }
+    }
+
+    val result = Await.result(db.run(query.result), longActionTimeout)
+
+    result.headOption
+  }
+
 
   override def hasEntity(ident: String, kind: SoftwareEntityKind): Boolean = {
     val queryF = db.run(entitiesTable.filter(swe => swe.qualifier === ident && swe.kind === kind.id).exists.result)
@@ -113,25 +145,40 @@ trait PostgresEntityAccessor extends EntityAccessor {
 
   case class SpecificationTables(programT: Map[Long, JavaProgramRepr],
                                  classT: Map[Long, JavaClassRepr],
+                                 classInterfaceT: Map[Long, Seq[Long]],
                                  methodT: Map[Long, JavaMethodRepr],
                                  invocationT: Map[Long, JavaInvocationRepr],
-                                 fieldAccessT: Map[Long, JavaFieldAccessRepr]) {
+                                 fieldAccessT: Map[Long, JavaFieldAccessRepr],
+                                 typeNameT: Map[Long, String],
+                                 descriptorT: Map[Long, String]) {
     def withClasses(classes: Seq[JavaClassRepr]): SpecificationTables =
-      SpecificationTables(programT, classes.map(c => (c._1, c)).toMap, methodT, invocationT, fieldAccessT)
+      SpecificationTables(programT, classes.map(c => (c.id, c)).toMap, classInterfaceT, methodT, invocationT, fieldAccessT, typeNameT, descriptorT)
+
+    def withClassInterfaces(classInterfaces: Seq[JavaClassInterface]): SpecificationTables = {
+      SpecificationTables(programT, classT, classInterfaces.map(ci => (ci.classId, ci.interfaceId)).groupMap(_._1)(_._2), methodT, invocationT, fieldAccessT, typeNameT, descriptorT)
+    }
 
     def withMethods(methods: Seq[JavaMethodRepr]): SpecificationTables =
-      SpecificationTables(programT, classT, methods.map(m => (m._1, m)).toMap, invocationT, fieldAccessT)
+      SpecificationTables(programT, classT, classInterfaceT, methods.map(m => (m.id, m)).toMap, invocationT, fieldAccessT, typeNameT, descriptorT)
 
     def withInvocations(invocations: Seq[JavaInvocationRepr]): SpecificationTables =
-      SpecificationTables(programT, classT, methodT, invocations.map(i => (i._1, i)).toMap, fieldAccessT)
+      SpecificationTables(programT, classT, classInterfaceT, methodT, invocations.map(i => (i.id, i)).toMap, fieldAccessT, typeNameT, descriptorT)
 
     def withFieldAccesses(fieldAccesses: Seq[JavaFieldAccessRepr]): SpecificationTables =
-      SpecificationTables(programT, classT, methodT, invocationT, fieldAccesses.map(f => (f._1, f)).toMap)
+      SpecificationTables(programT, classT, classInterfaceT, methodT, invocationT, fieldAccesses.map(f => (f.id, f)).toMap, typeNameT, descriptorT)
+
+    def withTypeNames(names: Seq[JavaTypeName]): SpecificationTables = {
+      SpecificationTables(programT, classT, classInterfaceT, methodT, invocationT, fieldAccessT, names.map(n => (n.id, n.name)).toMap, descriptorT)
+    }
+
+    def withDescriptors(desciptors: Seq[JavaMethodDescriptor]): SpecificationTables = {
+      SpecificationTables(programT, classT, classInterfaceT, methodT, invocationT, fieldAccessT, typeNameT, desciptors.map(d => (d.id, d.descriptor)).toMap)
+    }
   }
 
   object SpecificationTables {
     def fromPrograms(programs: Seq[JavaProgramRepr]): SpecificationTables =
-      SpecificationTables(programs.map(p => (p._1, p)).toMap, null, null, null, null)
+      SpecificationTables(programs.map(p => (p._1, p)).toMap, null, null, null, null, null, null, null)
   }
 
   private[storage] def getSpecificationTables(allRepresentations: Seq[SoftwareEntityRepr]): Future[SpecificationTables] = {
@@ -149,6 +196,11 @@ trait PostgresEntityAccessor extends EntityAccessor {
           .run(javaClassesTable.filter(_.id inSet allClassIds).result)
           .map(specTables.withClasses)
       }
+      .flatMap{ specTables =>
+        db
+          .run(javaClassInterfacesTable.filter(_.classId inSet allClassIds).result)
+          .map(specTables.withClassInterfaces)
+      }
       .flatMap { specTables =>
         db
           .run(javaMethodsTable.filter(_.id inSet allMethodIds).result)
@@ -163,6 +215,24 @@ trait PostgresEntityAccessor extends EntityAccessor {
         db
           .run(javaFieldAccessesTable.filter(_.id inSet allFieldAccessIds).result)
           .map(specTables.withFieldAccesses)
+      }
+      .flatMap{ specTables =>
+        val allNameIds =
+          specTables.classT.values.flatMap(cr => Set(cr.typeNameId) ++ cr.superTypeNameId.toSet) ++
+          specTables.classInterfaceT.values.flatten ++
+          specTables.invocationT.values.map(invoke => invoke.declTypeNameId) ++
+          specTables.fieldAccessT.values.flatMap(access => Set(access.declTypeNameId, access.fieldTypeNameId))
+
+        db
+          .run(typeNameTable.filter(_.id inSet allNameIds).result)
+          .map(specTables.withTypeNames)
+      }
+      .flatMap { specTables =>
+        val allDescriptorIds = specTables.methodT.values.map(_.descriptorId) ++ specTables.invocationT.values.map(_.descriptorId)
+
+        db
+          .run(descriptorTable.filter(_.id inSet allDescriptorIds).result)
+          .map(specTables.withDescriptors)
       }
 
 
@@ -183,13 +253,15 @@ trait PostgresEntityAccessor extends EntityAccessor {
             case SoftwareEntityKind.Package =>
               JavaConverter.toPackage(entityRepr)
             case SoftwareEntityKind.Class =>
-              JavaConverter.toClass(entityRepr, specificationTables.classT(entityRepr.id))
+              val classRep = specificationTables.classT(entityRepr.id)
+              val interfaces = specificationTables.classInterfaceT.get(classRep.id).map(iSeq => iSeq.map(specificationTables.typeNameT)).getOrElse(Seq.empty).toSet
+              JavaConverter.toClass(entityRepr, specificationTables.classT(entityRepr.id), interfaces, specificationTables.typeNameT)
             case SoftwareEntityKind.Method =>
-              JavaConverter.toMethod(entityRepr, specificationTables.methodT(entityRepr.id))
+              JavaConverter.toMethod(entityRepr, specificationTables.methodT(entityRepr.id), specificationTables.descriptorT)
             case SoftwareEntityKind.InvocationStatement =>
-              JavaConverter.toInvocation(entityRepr, specificationTables.invocationT(entityRepr.id))
+              JavaConverter.toInvocation(entityRepr, specificationTables.invocationT(entityRepr.id), specificationTables.typeNameT, specificationTables.descriptorT)
             case SoftwareEntityKind.FieldAccessStatement =>
-              JavaConverter.toFieldAccess(entityRepr, specificationTables.fieldAccessT(entityRepr.id))
+              JavaConverter.toFieldAccess(entityRepr, specificationTables.fieldAccessT(entityRepr.id), specificationTables.typeNameT)
             case SoftwareEntityKind.NewInstanceStatement =>
               JavaConverter.toNewInstanceCreation(entityRepr)
           }
@@ -279,65 +351,6 @@ trait PostgresEntityAccessor extends EntityAccessor {
     }
   }
 
-  private def getProgramTableData(idsToRetrieve: Seq[Long]): Seq[JavaProgramRepr] = {
-    if (idsToRetrieve.isEmpty) return Seq.empty
-    val queryF = db.run(javaProgramsTable.filter(jp => jp.id inSet idsToRetrieve).result)
 
-    Await.result(queryF, simpleQueryTimeout)
-  }
-
-  private def getClassTableData(idsToRetrieve: Seq[Long]): Seq[JavaClassRepr] = {
-    if (idsToRetrieve.isEmpty) return Seq.empty
-    val queryF = db.run(javaClassesTable.filter(jc => jc.id inSet idsToRetrieve).result)
-
-    Await.result(queryF, simpleQueryTimeout)
-  }
-
-  private def getMethodTableData(idsToRetrieve: Seq[Long]): Seq[JavaMethodRepr] = {
-    if (idsToRetrieve.isEmpty) return Seq.empty
-    val queryF = db.run(javaMethodsTable.filter(jm => jm.id inSet idsToRetrieve).result)
-
-    Await.result(queryF, simpleQueryTimeout)
-  }
-
-  private def getInvocationTableData(idsToRetrieve: Seq[Long]): Seq[JavaInvocationRepr] = {
-    if (idsToRetrieve.isEmpty) return Seq.empty
-    val queryF = db.run(javaInvocationsTable.filter(ji => ji.id inSet idsToRetrieve).result)
-
-    Await.result(queryF, simpleQueryTimeout)
-  }
-
-  private def getFieldAccessTableData(idsToRetrieve: Seq[Long]): Seq[JavaFieldAccessRepr] = {
-    if (idsToRetrieve.isEmpty) return Seq.empty
-    val queryF = db.run(javaFieldAccessesTable.filter(jfa => jfa.id inSet idsToRetrieve).result)
-
-    Await.result(queryF, simpleQueryTimeout)
-  }
-
-
-  protected[storage] def buildEntities(reprs: Seq[SoftwareEntityRepr]): Seq[SoftwareEntityData] = buildEntitiesIdMap(reprs).values.toSeq
-
-  protected[storage] def buildEntitiesIdMap(reprs: Seq[SoftwareEntityRepr]): Map[Long, SoftwareEntityData] = {
-    //Retrieve all data from extension tables
-    val allProgramsData: Map[Long, JavaProgramRepr] = getProgramTableData(reprs.filter(_.kindId == SoftwareEntityKind.Program.id).map(_.id)).map(r => (r._1, r)).toMap
-    val allClassesData: Map[Long, JavaClassRepr] = getClassTableData(reprs.filter(repr => repr.kindId == SoftwareEntityKind.Class.id).map(_.id)).map(r => (r._1, r)).toMap
-    val allMethodsData: Map[Long, JavaMethodRepr] = getMethodTableData(reprs.filter(repr => repr.kindId == SoftwareEntityKind.Method.id).map(_.id)).map(r => (r._1, r)).toMap
-    val allInvokeStmtData: Map[Long, JavaInvocationRepr] = getInvocationTableData(reprs.filter(repr => repr.kindId == SoftwareEntityKind.InvocationStatement.id).map(_.id)).map(r => (r._1, r)).toMap
-    val allFieldAccessStmtData: Map[Long, JavaFieldAccessRepr] = getFieldAccessTableData(reprs.filter(repr => repr.kindId == SoftwareEntityKind.FieldAccessStatement.id).map(_.id)).map(r => (r._1, r)).toMap
-
-    reprs.map { repr =>
-      val entityObj = SoftwareEntityKind.fromId(repr.kindId) match {
-        case SoftwareEntityKind.Library => JavaConverter.toLib(repr)
-        case SoftwareEntityKind.Program => JavaConverter.toProgram(repr, allProgramsData(repr.id))
-        case SoftwareEntityKind.Package => JavaConverter.toPackage(repr)
-        case SoftwareEntityKind.Class => JavaConverter.toClass(repr, allClassesData(repr.id))
-        case SoftwareEntityKind.Method => JavaConverter.toMethod(repr, allMethodsData(repr.id))
-        case SoftwareEntityKind.InvocationStatement => JavaConverter.toInvocation(repr, allInvokeStmtData(repr.id))
-        case SoftwareEntityKind.FieldAccessStatement => JavaConverter.toFieldAccess(repr, allFieldAccessStmtData(repr.id))
-        case SoftwareEntityKind.NewInstanceStatement => JavaConverter.toNewInstanceCreation(repr)
-      }
-
-      (repr.id, entityObj)
-    }.toMap
-  }
+  protected[storage] def buildEntities(reprs: Seq[SoftwareEntityRepr]): Seq[SoftwareEntityData] = Await.result(specializeAll(reprs), longActionTimeout).values.toSeq
 }
