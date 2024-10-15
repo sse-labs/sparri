@@ -131,14 +131,19 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
   def getRunIdIfPresent(analysisName: String, analysisVersion: String, request: ExecuteAnalysisRequest): Try[Option[String]] = {
     dataAccessor.getAnalysisRuns(analysisName, analysisVersion) match {
       case Success(runs) =>
-        val requestInputs = request.Inputs.toSet
+        val requestInputsRaw = request.Inputs.toSet
+        val requestInputIdOpts = requestInputsRaw.map(iName => dataAccessor.getEntityIdFor(iName.split("!").toIndexedSeq))
+
+        // Run cannot be present if input is not known
+        if(requestInputIdOpts.exists(_.isEmpty)) return Success(None)
+
         Success(
           runs.find{ r =>
 
             val runInputs = r.inputs.map(_.id)
 
             r.configuration.equals(request.Configuration) &&
-            runInputs.equals(requestInputs) &&
+            runInputs.equals(requestInputIdOpts.map(_.get)) &&
             r.state.equals(RunState.Finished)
           }.map(_.uid)
         )
@@ -152,10 +157,12 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
 
     val isIncrementalAnalysis = dataAccessor.isIncrementalAnalysis(analysisName, analysisVersion)
 
-    val invalidEntityIds = request.Inputs.filterNot(id => dataAccessor.hasEntity(id))
+    val allEntityIdOpts = request.Inputs.map(iName => (iName, dataAccessor.getEntityIdFor(iName.split("!").toIndexedSeq)))
+
+    val invalidEntityIds = allEntityIdOpts.filter(_._2.isEmpty).map(_._1)
 
     if(invalidEntityIds.nonEmpty){
-      return (false, s"Input entity ids not found in index: ${invalidEntityIds.mkString(",")}")
+      return (false, s"Input entities not found in index: ${invalidEntityIds.mkString(",")}")
     }
 
     if(request.BaselineRun.isDefined && !isIncrementalAnalysis) {
@@ -185,8 +192,11 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     // Queue run execution
     val name = s"$analysisName:$analysisVersion"
 
+    // This "get" works because the validation would have filtered out invalid entity names beforehand
+    val entityIds = request.Inputs.toSet[String].map(iName => dataAccessor.getEntityIdFor(iName.split("!").toIndexedSeq).get)
+
     // We assume all validation has been done beforehand, i.e. validateRunRequest has been called
-    val command = AnalysisCommand(name, newId, request.User.getOrElse("Anonymous"), request.Inputs.toSet, request.Configuration)
+    val command = AnalysisCommand(name, newId, request.User.getOrElse("Anonymous"), entityIds, request.Configuration)
 
     val commandJson = if(isIncrementalAnalysis) command.asIncremental(request.BaselineRun).toJson.compactPrint
     else command.toJson.compactPrint
@@ -200,6 +210,10 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
 
     newId
 
+  }
+
+  def identifierToEntityId(identifier: String): Option[Long] = {
+    dataAccessor.getEntityIdFor(identifier.split("!").toIndexedSeq)
   }
 
   def getRunResults(runId: String, limit: Int, skip: Int): Try[Set[AnalysisResultRepr]] = {

@@ -3,13 +3,12 @@ package org.anon.spareuse.webapi.server.routes
 import akka.NotUsed
 import akka.http.scaladsl.model.HttpEntity.{ChunkStreamPart, Chunked}
 import akka.http.scaladsl.model.{ContentTypes, HttpRequest, HttpResponse}
-import akka.http.scaladsl.model.StatusCodes.{Accepted, BadRequest, NotFound, NotImplemented}
+import akka.http.scaladsl.model.StatusCodes.{BadRequest, NotFound}
 import akka.http.scaladsl.model.headers.{ContentDispositionTypes, `Content-Disposition`}
 import akka.http.scaladsl.server.Directives.{as, complete, entity}
 import akka.http.scaladsl.server.Route
 import akka.stream.scaladsl.Source
 import org.anon.spareuse.webapi.core.RequestHandler
-import org.anon.spareuse.webapi.model.JsonSupport
 import org.anon.spareuse.webapi.model.JsonSupport
 import org.slf4j.{Logger, LoggerFactory}
 import spray.json.{JsObject, JsonReader}
@@ -26,10 +25,19 @@ trait BasicRouteDefinition extends JsonSupport {
   //  ------------------------------
   //  |    404 UTILITIES           |
   //  ------------------------------
-  protected def ensureEntityPresent(entityName: String)(implicit route: Route): Route = {
-    if(entityName.toLongOption.isEmpty) complete(BadRequest, s"Entity ID must be valid Long-Value: $entityName")
-    else if(requestHandler.hasEntity(entityName.toLong)) route
-    else complete(NotFound, s"Entity $entityName was not found in database")
+  protected def ensureEntityPresent(entityName: String)(implicit route: Long => Route): Route = {
+
+    entityName.toLongOption match {
+      case Some(entityId) if requestHandler.hasEntity(entityId) => route(entityId)
+      case None =>
+        requestHandler.identifierToEntityId(entityName) match {
+          case Some(entityId) => route(entityId)
+          case None =>
+            complete(NotFound, s"No Entity with id or identifier $entityName was found in Database")
+        }
+      case _ =>
+        complete(NotFound, s"No Entity with id or identifier $entityName was found in Database")
+    }
   }
 
   protected def ensureAnalysisPresent(analysisName: String)(implicit route: Route): Route = {

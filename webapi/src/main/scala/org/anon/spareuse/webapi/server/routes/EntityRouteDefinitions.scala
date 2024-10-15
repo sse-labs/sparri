@@ -20,7 +20,7 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
     pathPrefix("entities") {
       pathEnd { allEntitiesRoute() } ~
       pathPrefix(Segment) { entityName =>
-        ensureEntityPresent(entityName) { singleEntityRelatedRoutes(entityName) }
+        ensureEntityPresent(entityName) { eid => singleEntityRelatedRoutes(eid) }
       }
     }
   }
@@ -37,28 +37,28 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
     }
   }
 
-  private def singleEntityRelatedRoutes(entityName: String)(implicit request: HttpRequest): Route = {
+  private def singleEntityRelatedRoutes(entityId: Long)(implicit request: HttpRequest): Route = {
 
 
 
     pathEnd { get {
         parameters("depth".?){ depthOpt =>
           val depthIntOpt = depthOpt.flatMap(_.toIntOption)
-          singleEntityRouteImpl(entityName, depthIntOpt)
+          singleEntityRouteImpl(entityId, depthIntOpt)
         }
     } } ~
     path("children") {
-      get { extractPaginationHeaders(request){ (limit, skip) => allEntityChildrenRouteImpl(entityName, limit, skip) } }
+      get { extractPaginationHeaders(request){ (limit, skip) => allEntityChildrenRouteImpl(entityId, limit, skip) } }
     }~
     path("processedBy"){
-      get { extractPaginationHeaders(request){ (limit, skip) => allAnalysisRunsForEntityRouteImpl(entityName, limit, skip) } }
+      get { extractPaginationHeaders(request){ (limit, skip) => allAnalysisRunsForEntityRouteImpl(entityId, limit, skip) } }
     }~
     path("results"){
       get {
         extractPaginationHeaders(request) { (limit, skip) =>
           // Filter for analyses via query param
           parameters("analysis".?) { analysisOpt =>
-            allResultsForEntityRouteImpl(entityName, limit, skip, analysisOpt)
+            allResultsForEntityRouteImpl(entityId, limit, skip, analysisOpt)
           }
         }
       }
@@ -84,14 +84,14 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
     }
   }
 
-  private def singleEntityRouteImpl(entityIdString: String, depthOpt: Option[Int])(implicit request: HttpRequest): Route = {
-    log.debug(s"Single entity requested, id=$entityIdString, depth=$depthOpt.")
+  private def singleEntityRouteImpl(eid:Long, depthOpt: Option[Int])(implicit request: HttpRequest): Route = {
+    log.debug(s"Single entity requested, id=$eid, depth=$depthOpt.")
 
 
     if (depthOpt.isDefined && depthOpt.get < 0)
       complete(BadRequest, "Depth must be positive integer value")
     else
-      onComplete(requestHandler.getEntity(entityIdString.toLong, depthOpt)) {
+      onComplete(requestHandler.getEntity(eid, depthOpt)) {
         case Success(entity) => complete(entity.toJson)
         case Failure(ex) =>
           log.error("Failure while retrieving single entity information", ex)
@@ -99,9 +99,9 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
       }
   }
 
-  private def allEntityChildrenRouteImpl(entityName: String, limit: Int, skip: Int)(implicit request: HttpRequest): Route = {
-    log.debug(s"Entity children requested, id=$entityName (skip=$skip, limit=$limit) .")
-    requestHandler.getEntityChildren(entityName.toLong, skip, limit) match {
+  private def allEntityChildrenRouteImpl(eid: Long, limit: Int, skip: Int)(implicit request: HttpRequest): Route = {
+    log.debug(s"Entity children requested, id=$eid (skip=$skip, limit=$limit) .")
+    requestHandler.getEntityChildren(eid, skip, limit) match {
       case Success(childReps) =>
         complete(childReps.toJson)
       case Failure(ex) =>
@@ -111,17 +111,17 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
     }
   }
 
-  private def allAnalysisRunsForEntityRouteImpl(entityName: String, limit: Int, skip: Int)(implicit request: HttpRequest): Route = {
-    requestHandler.getAnalysisRunsForEntity(entityName.toLong, limit, skip) match {
+  private def allAnalysisRunsForEntityRouteImpl(eid: Long, limit: Int, skip: Int)(implicit request: HttpRequest): Route = {
+    requestHandler.getAnalysisRunsForEntity(eid, limit, skip) match {
       case Success(runs) => complete(runs.toJson)
       case Failure(ex) =>
-        log.error(s"Failed to retrieve analysis runs for entity $entityName", ex)
+        log.error(s"Failed to retrieve analysis runs for entity $eid", ex)
         complete(InternalServerError)
     }
   }
 
-  private def allResultsForEntityRouteImpl(entityName: String, limit: Int, skip: Int, queriedAnalysis: Option[String])(implicit request: HttpRequest): Route = {
-    log.debug(s"Results for entity requested, id=$entityName. Filters: Analysis=${queriedAnalysis.getOrElse("None")}")
+  private def allResultsForEntityRouteImpl(eid: Long, limit: Int, skip: Int, queriedAnalysis: Option[String])(implicit request: HttpRequest): Route = {
+    log.debug(s"Results for entity requested, id=$eid. Filters: Analysis=${queriedAnalysis.getOrElse("None")}")
 
     if(queriedAnalysis.isDefined){
       val queriedAnalysisStr = queriedAnalysis.get
@@ -133,10 +133,10 @@ trait EntityRouteDefinitions extends BasicRouteDefinition {
       }
     }
 
-    requestHandler.getAllResultsFor(entityName.toLong, queriedAnalysis, limit, skip) match {
+    requestHandler.getAllResultsFor(eid, queriedAnalysis, limit, skip) match {
       case Success(result) => complete(result.toJson)
       case Failure(ex) =>
-        log.error(s"Failure while retrieving results for entity $entityName", ex)
+        log.error(s"Failure while retrieving results for entity $eid", ex)
         complete(InternalServerError)
     }
   }

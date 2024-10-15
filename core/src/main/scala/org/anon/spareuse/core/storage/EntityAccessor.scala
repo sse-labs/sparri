@@ -7,6 +7,7 @@ import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityD
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.GenericEntityData
 
+import scala.annotation.switch
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Success, Try}
@@ -55,12 +56,23 @@ trait EntityAccessor {
 
   def hasEntity(eid: Long): Boolean
 
+  def getLibraryEntityId(ga: String): Option[Long]
   def getProgramEntityId(gav: String): Option[Long]
+  def getPackageEntityId(gav: String, pName: String): Option[Long]
+  def getClassEntityId(gav: String, classFqn: String): Option[Long]
+  def getMethodEntityId(gav: String, classFqn: String, methodIdent: String): Option[Long]
+  def getStatementEntityId(gav: String, classFqn: String, methodIdent: String, pcIdent: String): Option[Long]
 
   def hasProgram(gav: String): Boolean = getProgramEntityId(gav).isDefined
 
-  def getClassEntityId(gav: String, classFqn: String): Option[Long]
-
-  def getMethodEntityId(gav: String, classFqn: String, methodIdent: String): Option[Long]
+  def getEntityIdFor(identifiers: Seq[String]): Option[Long] = (identifiers.length : @switch)match {
+    case 1 => getLibraryEntityId(identifiers.head)
+    case 2 => getProgramEntityId(s"${identifiers.head}:${identifiers(1)}")
+    case 3 => getPackageEntityId(s"${identifiers.head}:${identifiers(1)}", identifiers(2))
+    case 4 => getClassEntityId(s"${identifiers.head}:${identifiers(1)}", identifiers(3))
+    case 5 => getMethodEntityId(s"${identifiers.head}:${identifiers(1)}", identifiers(3), identifiers(4))
+    case 6 => getStatementEntityId(s"${identifiers.head}:${identifiers(1)}", identifiers(3), identifiers(4), identifiers(5))
+    case _ => None
+  }
 
 }

@@ -17,19 +17,15 @@ trait PostgresEntityAccessor extends EntityAccessor {
 
   implicit val executor: ExecutionContext
 
-  private final val statementKindIds = Set(SoftwareEntityKind.InvocationStatement.id, SoftwareEntityKind.FieldAccessStatement.id, SoftwareEntityKind.NewInstanceStatement.id)
-
-  def getProgramEntityId(gav: String): Option[Long] = {
-    Await.result(getProgramIdF(gav), simpleQueryTimeout)
-  }
-
-  def getClassEntityId(gav: String, classFqn: String): Option[Long] = {
+  override def getLibraryEntityId(ga: String): Option[Long] = Await.result(getLibraryIdF(ga), simpleQueryTimeout)
+  override def getProgramEntityId(gav: String): Option[Long] = Await.result(getProgramIdF(gav), simpleQueryTimeout)
+  override def getPackageEntityId(gav: String, pName: String): Option[Long] = Await.result(getPackageIdF(gav, pName), simpleQueryTimeout)
+  override def getClassEntityId(gav: String, classFqn: String): Option[Long] =
     Await.result(getClassIdF(gav, classFqn), simpleQueryTimeout)
-  }
-
-  def getMethodEntityId(gav: String, classFqn: String, methodIdent: String): Option[Long] = {
+  override def getMethodEntityId(gav: String, classFqn: String, methodIdent: String): Option[Long] =
     Await.result(getMethodIdF(gav, classFqn, methodIdent), simpleQueryTimeout)
-  }
+  override def getStatementEntityId(gav: String, classFqn: String, methodIdent: String, pcIdent: String): Option[Long] =
+    Await.result(getStatementIdF(gav, classFqn, methodIdent, pcIdent), simpleQueryTimeout)
 
   def getLibraryIdF(ga: String): Future[Option[Long]] = {
     db.run(entitiesTable.filter(swe => swe.parentID.isEmpty && swe.identifier === ga).take(1).map(_.id).result).map(_.headOption)
@@ -43,6 +39,14 @@ trait PostgresEntityAccessor extends EntityAccessor {
     getLibraryIdF(ga).flatMap{
       case Some(libId) =>
         db.run(entitiesTable.filter(swe => swe.parentID === libId && swe.identifier === v).take(1).map(_.id).result).map(_.headOption)
+      case None => Future.successful(None)
+    }
+  }
+
+  def getPackageIdF(gav: String, pName: String): Future[Option[Long]] = {
+    getProgramIdF(gav).flatMap {
+      case Some(pId) =>
+        db.run(entitiesTable.filter(swe => swe.parentID === pId && swe.identifier === pName).take(1).map(_.id).result).map(_.headOption)
       case None => Future.successful(None)
     }
   }
@@ -68,33 +72,12 @@ trait PostgresEntityAccessor extends EntityAccessor {
     }
   }
 
-  /**
-   * A lookup method that is not dependent on the fully-explicit FQN field for entities - SLOW ...
-   * @param ident Fully-Explicit entity FQN (old format, "!"-separated)
-   * @return Option holding the EntityRepr if it exists
-   */
-  private def getEntityDataFromIdent(ident: String): Option[SoftwareEntityRepr] = {
-    val identParts = ident.split("!").zipWithIndex
-
-    var query: Query[SoftwareEntities, SoftwareEntities#TableElementType, Seq] = null
-
-    for((currIdent, currLevel) <- identParts){
-
-      if(query == null){
-        query = if (currLevel < SoftwareEntityKind.InvocationStatement.id) {
-          entitiesTable.filter(swe => swe.kind === currLevel && swe.name === currIdent).take(1)
-        } else {
-          entitiesTable.filter(swe => swe.name === currIdent && swe.kind.inSet(statementKindIds)).take(1)
-        }
-      } else {
-        val kindSet = if(currLevel < SoftwareEntityKind.InvocationStatement.id) Set(currLevel) else statementKindIds
-        query = (for{ (_, child) <- query join entitiesTable on (_.id === _.parentID) if child.name === currIdent && child.kind.inSet(kindSet) } yield child).take(1)
-      }
+  def getStatementIdF(gav: String, classFqn: String, methodIdent: String, pcIdent: String): Future[Option[Long]] = {
+    getMethodIdF(gav, classFqn, methodIdent).flatMap{
+      case Some(methodId) =>
+        db.run(entitiesTable.filter(swe => swe.parentID === methodId && swe.identifier === pcIdent).take(1).map(_.id).result).map(_.headOption)
+      case None => Future.successful(None)
     }
-
-    val result = Await.result(db.run(query.result), longActionTimeout)
-
-    result.headOption
   }
 
 
