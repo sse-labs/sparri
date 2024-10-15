@@ -1,5 +1,6 @@
 package org.anon.spareuse.mvnem.storage.impl
 
+import org.anon.spareuse.core.maven.MavenIdentifier
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaInvokeStatement, JavaMethod, JavaProgram, JavaStatement, PathIdentifiableJavaEntity}
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
@@ -344,7 +345,16 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   override def shutdown(): Unit = db.close()
 
   override def hasProgram(gav: String): Boolean = {
-    val queryFuture = db.run(entitiesTable.filter(e => e.kind === SoftwareEntityKind.Program.id).filter(_.name === gav).exists.result)
+    val ident = MavenIdentifier.fromGAV(gav)
+    val ga = ident.get.toGA
+    val v = ident.get.version
+
+    val queryFuture = db.run(entitiesTable.filter(swe => swe.parentID.isEmpty && swe.identifier === ga).take(1).map(_.id).result).map(_.headOption).flatMap{
+      case Some(parentId) =>
+        db.run(entitiesTable.filter(swe => swe.parentID === parentId && swe.identifier === v).exists.result)
+      case None => Future.successful(false)
+    }
+
     Await.result(queryFuture, 10.seconds)
   }
 }
