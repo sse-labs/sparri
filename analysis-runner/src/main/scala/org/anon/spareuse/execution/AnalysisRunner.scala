@@ -121,11 +121,11 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
                 else {
                   if(dataAccessor.hasAnalysisRun(analysisName, analysisVersion, baselineRunId)){
 
-                    // Make sure the run that we pass to the analysis as a baseline has fully resolved entity hierarchies
+                    // Make sure the run that we pass to the analysis as a baseline has full parent (not child!) hierarchies for "affectedEntities"
                     val theRun = dataAccessor
                       .getAnalysisRun(analysisName, analysisVersion, baselineRunId, includeResults = true)
                       .get
-                      .withResolvedGenerics( data => dataAccessor.awaitGetEntity(data.id, None).get , forceResolve = true)
+                      .withResolvedGenerics( data => dataAccessor.awaitGetEntity(data.id, Some(0)).get , forceResolve = true)
 
                     Some(theRun)
                   } else
