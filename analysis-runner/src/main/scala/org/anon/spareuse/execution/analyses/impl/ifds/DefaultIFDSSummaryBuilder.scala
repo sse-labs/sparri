@@ -45,26 +45,25 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
   override def executeIncremental(input: SoftwareEntityData, previousResults: Set[AnalysisResultData], rawConfig: String): Try[Set[AnalysisResult]] = {
     this.squashStatements = !rawConfig.trim.equalsIgnoreCase("--keep-identity-stmts")
 
+    val inputMethodMap = input
+      .getChildren
+      .flatMap(packageEnt => packageEnt.getChildren.flatMap(classEnt => classEnt.getChildren))
+      .map(_.asInstanceOf[JavaMethod])
+      .map(jm => (s"${jm.enclosingClass.get.thisType}${buildMethodIdent(jm.name, jm.descriptor)}", jm))
+      .toMap
+
     def findValidPreviousResult(method: Method): Option[AnalysisResultData] = {
-      val methodHash = OPALJavaConverter.buildMethodHash(method)
+      val methodHash = inputMethodMap(s"${method.classFile.thisType.fqn}${buildMethodIdent(method.name, method.descriptor.toJVMDescriptor)}").methodHash
+
       previousResults
         .find{ r =>
           r.affectedEntities.exists{
             case jm: JavaMethod =>
-              methodHash == jm.methodHash &&
-                method.descriptor.toJVMDescriptor == jm.descriptor &&
-                method.name == jm.name
+              method.name == jm.name && method.descriptor.toJVMDescriptor == jm.descriptor && methodHash == jm.methodHash
             case _ => false
           }
         }
     }
-
-    val inputMethodMap = input
-      .getChildren
-      .flatMap( packageEnt => packageEnt.getChildren.flatMap( classEnt => classEnt.getChildren))
-      .map(_.asInstanceOf[JavaMethod])
-      .map(jm => (buildMethodIdent(jm.name, jm.descriptor), jm))
-      .toMap
 
     getFileFor(input) match {
       case Success(inputStream) =>
@@ -90,11 +89,12 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
           // Detect changedMethods / new methods that need full graph recomputations
 
           val previousResultsToLink = project
-            .allMethodsWithBody
-            .flatMap(findValidPreviousResult)
+            .allProjectClassFiles
+            .flatMap(_.methods)
+            .flatMap( findValidPreviousResult )
             .map(r => ExistingResult(r.uid))
 
-          val totalMethodCnt = project.allMethodsWithBody.size
+          val totalMethodCnt = project.allProjectClassFiles.flatMap(_.methods).size
           val unchangedMethodCnt = previousResultsToLink.size
           val computationsNeeded = totalMethodCnt - unchangedMethodCnt
 
@@ -103,16 +103,17 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
           var methodCnt = 0
 
           val results = project
-            .allMethodsWithBody
+            .allProjectClassFiles
+            .flatMap(_.methods)
             .filterNot(m => findValidPreviousResult(m).isDefined)
             .map{ m =>
-              log.info(s"\t [ $methodCnt / $computationsNeeded ] Building IFDS summary for method: ${m.toJava}")
+              //log.info(s"\t [ $methodCnt / $computationsNeeded ] Building IFDS summary for method: ${m.toJava}")
               methodCnt += 1
 
               val ifdsGraph = analyzeMethod(m)
               val resultData = ifdsGraph.toResultRepresentation(squashStatements)
 
-              val correspondingEntity = inputMethodMap.get(buildMethodIdent(m.name, m.descriptor.toJVMDescriptor))
+              val correspondingEntity = inputMethodMap.get(s"${m.classFile.thisType.fqn}${buildMethodIdent(m.name, m.descriptor.toJVMDescriptor)}")
 
               if(correspondingEntity.isEmpty)
                 throw new IllegalStateException(s"Could not find defined method in input entities: ${m.toJava}")
@@ -148,9 +149,11 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
    */
   def analyzeMethod(method: Method)(implicit TACAIProvider: MethodTACProvider): IFDSMethodGraph = {
 
+    val graph = IFDSMethodGraph(method)
+    if (method.body.isEmpty) return graph
+
     val theTAC = TACAIProvider(method)
     val cfg = theTAC.cfg
-    val graph = IFDSMethodGraph(method)
 
     val firstStmt = cfg.code.instructions(theTAC.pcToIndex(0))
     val firstNode = graph.createStatement(firstStmt, None)

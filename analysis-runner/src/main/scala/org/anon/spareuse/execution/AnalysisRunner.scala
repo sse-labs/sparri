@@ -20,7 +20,8 @@ import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisReg
 import spray.json.enrichString
 
 import java.time.LocalDateTime
-import scala.concurrent.Future
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Success, Try}
 
 class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
@@ -70,7 +71,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       .map(cmdOpt => validatePrerequisites(cmdOpt.get))
       .filter(_.isDefined)
       .map(_.get)
-      .runWith(buildExecutionSink())(streamMaterializer)
+      .runWith(buildExecutionSinkSequential())(streamMaterializer)
   }
 
   private def parseCommand(msg: String): Option[RunnerCommand] = {
@@ -302,6 +303,17 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
           log.error(s"Failed to execute command: $cmd", ex)
       }(streamMaterializer.executionContext)
 
+    }
+  }
+
+  private def buildExecutionSinkSequential(): Sink[ValidRunnerCommand, Future[Done]] = {
+    Sink.foreach{cmd =>
+      Try(Await.result(processRunnerCommand(cmd), 10.hours)) match {
+        case Success(_) =>
+          log.info(s"Execution for command finished successfully: ${cmd.runnerCommand}")
+        case Failure(ex) =>
+          log.error(s"Failed to execute command: $cmd", ex)
+      }
     }
   }
 

@@ -501,6 +501,33 @@ trait PostgresAnalysisAccessor {
 
   }
 
+  /**
+   * This method deletes an analysis run and all associated results.
+   *
+   * ATTENTION: This method also deletes results that are referred to by other runs, making other runs' results incomplete.
+   * This really only works if all runs of that analysis are deleted, anyway. SHOULD ONLY BE USED FOR DEVELOPMENT PURPOSES!
+   *
+   * @param runUid runUID to delete
+   * @return /
+   */
+  def removeAnalysisRun(runUid: String): Try[Unit] = Try {
+    val runRepr = getRunRepr(runUid)
+
+    val allRunResultIds = Await.result(db.run(runResultsTable.filter(_.analysisRunID === runRepr.id).map(_.resultID).result), longActionTimeout)
+    // Delete connection from runs to results
+    Await.ready(db.run(runResultsTable.filter(_.analysisRunID === runRepr.id).delete), longActionTimeout)
+    // Delete connection from runs to inputs
+    Await.ready(db.run(analysisRunInputsTable.filter(_.analysisRunID === runRepr.id).delete), longActionTimeout)
+    // Remove run
+    allRunResultIds.foreach { runResultId =>
+      Await.ready(db.run(resultValiditiesTable.filter(_.resultId === runResultId).delete), longActionTimeout)
+      Await.ready(db.run(analysisResultsTable.filter(_.id === runResultId).delete), simpleQueryTimeout)
+    }
+
+    // Delete actual run entry
+    Await.ready(db.run(analysisRunsTable.filter(_.id === runRepr.id).delete), simpleQueryTimeout)
+  }
+
   private[storage] def getResultFormat(rootId: Long): AnyValueFormat = {
 
     def getNestedFormats: Seq[NestedResultFormatReference] = {

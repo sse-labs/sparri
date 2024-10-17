@@ -31,12 +31,13 @@ object SummaryGenerationInitiator {
           eval.getAllVersionsForLibrary(ga, eval.getApiBaseUrl, client) match {
             case Success(versions) =>
               log.info(s"\t${versions.size} releases for $ga")
-              Try(versions.sortWith{ case (s1: String, s2: String) => utils.compareSemanticVersions(s1, s2) < 0}) match {
-                case Success(sortedVersions) =>
-                  (ga, sortedVersions)
-                case Failure(_) =>
-                  (ga, versions.sorted)
+              val sortedReleases = versions.sortWith { (r1, r2) =>
+                Try(utils.compareSemanticVersions(r1, r2)) match {
+                  case Success(compResult) => compResult < 0
+                  case _ => r1.compareTo(r2) < 0
+                }
               }
+              (ga, sortedReleases)
             case Failure(ex) =>
               log.error(s"Failed to retrieve version list for $ga", ex)
               (ga, Seq.empty)
@@ -57,7 +58,7 @@ object SummaryGenerationInitiator {
   private def triggerAll(libReleasesMap: Map[String, Seq[String]]): Unit = {
     var round = 0
     val runIdMap = mutable.Map.empty[String, String]
-    val maxRounds = libReleasesMap.values.map(_.size).max
+    val maxRounds = 2//libReleasesMap.values.map(_.size).max
 
     def nextRound(): Unit ={
       val httpClient = HttpClients.createDefault()
@@ -65,13 +66,14 @@ object SummaryGenerationInitiator {
       libReleasesMap
         .filter{ case (_, releases) => releases.size > round }
         .foreach{ case (ga, releases) =>
-          val gav = s"$ga:${releases(round)}"
+          val v = releases(round)
+          val gav = s"$ga:$v"
           val previousReleaseGavOpt = if(round > 0) Some(s"$ga:${releases(round - 1)}") else None
           val baselineRunOpt = previousReleaseGavOpt.flatMap(runIdMap.get).map(runUrl => runUrl.substring(runUrl.lastIndexOf("/") + 1 ))
 
           log.info(s"\t - Triggering $gav")
 
-          eval.triggerAnalysisRun(Set(s"$ga!$gav"),"TaintFlowSummaryBuilder", "0.0.1", eval.getApiBaseUrl, httpClient, baselineRun = baselineRunOpt) match {
+          eval.triggerAnalysisRun(Set(s"$ga!$v"),"TaintFlowSummaryBuilder", "0.0.1", eval.getApiBaseUrl, httpClient, baselineRun = baselineRunOpt) match {
             case Success(runId) =>
               runIdMap.put(gav, runId)
             case Failure(ex) =>
@@ -96,7 +98,7 @@ object SummaryGenerationInitiator {
     val input = Paths.get(filePath)
 
     if(input.toFile.exists()){
-      Files.readAllLines(input).asScala.toSeq.slice(0,5)
+      Files.readAllLines(input).asScala.toSeq.slice(0,1)
     } else {
       throw new IllegalStateException(s"File not found at $input")
     }
