@@ -58,7 +58,7 @@ object SummaryGenerationInitiator {
   private def triggerAll(libReleasesMap: Map[String, Seq[String]]): Unit = {
     var round = 0
     val runIdMap = mutable.Map.empty[String, String]
-    val maxRounds = 2//libReleasesMap.values.map(_.size).max
+    val maxRounds = libReleasesMap.values.map(_.size).max
 
     def nextRound(): Unit ={
       val httpClient = HttpClients.createDefault()
@@ -98,7 +98,7 @@ object SummaryGenerationInitiator {
     val input = Paths.get(filePath)
 
     if(input.toFile.exists()){
-      Files.readAllLines(input).asScala.toSeq.slice(0,1)
+      Files.readAllLines(input).asScala.toSeq.slice(2,3)
     } else {
       throw new IllegalStateException(s"File not found at $input")
     }

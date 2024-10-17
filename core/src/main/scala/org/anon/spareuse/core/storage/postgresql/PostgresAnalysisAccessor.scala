@@ -154,8 +154,26 @@ trait PostgresAnalysisAccessor {
   override def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false): Try[AnalysisRunData] = Try {
     val analysisId = getAnalysisRepr(analysisName, analysisVersion).id
 
+    def getAllRunResults(): Set[AnalysisResultData] = {
+
+      val take = 100
+
+      var theResults = getRunResultsAsJSON(runUid, 0, take).get
+      var roundResultsCnt = theResults.size
+      var round = 1
+
+      while(roundResultsCnt == take){
+        val roundResults = getRunResultsAsJSON(runUid, round * take, take).get
+        theResults = theResults ++ roundResults
+        roundResultsCnt = roundResults.size
+        round = round + 1
+      }
+
+      theResults
+    }
+
     val results = if (includeResults) {
-      getRunResultsAsJSON(runUid).get
+      getAllRunResults()
     } else Set.empty[AnalysisResultData]
 
     val queryF = db
