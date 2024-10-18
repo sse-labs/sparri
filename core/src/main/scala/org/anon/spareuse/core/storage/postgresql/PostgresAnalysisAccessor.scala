@@ -110,7 +110,7 @@ trait PostgresAnalysisAccessor {
       .map { allRuns =>
         allRuns.map { run =>
           val results = if (includeResults) {
-            getRunResultsAsJSON(run.uid).get
+            getRunResultsAsJSON(run.uid, includeContents = true).get
           } else Set.empty[AnalysisResultData]
 
           run.toAnalysisRunData(analysisName, analysisVersion, getInputsForRun(run.id), results)
@@ -151,19 +151,19 @@ trait PostgresAnalysisAccessor {
     Await.result(resultF, longActionTimeout)
   }
 
-  override def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false): Try[AnalysisRunData] = Try {
+  override def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false, includeResultContents: Boolean = false): Try[AnalysisRunData] = Try {
     val analysisId = getAnalysisRepr(analysisName, analysisVersion).id
 
-    def getAllRunResults(): Set[AnalysisResultData] = {
+    def getAllRunResults: Set[AnalysisResultData] = {
 
       val take = 100
 
-      var theResults = getRunResultsAsJSON(runUid, 0, take).get
+      var theResults = getRunResultsAsJSON(runUid, includeResultContents, 0, take).get
       var roundResultsCnt = theResults.size
       var round = 1
 
       while(roundResultsCnt == take){
-        val roundResults = getRunResultsAsJSON(runUid, round * take, take).get
+        val roundResults = getRunResultsAsJSON(runUid, includeResultContents, round * take, take).get
         theResults = theResults ++ roundResults
         roundResultsCnt = roundResults.size
         round = round + 1
@@ -173,7 +173,7 @@ trait PostgresAnalysisAccessor {
     }
 
     val results = if (includeResults) {
-      getAllRunResults()
+      getAllRunResults
     } else Set.empty[AnalysisResultData]
 
     val queryF = db
@@ -181,6 +181,15 @@ trait PostgresAnalysisAccessor {
       .map(r => r.map(run => run.toAnalysisRunData(analysisName, analysisVersion, getInputsForRun(run.id), results)))(db.ioExecutionContext)
 
     Await.result(queryF, simpleQueryTimeout).head
+  }
+
+  def getNoOfFreshAndTotalResults(runUid: String): Try[(Int, Int)] = Try {
+    val runId = getRunRepr(runUid).id
+    val allResultIds = Await.result(db.run(runResultsTable.filter(_.analysisRunID === runId).map(_.resultID).result), longActionTimeout)
+
+    val allFreshResultIds = Await.result(db.run(analysisResultsTable.filter(_.runID === runId).map(_.id).result), longActionTimeout)
+
+    (allFreshResultIds.size, allResultIds.size)
   }
 
   private def getRunRepr(runUid: String): SoftwareAnalysisRunRepr = {
@@ -257,17 +266,21 @@ trait PostgresAnalysisAccessor {
     }
   }
 
-  override def getRunResultsAsJSON(runUid: String, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]] = Try {
+  override def getRunResultsAsJSON(runUid: String, includeContents: Boolean, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]] = Try {
 
     val runRepr: SoftwareAnalysisRunRepr = getRunRepr(runUid)
 
-    val resQuery = db.run {
-      val joinQuery = for {(_, resultRepr) <- runResultsTable.filter(rr => rr.analysisRunID === runRepr.id).sortBy(_.id).drop(skip).take(limit) join analysisResultsTable on (_.resultID === _.id)} yield resultRepr
+    val joinQuery = for {(_, resultRepr) <- runResultsTable.filter(rr => rr.analysisRunID === runRepr.id).sortBy(_.id).drop(skip).take(limit) join analysisResultsTable on (_.resultID === _.id)} yield resultRepr
 
-      joinQuery.result
+    // Small hack via tuple return value to no load contents (if not desired)
+    val resultsQuery = if(!includeContents){
+      joinQuery.map(t => (t.id, t.uid, t.runID, t.isRevoked, ""))
+    } else {
+      joinQuery.map(t => (t.id, t.uid, t.runID, t.isRevoked, t.content))
     }
 
-    val allResults = Await.result(resQuery, longActionTimeout)
+    val allResults = Await.result(db.run(resultsQuery.result), longActionTimeout)
+      .map{ case (id, uid, runID, isRevoked, content) => AnalysisResult(id, uid, runID, isRevoked, content)}
 
 
     val resultEntitiesF = db.run {

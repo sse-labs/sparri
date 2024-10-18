@@ -4,7 +4,9 @@ import org.anon.spareuse.core.model.AnalysisRunData
 import org.anon.spareuse.execution.analyses.AnalysisImplementationDescriptor
 import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.TaintVariable
 import org.opalj.br.{Method, MethodDescriptor, ObjectType}
-import org.opalj.tac.{Assignment, BinaryExpr, Const, Expr, ExprStmt, FunctionCall, GetField, GetStatic, InstanceFunctionCall, InstanceMethodCall, PutField, PutStatic}
+import org.opalj.collection.immutable.IntTrieSet
+import org.opalj.tac.{Assignment, BinaryExpr, Const, Expr, ExprStmt, FunctionCall, GetField, GetStatic, InstanceFunctionCall, InstanceMethodCall, PutField, PutStatic, UVar}
+import org.opalj.value.TheVoidValue
 
 class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) extends DefaultIFDSSummaryBuilder(baselineRunOpt) {
 
@@ -39,7 +41,15 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
 
   private[ifds] def getAllReceiverFacts(receiver: TACVar)(implicit tac: MethodTAC): Set[IFDSFact] = {
     if (receiver.definedBy.size > 1) {
-      receiver.definedBy.map(tac.stmts).map(_.asAssignment.targetVar).map(TaintVariableFacts.buildFact)
+      receiver.definedBy.map{ defSitePc =>
+        if(defSitePc >= 0){
+          TaintVariableFacts.buildFact(tac.stmts(defSitePc).asAssignment.targetVar)
+        } else {
+          val substituteParamFact = UVar(TheVoidValue, IntTrieSet(defSitePc))
+
+          TaintVariableFacts.buildFact(substituteParamFact)
+        }
+      }
     } else {
       Set(TaintVariableFacts.buildFact(receiver))
     }

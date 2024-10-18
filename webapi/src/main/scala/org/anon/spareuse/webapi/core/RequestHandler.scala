@@ -217,7 +217,7 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
   }
 
   def getRunResults(runId: String, limit: Int, skip: Int): Try[Set[AnalysisResultRepr]] = {
-    dataAccessor.getRunResultsAsJSON(runId, skip, limit).map { allResults =>
+    dataAccessor.getRunResultsAsJSON(runId, includeContents = true, skip, limit).map { allResults =>
       allResults.map(result => toResultRepr(result))
     }
   }

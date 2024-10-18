@@ -23,7 +23,7 @@ trait AnalysisAccessor {
 
   def getAnalysisRunsForEntity(eid: Long, analysisFilter: Option[(String, String)], skip: Int = 0, limit: Int = 100): Try[Set[AnalysisRunData]]
 
-  def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false): Try[AnalysisRunData]
+  def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false, includeResultContents: Boolean = false): Try[AnalysisRunData]
 
   def storeEmptyAnalysisRun(analysisName: String, analysisVersion: String, runConfig: String): Try[String]
 
@@ -50,11 +50,12 @@ trait AnalysisAccessor {
    * structure. This is meant for all use-cases in the API, where results will be retrieved, serialized and returned
    * to the user either way, thus saving a deserialization-serialization roundtrip.
    * @param runUid UUID of the analysis run to return results for
+   * @param includeContents Whether the actual content of the results shall be loaded (vs. only metadata)
    * @param skip Number of result entries to skip. Default is 0.
    * @param limit Number of result entries to retrieve. Default is 100.
    * @return Try of the set of results. The 'content: Object' attribute will hold the result contents as a PLAIN JSON STRING
    */
-  def getRunResultsAsJSON(runUid: String, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]]
+  def getRunResultsAsJSON(runUid: String, includeContents: Boolean, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]]
 
   def setRunState(runUid: String, state: RunState, runInputIdsOpt: Option[Set[Long]]): Try[Unit]
 
