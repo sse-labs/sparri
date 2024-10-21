@@ -95,38 +95,6 @@ object PrecomputationStatisticsResolver {
         log.error(s"Failed to write results for library $ga to file ${outFile.toString}", ex)
     }
 
-
-    /*dataAccessor
-      .getEntityIdFor(Seq(ga))
-      .flatMap{ dataAccessor.awaitGetEntity(_, Some(1)).toOption }
-      .map(lib => lib.getChildren.map(_.asInstanceOf[JavaProgram].id)) match {
-        case Some(programIds) =>
-          val csvLines = programIds
-            .map(getRunResultsForProgram)
-            .flatMap{
-              case Success(runResult) =>
-                if(resCnt % 10 == 0)
-                  log.info(s"Got $resCnt results so far")
-
-                resCnt += 1
-
-                Some(runResult)
-              case Failure(ex) =>
-                log.error("Failed to produce run results", ex)
-                None
-            }
-            .map(_.toCSVLine)
-
-          Try(Files.write(outFile, csvLines.toSeq.asJava, StandardOpenOption.WRITE)) match {
-            case Success(_) =>
-              log.info(s"Successfully wrote results for library $ga to file ${outFile.toString}")
-            case Failure(ex) =>
-              log.error(s"Failed to write results for library $ga to file ${outFile.toString}", ex)
-          }
-        case None =>
-          log.error(s"No children found for library $ga")
-      }*/
-
   }
 
   def getRunResultsForProgram(eid: Long): Try[RunResult] = {
