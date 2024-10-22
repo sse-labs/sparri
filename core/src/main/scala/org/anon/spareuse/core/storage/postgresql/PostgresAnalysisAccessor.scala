@@ -4,6 +4,7 @@ import org.anon.spareuse.core.formats.{AnalysisResultFormat, AnyValueFormat, Bas
 import org.anon.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData, RunState}
 import org.anon.spareuse.core.model.RunState.RunState
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
+import org.anon.spareuse.core.utils.ObjectCache
 import slick.dbio.DBIO
 import slick.jdbc.PostgresProfile.api._
 import spray.json.JsonWriter
@@ -11,6 +12,7 @@ import spray.json.JsonWriter
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.UUID
+import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
@@ -18,6 +20,8 @@ trait PostgresAnalysisAccessor {
   this: PostgresEntityAccessor with PostgresSparriSupport =>
 
   implicit val executor: ExecutionContext
+
+  private final val analysisResultCache: ObjectCache[Long, AnalysisResultData] = new ObjectCache[Long, AnalysisResultData](100000)
 
   override def registerIfNotPresent(analysis: AnalysisData): Unit = {
     if (!hasAnalysis(analysis.name, analysis.version)) {
@@ -94,9 +98,9 @@ trait PostgresAnalysisAccessor {
 
   private def getInputsForRun(analysisRunId: Long): Set[SoftwareEntityData] = {
     val queryF = db.run {
-      val runIdToInput = for {(ri, i) <- analysisRunInputsTable join entitiesTable on (_.inputEntityID === _.id)} yield (ri.analysisRunID, i)
+      val runIdToInput = for {(_, i) <- analysisRunInputsTable.filter(t => t.analysisRunID === analysisRunId) join entitiesTable on (_.inputEntityID === _.id)} yield i
 
-      runIdToInput.filter(t => t._1 === analysisRunId).map(t => t._2).result
+      runIdToInput.result
     }
       .map { entityReprs => buildEntities(entityReprs) }(db.ioExecutionContext)
 
@@ -254,6 +258,8 @@ trait PostgresAnalysisAccessor {
         Await.ready(db.run(resultValiditiesTable += AnalysisResultValidity(-1, resultDbId, affectedEntityId)), simpleQueryTimeout)
       }
 
+      analysisResultCache.pushValue(resultDbId, runResult)
+
       resultDbId
     }
 
@@ -270,38 +276,47 @@ trait PostgresAnalysisAccessor {
 
     val runRepr: SoftwareAnalysisRunRepr = getRunRepr(runUid)
 
-    val joinQuery = for {(_, resultRepr) <- runResultsTable.filter(rr => rr.analysisRunID === runRepr.id).sortBy(_.id).drop(skip).take(limit) join analysisResultsTable on (_.resultID === _.id)} yield resultRepr
+    val lookupF = db
+      .run(runResultsTable.filter(rr => rr.analysisRunID === runRepr.id).sortBy(_.id).drop(skip).take(limit).map(_.resultID).result)
+      .flatMap { allResultIds =>
+        val cached = allResultIds.map(analysisResultCache.getValueOpt).filter(_.isDefined).map(_.get)
+        val notCachedIds = allResultIds.filterNot(analysisResultCache.hasValue)
 
-    // Small hack via tuple return value to no load contents (if not desired)
-    val resultsQuery = if(!includeContents){
-      joinQuery.map(t => (t.id, t.uid, t.runID, t.isRevoked, ""))
-    } else {
-      joinQuery.map(t => (t.id, t.uid, t.runID, t.isRevoked, t.content))
-    }
+        val query = analysisResultsTable.filter(_.id inSet notCachedIds)
+        val resultsQuery = if (!includeContents) query.map(t => (t.id, t.uid, t.runID, t.isRevoked, ""))
+        else query.map(t => (t.id, t.uid, t.runID, t.isRevoked, t.content))
 
-    val allResults = Await.result(db.run(resultsQuery.result), longActionTimeout)
-      .map{ case (id, uid, runID, isRevoked, content) => AnalysisResult(id, uid, runID, isRevoked, content)}
+        db.run(resultsQuery.result).flatMap { tuples =>
+          val actualResults = tuples
+            .map { case (id, uid, runID, isRevoked, content) => AnalysisResult(id, uid, runID, isRevoked, content) }
+
+          db.run {
+            val join = for {(resultValidity, entity) <- resultValiditiesTable.filter(_.resultId inSet notCachedIds) join entitiesTable on (_.entityId === _.id)}
+              yield (resultValidity.resultId, entity)
+            join.result
+          }.map { mappingData =>
+            val resultToInputEntitiesMapping = mappingData.groupMap(t => t._1)(t => toGenericEntityData(t._2))
+
+            val freshResultData = actualResults.map { resultRep =>
+              val allAssociatedEntities = resultToInputEntitiesMapping(resultRep.id)
+
+              val runIdQuery = db.run(analysisRunsTable.filter(_.id === resultRep.runId).map(_.uid).result)
+              val producingRunUid = Await.result(runIdQuery, simpleQueryTimeout).head
+
+              (resultRep.id, AnalysisResultData(resultRep.uid, resultRep.isRevoked, producingRunUid, resultRep.jsonContent, allAssociatedEntities.toSet))
+            }.toSet
+
+            freshResultData.foreach(t => analysisResultCache.pushValue(t._1, t._2))
+
+            freshResultData.map(_._2) ++ cached
+
+          }
+        }
 
 
-    val resultEntitiesF = db.run {
-      val join = for {(resultValidity, entity) <- resultValiditiesTable join entitiesTable on (_.entityId === _.id)}
-        yield (resultValidity.resultId, entity)
-      join.filter(t => t._1 inSet allResults.map(_.id).toSet).result
-    }
+      }
 
-    val resultToInputEntitiesMapping = Await.result(resultEntitiesF, longActionTimeout)
-
-    allResults.map { resultRep =>
-      val allAssociatedEntities = resultToInputEntitiesMapping
-        .filter(t => t._1 == resultRep.id)
-        .map(t => toGenericEntityData(t._2))
-
-      val runIdQuery = db.run(analysisRunsTable.filter(_.id === resultRep.runId).map(_.uid).result)
-      val producingRunUid = Await.result(runIdQuery, simpleQueryTimeout).head
-
-      AnalysisResultData(resultRep.uid, resultRep.isRevoked, producingRunUid, resultRep.jsonContent, allAssociatedEntities.toSet)
-    }.toSet
-
+    Await.result(lookupF, 20.minutes)
   }
 
 

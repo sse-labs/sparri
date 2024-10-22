@@ -223,29 +223,39 @@ trait PostgresEntityAccessor extends EntityAccessor {
       .run(javaProgramsTable.filter(_.id inSet allProgramIds).result)
       .map(SpecificationTables.fromPrograms)
       .flatMap { specTables =>
-        db
-          .run(javaClassesTable.filter(_.id inSet allClassIds).result)
-          .map(specTables.withClasses)
+        if(allClassIds.nonEmpty)
+          db
+            .run(javaClassesTable.filter(_.id inSet allClassIds).result)
+            .map(specTables.withClasses)
+        else Future.successful(specTables)
       }
       .flatMap{ specTables =>
-        db
-          .run(javaClassInterfacesTable.filter(_.classId inSet allClassIds).result)
-          .map(specTables.withClassInterfaces)
+        if(allClassIds.nonEmpty)
+          db
+            .run(javaClassInterfacesTable.filter(_.classId inSet allClassIds).result)
+            .map(specTables.withClassInterfaces)
+        else Future.successful(specTables)
       }
       .flatMap { specTables =>
-        db
-          .run(javaMethodsTable.filter(_.id inSet allMethodIds).result)
-          .map(specTables.withMethods)
+        if(allMethodIds.nonEmpty)
+          db
+            .run(javaMethodsTable.filter(_.id inSet allMethodIds).result)
+            .map(specTables.withMethods)
+        else Future.successful(specTables)
       }
       .flatMap { specTables =>
-        db
-          .run(javaInvocationsTable.filter(_.id inSet allInvocationIds).result)
-          .map(specTables.withInvocations)
+        if(allInvocationIds.nonEmpty)
+          db
+            .run(javaInvocationsTable.filter(_.id inSet allInvocationIds).result)
+            .map(specTables.withInvocations)
+        else Future.successful(specTables)
       }
       .flatMap { specTables =>
-        db
-          .run(javaFieldAccessesTable.filter(_.id inSet allFieldAccessIds).result)
-          .map(specTables.withFieldAccesses)
+        if(allFieldAccessIds.nonEmpty)
+          db
+            .run(javaFieldAccessesTable.filter(_.id inSet allFieldAccessIds).result)
+            .map(specTables.withFieldAccesses)
+        else Future.successful(specTables)
       }
       .flatMap{ specTables =>
         val allNameIds =
