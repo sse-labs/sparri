@@ -245,31 +245,47 @@ trait PostgresAnalysisAccessor {
     Await.ready(updateDurationAction, simpleQueryTimeout)
     Await.ready(updateLogsAction, simpleQueryTimeout)
 
-    val newResultIds = freshResults.map { runResult =>
-      // Serialize result content
-      val content = serializer.write(runResult.content).compactPrint
-      val resultDbObj = AnalysisResult(-1, runResult.uid, runRepr.id, runResult.isRevoked, content)
+    val resultStorageFuture = Future.sequence(freshResults
+      .grouped(100)
+      .map { runResultBatch =>
+        Future {
+          runResultBatch.map { runResult =>
+            val content = serializer.write(runResult.content).compactPrint
+            AnalysisResult(-1, runResult.uid, runRepr.id, runResult.isRevoked, content)
+          }
 
-      // Write result entry
-      val resultDbId = Await.result(db.run(idReturningResultTable += resultDbObj), simpleQueryTimeout)
+        }.flatMap{ resultObjBatch =>
+          db.run(idAndUidReturningResultTable ++= resultObjBatch).map(resultSeq => resultSeq.map(tuple => (tuple._2, tuple._1)))
+        }
 
-      // Connect to affected entities
-      runResult.affectedEntities.map(e => getEntityRepr(e.id, e.kind).get.id).foreach { affectedEntityId =>
-        Await.ready(db.run(resultValiditiesTable += AnalysisResultValidity(-1, resultDbId, affectedEntityId)), simpleQueryTimeout)
-      }
+      })
 
-      analysisResultCache.pushValue(resultDbId, runResult)
+    val freshResultUidToIdMap = Await.result(resultStorageFuture, 10.minutes).flatten.toMap
 
-      resultDbId
+    val allValidities = freshResults.flatMap{ fResult =>
+      val dbId = freshResultUidToIdMap(fResult.uid)
+      analysisResultCache.pushValue(dbId, fResult)
+      fResult.affectedEntities.map { affectedEntity => AnalysisResultValidity(-1, dbId, affectedEntity.id) }
     }
 
+    val allValiditiesFuture = Future.sequence(allValidities.grouped(100).map{ validitiesBatch =>
+      db.run(resultValiditiesTable ++= validitiesBatch)
+    })
+
+    Await.ready(allValiditiesFuture, longActionTimeout)
 
     val resultDbIdsAction = db.run(analysisResultsTable.filter(r => r.uid inSet unchangedResultIds).map(_.id).result)
     val unchangedResultIdsInDb = Await.result(resultDbIdsAction, simpleQueryTimeout)
 
-    (newResultIds ++ unchangedResultIdsInDb).foreach { resultDbId =>
-      Await.ready(db.run(runResultsTable += AnalysisRunResultRelation(-1, runRepr.id, resultDbId)), simpleQueryTimeout)
-    }
+    val resultRelationFuture = Future.sequence((freshResultUidToIdMap.values ++ unchangedResultIdsInDb)
+      .map(id => AnalysisRunResultRelation(-1, runRepr.id, id))
+      .grouped(100)
+      .map { resultRelationBatch =>
+        db.run(runResultsTable ++= resultRelationBatch)
+      })
+
+    Await.ready(resultRelationFuture, longActionTimeout)
+
   }
 
   override def getRunResultsAsJSON(runUid: String, includeContents: Boolean, skip: Int = 0, limit: Int = 100): Try[Set[AnalysisResultData]] = Try {

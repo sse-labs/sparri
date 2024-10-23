@@ -209,7 +209,7 @@ trait PostgresEntityAccessor extends EntityAccessor {
 
   object SpecificationTables {
     def fromPrograms(programs: Seq[JavaProgramRepr]): SpecificationTables =
-      SpecificationTables(programs.map(p => (p._1, p)).toMap, null, null, null, null, null, null, null)
+      SpecificationTables(programs.map(p => (p._1, p)).toMap, Map.empty, Map.empty, Map.empty, Map.empty, Map.empty, Map.empty, Map.empty)
   }
 
   private[storage] def getSpecificationTables(allRepresentations: Seq[SoftwareEntityRepr]): Future[SpecificationTables] = {

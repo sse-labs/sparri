@@ -55,6 +55,8 @@ trait SoftwareEntityData {
   def isNewInstanceInstruction: Boolean = kind == SoftwareEntityKind.NewInstanceStatement
   def isInstruction: Boolean = isFieldAccessInstruction || isMethodInvocationInstruction || isNewInstanceInstruction
 
+  def allChildren: Set[SoftwareEntityData] = getChildren ++ getChildren.flatMap(_.allChildren)
+
   @tailrec
   final def findFirstParent(pred: SoftwareEntityData => Boolean): Option[SoftwareEntityData] = {
     if(pred(this)) Some(this)

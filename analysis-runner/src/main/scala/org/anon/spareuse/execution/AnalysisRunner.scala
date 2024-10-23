@@ -4,14 +4,14 @@ import akka.stream.scaladsl.Sink
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
 import org.anon.spareuse.core.model.{AnalysisResultData, RunState}
-import org.anon.spareuse.core.model.entities.MinerCommandJsonSupport
+import org.anon.spareuse.core.model.entities.{MinerCommandJsonSupport, SoftwareEntityData}
 import org.anon.spareuse.core.utils.rabbitmq.{MqMessageWriter, MqStreamIntegration}
 import org.anon.spareuse.execution.utils.{AnalysisRunNotPossibleException, ValidRunnerCommand, ValidStartRunCommand}
 import org.anon.spareuse.core.formats.json.CustomObjectWriter
 import org.anon.spareuse.core.model.analysis.{AnalysisCommand, IncrementalAnalysisCommand, RunnerCommand}
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
-import org.anon.spareuse.core.utils.wcTime
+import org.anon.spareuse.core.utils.{ObjectCache, wcTime}
 import org.anon.spareuse.core.utils.streaming.AsyncStreamWorker
 import org.anon.spareuse.execution.analyses.impl.cg.JreModelLoader
 import org.anon.spareuse.execution.analyses.impl.ifds.IFDSTaintFlowSummaryBuilderImpl
@@ -34,6 +34,8 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
   override val workerName: String = "analysis-runner"
 
   private val dataAccessor: DataAccessor = new PostgresDataAccessor()(streamMaterializer.executionContext)
+
+  private final val entityCache: ObjectCache[Long, SoftwareEntityData] = new ObjectCache[Long, SoftwareEntityData](100000)
 
 
   override def initialize(): Unit = {
@@ -121,14 +123,18 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
                 val baselineRun = if(baselineRunId.isBlank) None
                 else {
                   if(dataAccessor.hasAnalysisRun(analysisName, analysisVersion, baselineRunId)){
+                    val start = System.currentTimeMillis()
+                    val rawRun = dataAccessor.getAnalysisRun(analysisName, analysisVersion, baselineRunId, includeResults = true).get
+                    val r1 = System.currentTimeMillis()
+                    log.info(s"Getting the run object took ${r1 - start} ms")
 
-                    // Make sure the run that we pass to the analysis as a baseline has full parent (not child!) hierarchies for "affectedEntities"
-                    val theRun = dataAccessor
-                      .getAnalysisRun(analysisName, analysisVersion, baselineRunId, includeResults = true, includeResultContents = false)
-                      .get
-                      .withResolvedGenerics( data => dataAccessor.awaitGetEntity(data.id, Some(0)).get , forceResolve = true)
+                    val resolvedRun = rawRun.withResolvedGenerics(data => entityCache.getWithCache(data.id, () => dataAccessor.awaitGetEntity(data.id, Some(0)).get), forceResolve = true)
+                    val resTime = System.currentTimeMillis() - r1
+                    log.info(s"Resolution took $resTime ms")
 
-                    Some(theRun)
+
+
+                    Some(resolvedRun)
                   } else
                     throw new AnalysisRunNotPossibleException(s"Baseline run ID invalid: " + baselineRunId, command)
                 }

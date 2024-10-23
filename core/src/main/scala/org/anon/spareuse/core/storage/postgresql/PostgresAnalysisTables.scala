@@ -17,6 +17,7 @@ trait PostgresAnalysisTables {
   protected lazy val idReturningAnalysisRunTable = analysisRunsTable returning analysisRunsTable.map(_.id)
   protected lazy val idReturningFormatTable = resultFormatsTable returning resultFormatsTable.map(_.id)
   protected lazy val idReturningResultTable = analysisResultsTable returning analysisResultsTable.map(_.id)
+  protected lazy val idAndUidReturningResultTable = analysisResultsTable returning analysisResultsTable.map(t => (t.id, t.uid))
 
   protected lazy val allAnalysisTables = Seq(resultFormatsTable, nestedResultFormatsTable, analysesTable, analysisRunsTable,
     analysisRunInputsTable, analysisResultsTable, resultValiditiesTable, runResultsTable)

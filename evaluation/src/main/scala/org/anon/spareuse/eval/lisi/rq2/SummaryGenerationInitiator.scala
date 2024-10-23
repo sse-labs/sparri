@@ -56,41 +56,28 @@ object SummaryGenerationInitiator {
   }
 
   private def triggerAll(libReleasesMap: Map[String, Seq[String]]): Unit = {
-    var round = 0
-    val runIdMap = mutable.Map.empty[String, String]
-    val maxRounds = libReleasesMap.values.map(_.size).max
 
-    def nextRound(): Unit ={
+    libReleasesMap.foreach{ case (ga, versions) =>
+      log.info(s"Triggering runs for $ga:")
       val httpClient = HttpClients.createDefault()
 
-      libReleasesMap
-        .filter{ case (_, releases) => releases.size > round }
-        .foreach{ case (ga, releases) =>
-          val v = releases(round)
-          val gav = s"$ga:$v"
-          val previousReleaseGavOpt = if(round > 0) Some(s"$ga:${releases(round - 1)}") else None
-          val baselineRunOpt = previousReleaseGavOpt.flatMap(runIdMap.get).map(runUrl => runUrl.substring(runUrl.lastIndexOf("/") + 1 ))
+      var baselineRunOpt: Option[String] = None
 
-          log.info(s"\t - Triggering $gav")
+      versions.foreach{ v =>
+        val gav = s"$ga:$v"
+        log.info(s"\t - Triggering $gav")
 
-          eval.triggerAnalysisRun(Set(s"$ga!$v"),"TaintFlowSummaryBuilder", "0.0.1", eval.getApiBaseUrl, httpClient, baselineRun = baselineRunOpt) match {
-            case Success(runId) =>
-              runIdMap.put(gav, runId)
-            case Failure(ex) =>
-              log.error(s"Failed to trigger run for $gav", ex)
-          }
-
+        eval.triggerAnalysisRun(Set(s"$ga!$v"), "TaintFlowSummaryBuilder", "0.0.1", eval.getApiBaseUrl, httpClient, baselineRun = baselineRunOpt) match {
+          case Success(runUrl) =>
+            baselineRunOpt = Some(runUrl.substring(runUrl.lastIndexOf("/") + 1 ))
+          case Failure(ex) =>
+            log.error(s"Failed to trigger run for $gav", ex)
         }
+      }
 
       httpClient.close()
-    }
 
-    while(round < maxRounds){
-      log.info(s"Starting round #$round of analysis triggers")
-      nextRound()
-      round += 1
     }
-
 
   }
 

@@ -79,7 +79,7 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
     case "toString" if targetVar.isDefined =>
       currentNode.setGeneratesOn(targetVar.get, Set(callReceiverVar))
     case n@_ =>
-      log.info(s"Untracked StringBuilder invocation: $n")
+      //log.info(s"Untracked StringBuilder invocation: $n")
   }
 
   private[ifds] def analyzeExpression(currentNode: StatementNode, targetFact: TaintVariable, expression: Expr[TACVar], currentMethod: Method)(implicit tac: MethodTAC): Unit = expression match {
@@ -99,7 +99,7 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
       val enablingFacts = getAllReceiverFacts(local)
       currentNode.setGeneratesOn(targetFact, enablingFacts)
     case BinaryExpr(_, _, _, left, right) =>
-      log.info(s"Found a binary expression assigned to a string: $expression")
+      //log.info(s"Found a binary expression assigned to a string: $expression")
       analyzeExpression(currentNode, targetFact, left, currentMethod)
       analyzeExpression(currentNode, targetFact, right, currentMethod)
     case fc: FunctionCall[TACVar] if fc.name.equalsIgnoreCase("source") =>
@@ -140,7 +140,7 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
 
 
     case other@_ =>
-      log.warn(s"Unhandled expression assigned to ${targetFact.displayName}: $other")
+      //log.warn(s"Unhandled expression assigned to ${targetFact.displayName}: $other")
 
 
   }
