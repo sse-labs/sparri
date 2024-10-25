@@ -164,7 +164,11 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
     while (workList.nonEmpty) {
 
       val currentNode = workList.remove(0)
-      val stmtIdx = theTAC.pcToIndex(currentNode.stmtPc)
+
+      val stmtIdx = if(currentNode.stmtPc < 0 || currentNode.stmtPc >= theTAC.pcToIndex.length){
+        cfg.code.instructions.zipWithIndex.find(_._1.pc == currentNode.stmtPc).map(_._2).get
+      } else theTAC.pcToIndex(currentNode.stmtPc)
+
       val stmt = cfg.code.instructions(stmtIdx)
 
       analyzeStatement(currentNode, stmt, method, graph)(theTAC)
