@@ -85,7 +85,7 @@ object SummaryGenerationInitiator {
     val input = Paths.get(filePath)
 
     if(input.toFile.exists()){
-      Files.readAllLines(input).asScala.toSeq.slice(2,3)
+      Files.readAllLines(input).asScala.toSeq
     } else {
       throw new IllegalStateException(s"File not found at $input")
     }

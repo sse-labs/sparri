@@ -1,5 +1,6 @@
 package org.anon.spareuse.eval.lisi.rq2
 
+import org.anon.spareuse.core.model.RunState
 import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -44,7 +45,7 @@ object PrecomputationStatisticsResolver {
     val input = Paths.get(filePath)
 
     if (input.toFile.exists()) {
-      Files.readAllLines(input).asScala.toSeq.slice(0, 1)
+      Files.readAllLines(input).asScala.toSeq
     } else {
       throw new IllegalStateException(s"File not found at $input")
     }
@@ -100,8 +101,8 @@ object PrecomputationStatisticsResolver {
   def getRunResultsForProgram(eid: Long): Try[RunResult] = {
 
     dataAccessor
-      .getAnalysisRunsForEntity(eid, Some("TaintFlowSummaryBuilder", "0.0.1"), skip = 0, limit = 1)
-      .map(_.headOption)
+      .getAnalysisRunsForEntity(eid, Some("TaintFlowSummaryBuilder", "0.0.1"), skip = 0, limit = 10)
+      .map(_.find(run => run.state == RunState.Finished))
       .flatMap {
         case Some(run) =>
           val runtime = run.durationMs
