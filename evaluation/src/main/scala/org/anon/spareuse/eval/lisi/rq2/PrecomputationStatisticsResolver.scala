@@ -66,19 +66,22 @@ object PrecomputationStatisticsResolver {
 
     log.info(s"\t Library ID is $libId")
 
-    val childIds = dataAccessor.awaitGetEntity(libId, Some(1)).get.getChildren.map(_.id)
+    val childIds = dataAccessor.awaitGetEntity(libId, Some(1))
+      .get
+      .getChildren
+      .map(p => (p.identifier, p.id))
 
     log.info(s"\t Got ${childIds.size} programs to process")
 
     val csvLines = childIds
-      .map{ eid =>
+      .map{ case (v, eid) =>
         if(resultCnt % 10 == 0){
           log.info(s"\t Got $resultCnt results so far")
         }
 
         resultCnt += 1
 
-        getRunResultsForProgram(eid)
+        getRunResultsForProgram(ga, v, eid)
       }
       .flatMap {
         case Success(runResult) =>
@@ -98,7 +101,7 @@ object PrecomputationStatisticsResolver {
 
   }
 
-  def getRunResultsForProgram(eid: Long): Try[RunResult] = {
+  def getRunResultsForProgram(ga: String, v: String, eid: Long): Try[RunResult] = {
 
     dataAccessor
       .getAnalysisRunsForEntity(eid, Some("TaintFlowSummaryBuilder", "0.0.1"), skip = 0, limit = 10)
@@ -109,7 +112,7 @@ object PrecomputationStatisticsResolver {
           dataAccessor
             .getNoOfFreshAndTotalResults(run.uid)
             .map{ case (freshCnt, totalCnt) =>
-              RunResult(eid, totalCnt, freshCnt, runtime)
+              RunResult(eid, ga, v, totalCnt, freshCnt, runtime)
             }
         case None =>
           Failure(new RuntimeException(s"Failed to retrieve run for entity-id $eid, run not present"))
@@ -117,8 +120,8 @@ object PrecomputationStatisticsResolver {
   }
 
 
-  case class RunResult(eid:Long, totalResults: Int, freshResults: Int, runTime: Long){
-    def toCSVLine: String = s"$eid, $totalResults, $freshResults, $runTime"
+  case class RunResult(eid:Long, ga: String, v: String, totalResults: Int, freshResults: Int, runTime: Long){
+    def toCSVLine: String = s"$eid, $ga, $v, $totalResults, $freshResults, $runTime"
   }
 
 }
