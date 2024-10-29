@@ -67,7 +67,7 @@ object SummaryGenerationInitiator {
         val gav = s"$ga:$v"
         log.info(s"\t - Triggering $gav")
 
-        eval.triggerAnalysisRun(Set(s"$ga!$v"), "TaintFlowSummaryBuilder", "0.0.1", eval.getApiBaseUrl, httpClient, baselineRun = baselineRunOpt) match {
+        eval.triggerAnalysisRun(Set(s"$ga!$v"), "TaintFlowSummaryBuilder", "0.0.2", eval.getApiBaseUrl, httpClient, baselineRun = baselineRunOpt) match {
           case Success(runUrl) =>
             baselineRunOpt = Some(runUrl.substring(runUrl.lastIndexOf("/") + 1 ))
           case Failure(ex) =>

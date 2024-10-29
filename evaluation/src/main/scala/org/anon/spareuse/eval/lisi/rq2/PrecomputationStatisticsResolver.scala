@@ -104,7 +104,7 @@ object PrecomputationStatisticsResolver {
   def getRunResultsForProgram(ga: String, v: String, eid: Long): Try[RunResult] = {
 
     dataAccessor
-      .getAnalysisRunsForEntity(eid, Some("TaintFlowSummaryBuilder", "0.0.1"), skip = 0, limit = 10)
+      .getAnalysisRunsForEntity(eid, Some("TaintFlowSummaryBuilder", "0.0.2"), skip = 0, limit = 10)
       .map(_.find(run => run.state == RunState.Finished))
       .flatMap {
         case Some(run) =>

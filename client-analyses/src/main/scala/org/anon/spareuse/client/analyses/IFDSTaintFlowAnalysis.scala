@@ -19,7 +19,7 @@ import scala.util.{Failure, Success, Try}
 class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends ClientAnalysis[Int](classesDirectory, pomFile) {
 
   private val remoteAnalysisName: String = IFDSTaintFlowSummaryBuilderImpl.analysisName
-  private val remoteAnalysisVersion: String = "0.0.1"
+  private val remoteAnalysisVersion: String = "0.0.2"
 
   private val oracleApiClient: SparriOracleApiClient = new SparriOracleApiClient
 

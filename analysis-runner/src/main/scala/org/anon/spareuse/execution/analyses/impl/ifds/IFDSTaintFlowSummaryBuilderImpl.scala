@@ -149,7 +149,7 @@ class IFDSTaintFlowSummaryBuilderImpl(baselineRunOpt: Option[AnalysisRunData]) e
 object IFDSTaintFlowSummaryBuilderImpl {
 
   val analysisName: String = "TaintFlowSummaryBuilder"
-  val analysisVersion: String = "0.0.1"
+  val analysisVersion: String = "0.0.2"
   val analysisDescription: String = "This analysis builds IFDS taint flow summaries for hardcoded sources and sinks tracking only strings"
 
   val descriptor: AnalysisImplementationDescriptor = DefaultIFDSSummaryBuilder.buildDescriptor(analysisName, analysisVersion, analysisDescription)
