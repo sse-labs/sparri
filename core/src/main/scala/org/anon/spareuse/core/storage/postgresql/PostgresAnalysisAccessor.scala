@@ -156,11 +156,9 @@ trait PostgresAnalysisAccessor {
   }
 
   override def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false, includeResultContents: Boolean = false): Try[AnalysisRunData] = Try {
-    val analysisId = getAnalysisRepr(analysisName, analysisVersion).id
-
     def getAllRunResults: Set[AnalysisResultData] = {
 
-      val take = 100
+      val take = 50
 
       var theResults = getRunResultsAsJSON(runUid, includeResultContents, 0, take).get
       var roundResultsCnt = theResults.size
@@ -181,7 +179,7 @@ trait PostgresAnalysisAccessor {
     } else Set.empty[AnalysisResultData]
 
     val queryF = db
-      .run(analysisRunsTable.filter(r => r.parentID === analysisId && r.uid === runUid).take(1).result)
+      .run(analysisRunsTable.filter(r => r.uid === runUid).take(1).result)
       .map(r => r.map(run => run.toAnalysisRunData(analysisName, analysisVersion, getInputsForRun(run.id), results)))(db.ioExecutionContext)
 
     Await.result(queryF, simpleQueryTimeout).head
@@ -293,7 +291,7 @@ trait PostgresAnalysisAccessor {
     val runRepr: SoftwareAnalysisRunRepr = getRunRepr(runUid)
 
     val lookupF = db
-      .run(runResultsTable.filter(rr => rr.analysisRunID === runRepr.id).sortBy(_.id).drop(skip).take(limit).map(_.resultID).result)
+      .run(runResultsTable.filter(rr => rr.analysisRunID === runRepr.id).drop(skip).take(limit).map(_.resultID).result)
       .flatMap { allResultIds =>
         val cached = allResultIds.map(analysisResultCache.getValueOpt).filter(_.isDefined).map(_.get)
         val notCachedIds = allResultIds.filterNot(analysisResultCache.hasValue)

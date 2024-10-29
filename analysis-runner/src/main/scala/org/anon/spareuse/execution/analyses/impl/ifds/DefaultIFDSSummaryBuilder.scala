@@ -6,7 +6,6 @@ import org.anon.spareuse.core.maven.MavenIdentifier
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaMethod, JavaProgram, buildMethodIdent}
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
-import org.anon.spareuse.core.model.entities.conversion.OPALJavaConverter
 import org.anon.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData, SoftwareEntityKind}
 import org.anon.spareuse.core.opal.OPALProjectHelper
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.{FactRep, InternalActivationRep, InternalVariableRep, MethodIFDSRep, StatementRep}
@@ -45,25 +44,37 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
   override def executeIncremental(input: SoftwareEntityData, previousResults: Set[AnalysisResultData], rawConfig: String): Try[Set[AnalysisResult]] = {
     this.squashStatements = !rawConfig.trim.equalsIgnoreCase("--keep-identity-stmts")
 
-    val inputMethodMap = input
-      .getChildren
-      .flatMap(packageEnt => packageEnt.getChildren.flatMap(classEnt => classEnt.getChildren))
-      .map(_.asInstanceOf[JavaMethod])
-      .map(jm => (s"${jm.enclosingClass.get.thisType}${buildMethodIdent(jm.name, jm.descriptor)}", jm))
+    val allInputMethods = input.asInstanceOf[JavaProgram].allMethods
+
+    val inputPrevResultMap = allInputMethods
+      .map { inputMethod =>
+        previousResults
+          .find{ result =>
+            result.affectedEntities.exists{
+              case affectedMethod: JavaMethod =>
+                affectedMethod.name == inputMethod.name &&
+                  affectedMethod.descriptor == inputMethod.descriptor &&
+                  affectedMethod.methodHash == inputMethod.methodHash
+              case _ => false
+            }
+          }
+          .map{ result =>
+            val ident = s"${inputMethod.enclosingClass.get.thisType}${buildMethodIdent(inputMethod.name, inputMethod.descriptor)}"
+            (ident, ExistingResult(result.uid))
+          }
+      }
+      .filter(_.isDefined)
+      .map(_.get)
       .toMap
 
-    def findValidPreviousResult(method: Method): Option[AnalysisResultData] = {
-      val methodHash = inputMethodMap(s"${method.classFile.thisType.fqn}${buildMethodIdent(method.name, method.descriptor.toJVMDescriptor)}").methodHash
-
-      previousResults
-        .find{ r =>
-          r.affectedEntities.exists{
-            case jm: JavaMethod =>
-              method.name == jm.name && method.descriptor.toJVMDescriptor == jm.descriptor && methodHash == jm.methodHash
-            case _ => false
-          }
-        }
+    if(inputPrevResultMap.size == allInputMethods.size){
+      // This means that all current methods have a previous result, no computations are needed
+      return Success(inputPrevResultMap.values.toSet)
     }
+
+    val inputMethodMap = allInputMethods
+      .map(jm => (s"${jm.enclosingClass.get.thisType}${buildMethodIdent(jm.name, jm.descriptor)}", jm))
+      .toMap
 
     getFileFor(input) match {
       case Success(inputStream) =>
@@ -86,30 +97,18 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
           // Mapping of methods to their TAC
           implicit val TACAIProvider: MethodTACProvider = project.get(ComputeTACAIKey)
 
-          // Detect changedMethods / new methods that need full graph recomputations
-
-          val previousResultsToLink = project
-            .allProjectClassFiles
-            .flatMap(_.methods)
-            .flatMap( findValidPreviousResult )
-            .map(r => ExistingResult(r.uid))
+          val previousResultsToLink = inputPrevResultMap.values.toSet
 
           val totalMethodCnt = project.allProjectClassFiles.flatMap(_.methods).size
           val unchangedMethodCnt = previousResultsToLink.size
-          val computationsNeeded = totalMethodCnt - unchangedMethodCnt
 
           log.info(s"Found $totalMethodCnt methods with bodies, $unchangedMethodCnt results can be reused.")
-
-          var methodCnt = 0
 
           val results = project
             .allProjectClassFiles
             .flatMap(_.methods)
-            .filterNot(m => findValidPreviousResult(m).isDefined)
+            .filterNot(m => inputPrevResultMap.contains(s"${m.classFile.thisType.fqn}${buildMethodIdent(m.name, m.descriptor.toJVMDescriptor)}"))
             .map{ m =>
-              //log.info(s"\t [ $methodCnt / $computationsNeeded ] Building IFDS summary for method: ${m.toJava}")
-              methodCnt += 1
-
               val ifdsGraph = analyzeMethod(m)
               val resultData = ifdsGraph.toResultRepresentation(squashStatements)
 
@@ -120,9 +119,9 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
 
               FreshResult(resultData, Set(correspondingEntity.get))
             }
-            .toSet[AnalysisResult] ++ previousResultsToLink.toSet
+            .toSet[AnalysisResult] ++ previousResultsToLink
 
-          log.info(s"Done building $methodCnt IFDS summaries. Freeing OPAL resources ..")
+          log.info(s"Done building ${results.size} IFDS summaries. Freeing OPAL resources ..")
           opalHelper.freeOpalResources()
           results
         }
