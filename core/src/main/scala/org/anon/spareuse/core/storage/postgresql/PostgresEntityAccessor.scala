@@ -99,6 +99,30 @@ trait PostgresEntityAccessor extends EntityAccessor {
     }
   }
 
+  override def getEntity(eid: Long, resolutionDepth: Option[Int]): Future[SoftwareEntityData] = {
+    resolutionDepth match {
+      case Some(0) =>
+        db
+          .run(entitiesTable.filter(_.id === eid).take(1).result)
+          .flatMap { rootRepr =>
+            getAllParentEntities(rootRepr.head).map(parents => parents ++ rootRepr)
+          }
+          .flatMap{allRelevantEntities =>
+            specializeAll(allRelevantEntities).map(_(eid))
+          }
+      case Some(depth) =>
+        db
+          .run(entitiesTable.filter(_.id === eid).map(_.kind).take(1).result)
+          .flatMap{ kindIds =>
+            val kindId = kindIds.head
+            val resolutionKind = SoftwareEntityKind.fromId(Math.min(kindId + depth, SoftwareEntityKind.InvocationStatement.id))
+            getEntity(eid, resolutionKind)
+          }
+      case None =>
+        getEntity(eid, SoftwareEntityKind.InvocationStatement)
+    }
+  }
+
   override def getEntityKind(eid: Long): Try[SoftwareEntityKind] = Try {
     val queryF = db.run(entitiesTable.filter(swe => swe.id === eid).take(1).map(_.kind).result)
 
@@ -113,6 +137,20 @@ trait PostgresEntityAccessor extends EntityAccessor {
     buildEntities(entityRepResult)
   }
 
+  private def getAllParentEntities(currentEntity: SoftwareEntityRepr): Future[Seq[SoftwareEntityRepr]] = {
+
+    if (currentEntity.parentId.isDefined) {
+      db
+        .run(entitiesTable.filter(_.id === currentEntity.parentId.get).take(1).result)
+        .map(_.head)
+        .flatMap { parentRepr =>
+          getAllParentEntities(parentRepr).map(result => result ++ Seq(parentRepr))
+        }
+    } else {
+      Future.successful(Seq.empty)
+    }
+  }
+
   override def getEntity(eid: Long, resolutionScope: SoftwareEntityKind): Future[SoftwareEntityData] = {
 
     def getReprFor(id: Long): Future[SoftwareEntityRepr] = {
@@ -121,20 +159,6 @@ trait PostgresEntityAccessor extends EntityAccessor {
 
     def getEntitiesWhereParentIn(parentIds: Seq[Long]): Future[Seq[SoftwareEntityRepr]] = {
       db.run(entitiesTable.filter(_.parentID inSet parentIds).result)
-    }
-
-    def getAllParentEntities(currentEntity: SoftwareEntityRepr): Future[Seq[SoftwareEntityRepr]] = {
-
-      if (currentEntity.parentId.isDefined) {
-        db
-          .run(entitiesTable.filter(_.id === currentEntity.parentId.get).take(1).result)
-          .map(_.head)
-          .flatMap { parentRepr =>
-            getAllParentEntities(parentRepr).map(result => result ++ Seq(parentRepr))
-          }
-      } else {
-        Future.successful(Seq.empty)
-      }
     }
 
 

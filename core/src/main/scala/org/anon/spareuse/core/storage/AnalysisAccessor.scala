@@ -23,7 +23,7 @@ trait AnalysisAccessor {
 
   def getAnalysisRunsForEntity(eid: Long, analysisFilter: Option[(String, String)], skip: Int = 0, limit: Int = 100): Try[Set[AnalysisRunData]]
 
-  def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false, includeResultContents: Boolean = false): Try[AnalysisRunData]
+  def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String): Try[AnalysisRunData]
 
   def storeEmptyAnalysisRun(analysisName: String, analysisVersion: String, runConfig: String): Try[String]
 

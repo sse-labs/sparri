@@ -155,35 +155,75 @@ trait PostgresAnalysisAccessor {
     Await.result(resultF, longActionTimeout)
   }
 
-  override def getAnalysisRun(analysisName: String, analysisVersion: String, runUid: String, includeResults: Boolean = false, includeResultContents: Boolean = false): Try[AnalysisRunData] = Try {
-    def getAllRunResults: Set[AnalysisResultData] = {
+  def getRun(analysisName: String, analysisVersion: String, runUid: String): Try[AnalysisRunData] = Try {
 
-      val take = 50
+    val take = 100
+    val runRepr = getRunRepr(runUid)
+    val runDbId = runRepr.id
 
-      var theResults = getRunResultsAsJSON(runUid, includeResultContents, 0, take).get
-      var roundResultsCnt = theResults.size
-      var round = 1
+    def getRunResultsRaw(skip: Int): Future[Seq[(Long, String)]] = {
+      val query = for { (_, result) <- runResultsTable.filter(_.analysisRunID === runDbId).map(_.resultID).drop(skip).take(take) join analysisResultsTable on (_ === _.id) }
+        yield (result.id, result.uid)
 
-      while(roundResultsCnt == take){
-        val roundResults = getRunResultsAsJSON(runUid, includeResultContents, round * take, take).get
-        theResults = theResults ++ roundResults
-        roundResultsCnt = roundResults.size
-        round = round + 1
-      }
-
-      theResults
+      db.run(query.result)
     }
 
-    val results = if (includeResults) {
-      getAllRunResults
-    } else Set.empty[AnalysisResultData]
+    def recursiveWrap[T](result: Seq[T], roundCnt: Int, producer: Int => Future[Seq[T]]): Future[Seq[T]] = {
+      if(result.size < take) {
+        Future.successful(result)
+      } else {
+        producer((roundCnt + 1) * take).flatMap(res => recursiveWrap(res, roundCnt + 1, producer)).map(res => result ++ res)
+      }
+    }
 
-    val queryF = db
-      .run(analysisRunsTable.filter(r => r.uid === runUid).take(1).result)
-      .map(r => r.map(run => run.toAnalysisRunData(analysisName, analysisVersion, getInputsForRun(run.id), results)))(db.ioExecutionContext)
+    def getAllRunResultsF: Future[Seq[(Long, String)]] = {
+      getRunResultsRaw(0).flatMap(result => recursiveWrap(result, 0, getRunResultsRaw))
+    }
 
-    Await.result(queryF, simpleQueryTimeout).head
+    val allResultsWithEntitiesF = getAllRunResultsF
+      .flatMap{ results =>
+        val allRelevantResultIds = results.map(_._1).toSet
+
+        def getEntitiesRaw(skip: Int): Future[Seq[(Long, SoftwareEntityRepr)]] = {
+          val query = for { (rv, entity) <- resultValiditiesTable.filter(_.resultId inSet allRelevantResultIds).drop(skip).take(take) join entitiesTable on (_.entityId === _.id) }
+            yield (rv.resultId, entity)
+
+          db.run(query.result)
+        }
+
+        getEntitiesRaw(0)
+          .flatMap(result => recursiveWrap(result, 0, getEntitiesRaw))
+          .map(_.groupMap(_._1)(t => toGenericEntityData(t._2)))
+          .map(map => (results, map))
+      }
+      .map{
+        case (resultsRaw, validitiesMap) =>
+          resultsRaw.map{ case (resultId, resultUid) =>
+              AnalysisResultData(resultUid, isRevoked = false, "", "", validitiesMap(resultId).toSet)
+          }
+      }
+
+    val runInputsQuery = for { (_, entity) <- analysisRunInputsTable.filter(_.analysisRunID === runDbId) join entitiesTable on (_.inputEntityID === _.id) }
+      yield entity
+
+    val runF = db.run(runInputsQuery.result)
+      .flatMap{ inputs =>
+        val genericInputs = inputs.map(toGenericEntityData)
+
+        allResultsWithEntitiesF
+          .map{results =>
+            runRepr.toAnalysisRunData(analysisName, analysisVersion, genericInputs.toSet, results.toSet)
+          }
+
+      }
+
+    Await.result(runF, 10.minutes)
   }
+
+  override def getAnalysisRun(analysisName: String,
+                              analysisVersion: String,
+                              runUid: String): Try[AnalysisRunData] =
+    getRun(analysisName, analysisVersion, runUid)
 
   def getNoOfFreshAndTotalResults(runUid: String): Try[(Int, Int)] = Try {
     val runId = getRunRepr(runUid).id
