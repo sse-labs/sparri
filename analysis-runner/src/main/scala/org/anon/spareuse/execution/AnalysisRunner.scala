@@ -124,7 +124,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
                 else {
                   if(dataAccessor.hasAnalysisRun(analysisName, analysisVersion, baselineRunId)){
                     val start = System.currentTimeMillis()
-                    val rawRun = dataAccessor.getAnalysisRun(analysisName, analysisVersion, baselineRunId).get
+                    val rawRun = dataAccessor.getAnalysisRun(analysisName, analysisVersion, baselineRunId, includeResults = true).get
                     val r1 = System.currentTimeMillis()
                     log.info(s"Getting the run object took ${r1 - start} ms")
 

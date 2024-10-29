@@ -173,10 +173,11 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
       log.warn(s"An incremental analysis has been triggered without specifying a baseline run: $analysisName:$analysisVersion")
       (true, "Running incremental analysis with empty baseline.")
     } else {
-      if (dataAccessor.hasAnalysisRun(analysisName, analysisVersion, request.BaselineRun.get)) {
-        (true, "")
-      } else {
-        (false, s"Invalid baseline run specified, id ${request.BaselineRun.get} not found")
+      dataAccessor.getAnalysisRun(analysisName, analysisVersion, request.BaselineRun.get) match {
+        case Success(_) =>
+          (true, "")
+        case Failure(_) =>
+          (false, s"Invalid baseline run specified, id ${request.BaselineRun.get} not found")
       }
     }
   }
