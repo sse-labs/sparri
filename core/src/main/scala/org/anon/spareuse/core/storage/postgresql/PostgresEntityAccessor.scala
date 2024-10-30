@@ -99,6 +99,33 @@ trait PostgresEntityAccessor extends EntityAccessor {
     }
   }
 
+  override def getAllEntities(eids: Set[Long]): Future[Set[SoftwareEntityData]] = {
+
+    def allParentEntities(currentEids: Set[Long]) : Future[Seq[SoftwareEntityRepr]] = {
+      val currentEntitiesFuture = Future.sequence(currentEids
+        .grouped(200)
+        .map{ idBatch =>
+          db.run(entitiesTable.filter(_.id inSet idBatch).result)
+        })
+
+      currentEntitiesFuture.flatMap{ currentEntities =>
+        val allCurrentEntities = currentEntities.flatten.toSeq
+
+        if(allCurrentEntities.exists(_.parentId.isDefined)){
+          allParentEntities(allCurrentEntities.flatMap(_.parentId).toSet)
+            .map(parents => allCurrentEntities ++ parents)
+        } else {
+          Future.successful(allCurrentEntities)
+        }
+
+      }
+    }
+
+    allParentEntities(eids).flatMap(specializeAll).map{ lookup => eids.map(lookup) }
+  }
+
+
+
   override def getEntityKind(eid: Long): Try[SoftwareEntityKind] = Try {
     val queryF = db.run(entitiesTable.filter(swe => swe.id === eid).take(1).map(_.kind).result)
 

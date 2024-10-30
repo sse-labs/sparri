@@ -24,6 +24,8 @@ trait EntityAccessor {
 
   def getEntityKind(eId: Long): Try[SoftwareEntityKind]
 
+  def getAllEntities(eids: Set[Long]): Future[Set[SoftwareEntityData]]
+
   def getEntity(eid: Long, resolutionDepth: Option[Int]): Future[SoftwareEntityData] = {
     if(hasEntity(eid)){
 

@@ -128,7 +128,9 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
                     val r1 = System.currentTimeMillis()
                     log.info(s"Getting the run object took ${r1 - start} ms")
 
-                    val resolvedRun = rawRun.withResolvedGenerics(data => entityCache.getWithCache(data.id, () => dataAccessor.awaitGetEntity(data.id, Some(0)).get), forceResolve = true)
+                    val allEntityIdsToResolve = rawRun.results.flatMap(r => r.affectedEntities.map(_.id)).filterNot(entityCache.hasValue)
+                    val entityLookup = Await.result(dataAccessor.getAllEntities(allEntityIdsToResolve), 10.minutes).map(e => (e.id, e)).toMap
+                    val resolvedRun = rawRun.withResolvedGenerics(data => entityCache.getWithCache(data.id, () => entityLookup(data.id)), forceResolve = true)
                     val resTime = System.currentTimeMillis() - r1
                     log.info(s"Resolution took $resTime ms")
 
