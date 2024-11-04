@@ -1,6 +1,6 @@
 package org.anon.spareuse.core.model.entities.conversion
 
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaPackage, JavaProgram, JavaStatement, JavaNewInstanceStatement}
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaNewInstanceStatement, JavaPackage, JavaProgram, JavaStatement}
 import org.anon.spareuse.core.model.entities.JavaEntities
 import org.opalj.ba
 import org.opalj.bc.Assembler
@@ -9,12 +9,13 @@ import org.opalj.br.{ClassFile, Method}
 
 import java.security.MessageDigest
 import scala.collection.mutable
+import scala.util.Try
 
 object OPALJavaConverter {
 
   private def hashBytes(bytes: Array[Byte]): Array[Byte] = MessageDigest.getInstance("md5").digest(bytes)
 
-  private def hashClass(cf: ClassFile): Array[Byte] = hashBytes(Assembler(ba.toDA(cf)))
+  private def hashClass(cf: ClassFile): Array[Byte] = Try(hashBytes(Assembler(ba.toDA(cf)))).getOrElse(hashBytes(Array.empty))
 
   def convertProgram(programIdent: String,
                      repositoryIdent: String,
