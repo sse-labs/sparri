@@ -4,6 +4,7 @@ import com.typesafe.config.ConfigFactory
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaMethod, JavaPackage}
 import org.anon.spareuse.core.utils.fromHex
 import org.anon.spareuse.core.utils.http.HttpDownloadException
+import org.anon.spareuse.webapi.model.{AnalysisRunRepr, JsonSupport}
 import org.apache.http.client.methods.{CloseableHttpResponse, HttpGet, HttpPost}
 import org.apache.http.entity.StringEntity
 import org.apache.http.impl.client.CloseableHttpClient
@@ -16,7 +17,7 @@ import java.nio.charset.StandardCharsets
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
-package object eval {
+package object eval extends JsonSupport {
 
   def getApiBaseUrl: String = {
     val config = ConfigFactory.load()
@@ -44,31 +45,27 @@ package object eval {
   def gavToEntityId(gav: String): String = {
     if (gav.split(":").length != 3) throw new IllegalArgumentException("GAV must be separated by colons")
     val parts = gav.split(":")
-    parts(0) + ":" + parts(1) + "!" + gav
+    parts(0) + ":" + parts(1) + "!" + parts(2)
   }
 
 
   def triggerEntityMining(entityId: String, baseUrl: String, httpClient: CloseableHttpClient): Option[String] = {
-    val body = "{ \"Identifier\": \"" + entityId + "\"}"
+    val body = "{ \"Identifiers\": [\"" + entityId + "\"] }"
     val url = baseUrl + "processing/enqueueEntity"
 
     val request = new HttpPost(url)
-    request.setEntity(new StringEntity(body, "application/json"))
+    val theEntity = new StringEntity(body, StandardCharsets.UTF_8)
+    theEntity.setContentType("application/json")
+    request.setEntity(theEntity)
 
     val response: CloseableHttpResponse = httpClient.execute(request)
 
     response.getStatusLine.getStatusCode match {
       case 302 => //Found
-        val locationOpt = response
-          .getAllHeaders
-          .find(h => h.getName.equalsIgnoreCase("Location"))
-          .map(h => h.getValue)
         EntityUtils.consume(response.getEntity)
         response.close()
 
-        Some(locationOpt
-          .map(rel => baseUrl + rel)
-          .getOrElse(throw new IllegalStateException("Expected a location header to be returned")))
+        Some(entityId)
       case 202 => //Accepted
         EntityUtils.consume(response.getEntity)
         response.close()
@@ -131,6 +128,33 @@ package object eval {
       execResponse.close()
 
       locationOpt.getOrElse(throw new IllegalStateException("Expected a location header to be returned"))
+    }
+  }
+
+  def getRunsForEntity(entityIdent: String, analysisName: String, analysisVersion: String, baseUrl: String, httpClient: CloseableHttpClient): Try[Set[AnalysisRunRepr]] = {
+    val request = new HttpGet(baseUrl + s"entities/$entityIdent/processedBy?analysis=$analysisName:$analysisVersion")
+
+    Try {
+      val response = httpClient.execute(request)
+
+      if(response.getStatusLine.getStatusCode != 200){
+        EntityUtils.consume(response.getEntity)
+        response.close()
+        throw new IllegalStateException(s"Failed to query runs for entity $entityIdent, got resposne code ${response.getStatusLine.getStatusCode}")
+      }
+
+      EntityUtils.toString(response.getEntity, StandardCharsets.UTF_8).parseJson match {
+        case arr: JsArray =>
+          arr
+            .elements
+            .collect{
+              case jobj: JsObject =>
+                jobj.convertTo[AnalysisRunRepr]
+            }
+            .toSet
+        case other@_ =>
+          throw new IllegalStateException(s"Unexpected JSON body type: $other")
+      }
     }
   }
 

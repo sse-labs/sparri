@@ -154,7 +154,7 @@ lazy val webapi = (project in file("webapi"))
 	)
 
 lazy val evaluation = (project in file("evaluation"))
-	.dependsOn(core)
+	.dependsOn(core, `client-analyses`)
 	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= Seq(dependencies.logback, dependencies.neo4jDriver),
