@@ -1,6 +1,7 @@
 package org.anon.spareuse.client.http
 
 import org.anon.spareuse.client.ConfigReader
+import org.anon.spareuse.core.model.RunState
 import org.anon.spareuse.webapi.model.{AnalysisInformationRepr, AnalysisResultRepr, AnalysisRunRepr, JsonSupport}
 import org.apache.http.client.HttpResponseException
 import org.apache.http.client.methods.{CloseableHttpResponse, HttpGet, HttpPost}
@@ -9,12 +10,14 @@ import org.apache.http.entity.{ContentType, StringEntity}
 import org.apache.http.{Header, HttpHost, HttpRequest}
 import org.apache.http.impl.client.{CloseableHttpClient, HttpClients}
 import org.apache.http.message.BasicHeader
+import org.apache.http.util.EntityUtils
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.util.{Failure, Success, Try}
-import spray.json.enrichString
+import spray.json.{JsArray, JsObject, enrichString}
 
 import java.net.URI
+import java.nio.charset.StandardCharsets
 
 class SparriApiClient extends AutoCloseable with JsonSupport {
 
@@ -46,13 +49,13 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
   }
 
   def analysisExecutedWith(analysisName: String, analysisVersion: String, input: String): Boolean = {
-    getAsString(s"/api/analyses/$analysisName/$analysisVersion/runs",
-      queryParams = Map("input" -> input), rawHeader = Map("limit" -> "10")) match {
+    getAsString(s"/api/entities/$input/processedBy",
+      queryParams = Map("analysis" -> s"$analysisName:$analysisVersion"),
+      rawHeader = Map("limit" -> "20")) match {
       case Success(runsJson) =>
         val runs = runsJson.parseJson.convertTo[List[AnalysisRunRepr]]
 
-        runs.exists(run => run.State == "Finished")
-
+        runs.exists(run => run.State == RunState.Finished.toString)
       case Failure(hx: HttpResponseException) if hx.getStatusCode == 404 =>
         log.warn(s"The entity $input or the analysis $analysisName was not known to the SPARRI server.", hx)
         false
@@ -61,9 +64,6 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
         false
     }
   }
-
-
-
 
   private[http] def executeWithHeaders(request: HttpRequest, rawHeaders: Map[String, String] = Map.empty): Try[CloseableHttpResponse] = Try {
     val headers = rawHeaders.map { case (name, value) => new BasicHeader(name, value) }.toArray[Header]

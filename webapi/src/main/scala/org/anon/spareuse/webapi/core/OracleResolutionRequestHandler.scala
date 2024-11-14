@@ -182,7 +182,9 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
   private def ensureValidSession[T](uid: String)(implicit func: Session[OracleSessionState] => Try[T]): Try[T] = {
     super.validateSessions()
     if(isActiveSession(uid)){
-      func(getSession(uid).get)
+      val session = getSession(uid).get
+      session.recordInteraction()
+      func(session)
     } else if(isTimedOut(uid)) {
       Failure(InvalidSessionException(uid, "Session timed out"))
     } else if(isInvalid(uid)){
@@ -195,7 +197,9 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
   private def ensureValidSessionF[T](uid: String)(implicit func: Session[OracleSessionState] => Future[T]): Future[T] = {
     super.validateSessions()
     if (isActiveSession(uid)) {
-      func(getSession(uid).get)
+      val session = getSession(uid).get
+      session.recordInteraction()
+      func(session)
     } else if (isTimedOut(uid)) {
       Future.failed(InvalidSessionException(uid, "Session timed out"))
     } else if (isInvalid(uid)) {
