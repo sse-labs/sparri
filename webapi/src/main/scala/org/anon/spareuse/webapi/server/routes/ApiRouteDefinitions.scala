@@ -6,13 +6,14 @@ import ch.megard.akka.http.cors.scaladsl.CorsDirectives.cors
 
 trait ApiRouteDefinitions extends EntityRouteDefinitions
   with ProcessingRouteDefinitions
-  with AnalysisRouteDefinitions {
+  with AnalysisRouteDefinitions
+  with OracleRouteDefinitions {
 
 
   protected lazy val allApiRoutes: Route = cors(){
     pathPrefix("api") {
       extractRequest { implicit request =>
-        processingRoutes ~ entityRoutes ~ analysisRoutes
+        processingRoutes ~ entityRoutes ~ analysisRoutes ~ oracleRoutes
       }
     }
   }

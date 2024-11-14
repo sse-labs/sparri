@@ -1,6 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
 
 import scala.collection.mutable
 import scala.util.Try
@@ -9,10 +10,8 @@ class DefaultRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: O
 
   private[cg] final val priorInvocations: mutable.Map[DefinedMethod, Set[String]] = mutable.HashMap()
 
-  private[cg] def isStaticMethod(dm: DefinedMethod): Boolean = classLookup(dm.definingTypeName).lookupMethod(dm.methodName, dm.descriptor).exists(_.isStatic)
-
   override def buildFrom(dm: DefinedMethod): Try[CallGraphView] = {
-    val types = if(isStaticMethod(dm)) Set.empty[String] else Set(dm.definingTypeName)
+    val types = if(dm.isStatic) Set.empty[String] else Set(dm.definingTypeName)
 
     resolve(dm, types)
   }
@@ -38,10 +37,10 @@ class DefaultRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: O
           // What types do we have to look at?
           val effectiveTypesToResolve = currTask.method.newTypesInstantiated ++ newExternalTypes
 
-          currTask.method.javaMethod.invocationStatements.foreach { jis =>
-            resolveInvocation(jis, effectiveTypesToResolve).foreach { target =>
+          currTask.method.invocationStatements.foreach { jis =>
+            resolveInvocation(jis, currTask.method, s => effectiveTypesToResolve.contains(s)).foreach { target =>
               putCall(currTask.method, jis.instructionPc, target)
-              workStack.push(ResolverTask(target, effectiveTypesToResolve, rootSet))
+              workStack.push(ResolverTask(target, effectiveTypesToResolve.toSet, rootSet))
             }
           }
 

@@ -1,5 +1,6 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.MethodIdent
 import org.opalj.br.{FieldType, ObjectType}
 
 import scala.annotation.switch
@@ -16,7 +17,34 @@ object TaintVariableFacts {
       throw new RuntimeException(s"Unexpected variable type: ${u.getClass}")
   }
 
-  trait TaintVariable extends IFDSFact
+  trait TaintVariable extends IFDSFact {
+
+    override def isTaintVariable: Boolean = true
+
+    override def asTaintVariable: TaintVariable = this
+
+    def isParameter: Boolean = false
+    def isLocal: Boolean = false
+    def isField: Boolean = false
+    def isFunctionReturn: Boolean = false
+
+    def asParameter: ParameterTaintVariable = throw new IllegalStateException("Not a parameter variable")
+    def asLocal: LocalTaintVariable = throw new IllegalStateException("Not a local variable")
+    def asField: TaintField = throw new IllegalStateException("Not a field")
+    def asReturn: TaintFunctionReturn = throw new IllegalStateException("Not a function return")
+  }
+
+  case class ParameterTaintVariable private[ifds](normalVariableName: String, parameterIdx: Int) extends TaintVariable {
+    override def uniqueIdent: String = s"<PARAM> $parameterIdx $normalVariableName"
+
+    override def toString: String = uniqueIdent
+
+    override def displayName: String = normalVariableName
+
+    override def isParameter: Boolean = true
+
+    override def asParameter: ParameterTaintVariable = this
+  }
 
   case class LocalTaintVariable(normalVariableName: String) extends TaintVariable {
     override def uniqueIdent: String = s"<LOCAL> $normalVariableName"
@@ -24,10 +52,14 @@ object TaintVariableFacts {
     override def toString: String = uniqueIdent
 
     override def displayName: String = normalVariableName
+
+    override def isLocal: Boolean = true
+
+    override def asLocal: LocalTaintVariable = this
   }
 
   object LocalTaintVariable {
-    def apply(variable: TACVar): LocalTaintVariable = LocalTaintVariable(normalizeVarName(variable))
+    def apply(variable: TACVar): LocalTaintVariable =LocalTaintVariable(normalizeVarName(variable))
     def apply(variable: LocalVariable): LocalTaintVariable = LocalTaintVariable(variable.variableName)
   }
 
@@ -47,6 +79,10 @@ object TaintVariableFacts {
     override def toString: String = uniqueIdent
 
     override def displayName: String = declaringClassFqn + "." + name
+
+    override def isField: Boolean = true
+
+    override def asField: TaintField = this
   }
 
   case class TaintFunctionReturn(callPc: Int) extends TaintVariable {
@@ -55,19 +91,46 @@ object TaintVariableFacts {
     override def toString: String = uniqueIdent
 
     override def displayName: String = s"<CALL-RETURN> [pc=$callPc]"
+
+    override def isFunctionReturn: Boolean = true
+
+    override def asReturn: TaintFunctionReturn = this
+  }
+  private final val objectMap: mutable.Map[MethodIdent, mutable.Map[Int, TaintObject]] = mutable.Map.empty
+  case class TaintObject private[ifds](fqn: String, defMethod: MethodIdent, defStmtIdx: Int)
+
+  object TaintObject {
+    def apply(fqn: String, defMethod: MethodIdent, defStmtIdx: Int): TaintObject = {
+      if(objectMap.contains(defMethod) && objectMap(defMethod).contains(defStmtIdx)) return objectMap(defMethod)(defStmtIdx)
+
+      val theObject = new TaintObject(fqn, defMethod, defStmtIdx)
+
+      if(objectMap.contains(defMethod)){
+        objectMap(defMethod).put(defStmtIdx, theObject)
+      } else {
+        objectMap.put(defMethod, mutable.Map(defStmtIdx -> theObject))
+      }
+
+      theObject
+    }
   }
 
 
   private val localVarMap: mutable.Map[String, IFDSFact] = new mutable.HashMap[String, IFDSFact]()
   private val fieldMap: mutable.Map[ObjectType, mutable.Map[String, IFDSFact]] = new mutable.HashMap[ObjectType, mutable.Map[String, IFDSFact]]
 
-  def clearLocals(): Unit = localVarMap.clear()
-
   def buildFact(localVar: TACVar): IFDSFact = {
     val varName = normalizeVarName(localVar)
     if (localVarMap.contains(varName)) localVarMap(varName)
     else {
-      val fact = LocalTaintVariable(localVar)
+
+      val fact: TaintVariable = if(localVar.isInstanceOf[TACUVar] && localVar.definedBy.exists(_ < -1)){
+        val paramIdx = localVar.definedBy.filter(_ < -1).head
+        ParameterTaintVariable(varName, -2 - paramIdx)
+      } else {
+        LocalTaintVariable(localVar)
+      }
+
       localVarMap.put(varName, fact)
       fact
     }
@@ -106,7 +169,7 @@ object TaintVariableFacts {
 
     if(splits.length < 2) throw new IllegalArgumentException(s"Not a valid fact identifier: $uniqueIdent")
 
-    (uniqueIdent.split(" ").head.trim: @switch) match {
+    (splits.head.trim: @switch) match {
       case "<LOCAL>" => LocalTaintVariable(splits(1))
       case "<FIELD>" if splits.length == 5 || splits.length == 6 =>
         val classFqn = splits(1)
@@ -115,6 +178,7 @@ object TaintVariableFacts {
         val fieldTypeName = if(isStatic) splits(5) else splits(4)
         TaintField(classFqn, fieldTypeName, name, isStatic)
       case "<CALL-RETURN>" => TaintFunctionReturn(splits(1).toInt)
+      case "<PARAM>" => ParameterTaintVariable(splits(2), splits(1).toInt)
     }
 
   }

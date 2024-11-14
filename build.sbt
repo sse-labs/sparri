@@ -1,9 +1,13 @@
-name := "opal-callgraph-miner"
+name := "sparri"
 
 ThisBuild / organization := "org.anon"
 ThisBuild / version      := "0.1.0-SNAPSHOT"
 ThisBuild / scalaVersion := "2.13.12"
 ThisBuild / scalacOptions ++= Seq("-unchecked", "-deprecation")
+ThisBuild / fork := true
+ThisBuild / javaOptions ++= Seq(
+	"-Xmx12G"
+)
 
 lazy val dockerSettings = docker / dockerfile := {
 
@@ -25,7 +29,7 @@ lazy val mergeStrategySettings = assembly / assemblyMergeStrategy := {
 }
 
 lazy val root = (project in file("."))
-	.aggregate(core, `maven-entity-name-publisher`, `maven-entity-miner`, webapi, `analysis-runner`, evaluation)
+	.aggregate(core, `maven-entity-name-publisher`, `maven-entity-miner`, webapi, `analysis-runner`, evaluation, `client-analyses`)
 
 lazy val core = (project in file("core"))
 	.settings(
@@ -105,12 +109,28 @@ compileRunnerFixtures := {
 	"javac -d ./analysis-runner/src/test/resources/ ./analysis-runner/src/test/fixtures-java/*.java" !
 }
 
+lazy val `client-analyses` = (project in file("client-analyses"))
+	.dependsOn( core % "test->test;compile->compile", `analysis-runner` % "test->test;compile->compile", webapi % "test->test;compile->compile")
+	.enablePlugins(DockerPlugin)
+	.settings(
+
+		libraryDependencies += dependencies.logback,
+		libraryDependencies += dependencies.mvninvoker,
+
+		assembly / mainClass := Some("org.anon.spareuse.client.ClientAnalysisApplication"),
+		assembly / assemblyJarName := "client-analyses.jar",
+		mergeStrategySettings,
+		dockerSettings,
+
+		docker / imageNames := Seq(ImageName("spar-analyses"))
+	)
+
 lazy val playground = (project in file("playground"))
 	.dependsOn(core, evaluation)
 	.settings(libraryDependencies ++= Seq(dependencies.logback))
 
 lazy val webapi = (project in file("webapi"))
-	.dependsOn(core)
+	.dependsOn(core % "test->test;compile->compile", `analysis-runner` % "test->test;compile->compile")
 	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= Seq(dependencies.akkaStreams, dependencies.akkaHttp, dependencies.akkaActors, dependencies.akkaSprayJson,
@@ -123,11 +143,13 @@ lazy val webapi = (project in file("webapi"))
 		docker / dockerfile := {
 
 			val artifact: File = assembly.value
+			val jreData: File = baseDirectory.value / ".." / "jre-data"
 			val artifactTargetPath = s"/app/${artifact.name}"
 
 			new Dockerfile {
 				from("openjdk:16-jdk")
 				add(artifact, artifactTargetPath)
+				add(jreData, "/jre-data/")
 				entryPoint("java", "-jar", "-Xmx8G", "-Xss128m", artifactTargetPath)
 			}
 		},
@@ -136,10 +158,12 @@ lazy val webapi = (project in file("webapi"))
 	)
 
 lazy val evaluation = (project in file("evaluation"))
-	.dependsOn(core)
+	.dependsOn(core, `client-analyses`)
 	.enablePlugins(DockerPlugin)
 	.settings(
 		libraryDependencies ++= Seq(dependencies.logback, dependencies.neo4jDriver),
+
+		publish / skip := true,
 
 		assembly / mainClass := Some ("org.anon.spareuse.eval.performance.PerformanceEvaluationApp"),
 		assembly / assemblyJarName := "spar-evaluation.jar",
@@ -160,6 +184,14 @@ lazy val evaluation = (project in file("evaluation"))
 		docker / imageNames := Seq(ImageName(s"spar-evaluation:latest"))
 
 	)
+
+// The integration tests are bundled as a subproject - recommended way to go since SBT 1.9.0
+lazy val integration = (project in file("integration"))
+	.dependsOn(root, `client-analyses` % "test->test")
+	.settings(
+		publish / skip := true,
+		libraryDependencies ++= Seq(dependencies.scalaTest, dependencies.tcPostgres, dependencies.tcScala, dependencies.tcRabbitMq)
+	)
 	
 lazy val dependencies = new {
 
@@ -173,6 +205,7 @@ lazy val dependencies = new {
 	
 	val jeka = "dev.jeka" % "jeka-core" % "0.9.15.RELEASE"
 	val mvnarcheologist = "com.squareup.tools.build" % "maven-archeologist" % "0.0.10"
+	val mvninvoker = "org.apache.maven.shared" % "maven-invoker" % "3.3.0"
 
 	val mvnIndexer = "org.apache.maven.indexer" % "indexer-reader" % "6.2.2"
 	
@@ -182,8 +215,6 @@ lazy val dependencies = new {
 	val logback = "ch.qos.logback" % "logback-classic" % "1.2.3"
 	
 	val rabbitMQ = "com.rabbitmq" % "amqp-client" % "5.13.0"
-	
-	val scalaTest = "org.scalatest" %% "scalatest" % "3.2.9" % "test"
 
 	val apacheHttp = "org.apache.httpcomponents" % "httpclient" % "4.5.13"
 
@@ -207,4 +238,11 @@ lazy val dependencies = new {
 	val akkaHttpCors = "ch.megard" %% "akka-http-cors" % "1.1.3"
 
 	val neo4jDriver = "org.neo4j.driver" % "neo4j-java-driver" % "4.3.8"
+
+	// Test-Only dependencies
+	val testContainersScalaVersion = "0.41.4"
+	val scalaTest = "org.scalatest" %% "scalatest" % "3.2.19" % Test
+	val tcScala = "com.dimafeng" %% "testcontainers-scala-scalatest" % testContainersScalaVersion % Test
+	val tcPostgres = "com.dimafeng" %% "testcontainers-scala-postgresql" % testContainersScalaVersion % Test
+	val tcRabbitMq = "com.dimafeng" %% "testcontainers-scala-rabbitmq" % testContainersScalaVersion % Test
 }

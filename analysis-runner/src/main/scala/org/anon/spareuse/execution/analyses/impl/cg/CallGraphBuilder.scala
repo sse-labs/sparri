@@ -1,6 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaMethod}
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaInvokeStatement, JavaMethod}
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
 
 import scala.collection.mutable
 import scala.util.Try
@@ -44,31 +45,14 @@ trait CallGraphBuilder {
 
   def asDefinedMethod(jm: JavaMethod): DefinedMethod = {
     if (!defMCache.contains(jm))
-      defMCache(jm) = new DefinedMethod(jm.enclosingClass.get.thisType, jm)
+      defMCache(jm) = new DefinedMethod(jm.enclosingClass.get.thisType,
+        jm.name,
+        jm.descriptor,
+        jm.isStatic,
+        () => jm.newStatements.map(_.instantiatedTypeName).toList,
+        () => jm.invocationStatements)
 
     defMCache(jm)
-  }
-
-  class DefinedMethod(declaringType: String, jm: JavaMethod) {
-
-    val definingTypeName: String = declaringType
-    val methodName: String = jm.name
-    val descriptor: String = jm.descriptor
-
-    lazy val javaMethod: JavaMethod = jm
-
-    lazy val newTypesInstantiated: Set[String] = jm.newStatements.map(_.instantiatedTypeName).toSet
-
-    override def equals(obj: Any): Boolean = obj match {
-      case other: DefinedMethod =>
-        other.definingTypeName.equals(definingTypeName) && other.descriptor.equals(descriptor) && other.methodName.equals(methodName)
-      case _ => false
-    }
-
-    override def hashCode(): Int = 31 * definingTypeName.hashCode + 11 * methodName.hashCode + 5 * descriptor.hashCode
-
-    override def toString: String = definingTypeName + "->" + methodName + descriptor
-
   }
 
   class CallGraphView private[cg](){
@@ -82,4 +66,30 @@ trait CallGraphBuilder {
     def callersOf(dm: DefinedMethod): Set[DefinedMethod] = callerMap.get(dm).map(_.toSet).getOrElse(Set.empty)
 
   }
+}
+
+object CallGraphBuilder {
+
+  class DefinedMethod(declaringType: String, mName: String, mDescriptor: String, mIsStatic: Boolean, newTypesProvider: () => List[String], invocationProvider: () => Seq[JavaInvokeStatement]) {
+
+    val definingTypeName: String = declaringType
+    val methodName: String = mName
+    val descriptor: String = mDescriptor
+    val isStatic: Boolean = mIsStatic
+
+    lazy val newTypesInstantiated: List[String] = newTypesProvider.apply()
+    lazy val invocationStatements: Seq[JavaInvokeStatement] = invocationProvider.apply()
+
+    override def equals(obj: Any): Boolean = obj match {
+      case other: DefinedMethod =>
+        other.definingTypeName.equals(definingTypeName) && other.descriptor.equals(descriptor) && other.methodName.equals(methodName)
+      case _ => false
+    }
+
+    override def hashCode(): Int = 31 * definingTypeName.hashCode + 11 * methodName.hashCode + 5 * descriptor.hashCode
+
+    override def toString: String = definingTypeName + "->" + methodName + descriptor
+
+  }
+
 }

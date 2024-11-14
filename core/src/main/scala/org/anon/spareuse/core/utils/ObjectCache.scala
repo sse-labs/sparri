@@ -8,6 +8,7 @@ class ObjectCache[K <: AnyVal, T <: AnyRef](maxEntries: Int) {
 
   private val theCache: mutable.Map[K, (T, Long)] = new mutable.HashMap
 
+  def hasValue(key: K): Boolean = theCache.contains(key)
 
   def pushValue(key: K, value: T): Unit = {
 

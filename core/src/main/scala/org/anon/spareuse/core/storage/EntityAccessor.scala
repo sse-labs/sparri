@@ -7,26 +7,29 @@ import org.anon.spareuse.core.model.entities.{GenericEntityData, SoftwareEntityD
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.GenericEntityData
 
+import scala.annotation.switch
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Success, Try}
 
 trait EntityAccessor {
 
-  protected val awaitEntityTimeout: FiniteDuration = 60.seconds
+  protected val awaitEntityTimeout: FiniteDuration = 300.seconds
 
   def initializeEntityTables(): Unit
 
-  def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Future[Seq[SoftwareEntityData]]
+  def getEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[Long]): Future[Seq[SoftwareEntityData]]
 
-  def getEntityChildren(uid: String, skip: Int, limit:Int): Try[Seq[SoftwareEntityData]]
+  def getEntityChildren(eid: Long, skip: Int, limit:Int): Try[Seq[SoftwareEntityData]]
 
-  def getEntityKind(entityIdent: String): Try[SoftwareEntityKind]
+  def getEntityKind(eId: Long): Try[SoftwareEntityKind]
 
-  def getEntity(ident: String, resolutionDepth: Option[Int]): Future[SoftwareEntityData] = {
-    if(hasEntity(ident)){
+  def getAllEntities(eids: Set[Long]): Future[Set[SoftwareEntityData]]
 
-      getEntityKind(ident) match {
+  def getEntity(eid: Long, resolutionDepth: Option[Int]): Future[SoftwareEntityData] = {
+    if(hasEntity(eid)){
+
+      getEntityKind(eid) match {
         case Success(entityKind) =>
           // If no depth is given, resolve the entire tree
           val resolutionScope = if(resolutionDepth.isDefined)
@@ -34,25 +37,44 @@ trait EntityAccessor {
           else
             SoftwareEntityKind.InvocationStatement
 
-          getEntity(ident, resolutionScope)
+          getEntity(eid, resolutionScope)
         case Failure(ex) =>
           Future.failed(ex)
       }
 
-    } else Future.failed(new IllegalStateException(s"Entity not present: $ident"))
+    } else Future.failed(new IllegalStateException(s"Entity not present: $eid"))
   }
 
-  def awaitGetEntity(ident: String, resolutionDepth: Option[Int]): Try[SoftwareEntityData] = {
-    Try(Await.result(getEntity(ident, resolutionDepth), awaitEntityTimeout))
+  def awaitGetEntity(eid: Long, resolutionDepth: Option[Int]): Try[SoftwareEntityData] = {
+    Try(Await.result(getEntity(eid, resolutionDepth), awaitEntityTimeout))
   }
 
-  def getEntity(ident: String, resolutionScope: SoftwareEntityKind): Future[SoftwareEntityData]
+  def getEntity(eid: Long, resolutionScope: SoftwareEntityKind): Future[SoftwareEntityData]
 
-  def awaitGetEntity(ident: String, resolutionScope: SoftwareEntityKind): Try[SoftwareEntityData] = {
-    Try(Await.result(getEntity(ident, resolutionScope), awaitEntityTimeout))
+  def awaitGetEntity(eid: Long, resolutionScope: SoftwareEntityKind): Try[SoftwareEntityData] = {
+    Try(Await.result(getEntity(eid, resolutionScope), awaitEntityTimeout))
   }
-  def hasEntity(ident: String, kind: SoftwareEntityKind): Boolean
+  def hasEntity(eid: Long, kind: SoftwareEntityKind): Boolean
 
-  def hasEntity(ident: String): Boolean
+  def hasEntity(eid: Long): Boolean
+
+  def getLibraryEntityId(ga: String): Option[Long]
+  def getProgramEntityId(gav: String): Option[Long]
+  def getPackageEntityId(gav: String, pName: String): Option[Long]
+  def getClassEntityId(gav: String, classFqn: String): Option[Long]
+  def getMethodEntityId(gav: String, classFqn: String, methodIdent: String): Option[Long]
+  def getStatementEntityId(gav: String, classFqn: String, methodIdent: String, pcIdent: String): Option[Long]
+
+  def hasProgram(gav: String): Boolean = getProgramEntityId(gav).isDefined
+
+  def getEntityIdFor(identifiers: Seq[String]): Option[Long] = (identifiers.length : @switch)match {
+    case 1 => getLibraryEntityId(identifiers.head)
+    case 2 => getProgramEntityId(s"${identifiers.head}:${identifiers(1)}")
+    case 3 => getPackageEntityId(s"${identifiers.head}:${identifiers(1)}", identifiers(2))
+    case 4 => getClassEntityId(s"${identifiers.head}:${identifiers(1)}", identifiers(3))
+    case 5 => getMethodEntityId(s"${identifiers.head}:${identifiers(1)}", identifiers(3), identifiers(4))
+    case 6 => getStatementEntityId(s"${identifiers.head}:${identifiers(1)}", identifiers(3), identifiers(4), identifiers(5))
+    case _ => None
+  }
 
 }

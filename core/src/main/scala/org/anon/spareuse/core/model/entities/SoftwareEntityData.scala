@@ -15,7 +15,9 @@ trait SoftwareEntityData {
 
   val binaryHash: Option[Array[Byte]]
 
-  val uid: String
+  val identifier: String
+
+  val id: Long
 
   protected var parent: Option[SoftwareEntityData] = None
   protected var children: mutable.Set[SoftwareEntityData] = mutable.Set.empty
@@ -52,6 +54,8 @@ trait SoftwareEntityData {
   def isMethodInvocationInstruction: Boolean = kind == SoftwareEntityKind.InvocationStatement
   def isNewInstanceInstruction: Boolean = kind == SoftwareEntityKind.NewInstanceStatement
   def isInstruction: Boolean = isFieldAccessInstruction || isMethodInvocationInstruction || isNewInstanceInstruction
+
+  def allChildren: Set[SoftwareEntityData] = getChildren ++ getChildren.flatMap(_.allChildren)
 
   @tailrec
   final def findFirstParent(pred: SoftwareEntityData => Boolean): Option[SoftwareEntityData] = {

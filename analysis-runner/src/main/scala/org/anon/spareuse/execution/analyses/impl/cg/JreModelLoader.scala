@@ -16,11 +16,11 @@ object JreModelLoader extends JreRepresentationJsonSupport {
   private[cg] var jreVersionMap: Map[String, JreData] = Map.empty
   private[cg] var defaultJre: String = "8"
 
-  def indexJreData(config: AnalysisRunnerConfig): Unit = {
-    val dataDir = new File(config.jreDataDir)
+  def indexJreData(jreDataDir: String): Unit = {
+    val dataDir = new File(jreDataDir)
 
     if(!dataDir.exists() || !dataDir.isDirectory)
-      throw new IllegalArgumentException(s"Not a valid JRE data directory: ${dataDir.getName}")
+      throw new IllegalArgumentException(s"Not a valid JRE data directory: ${dataDir.getAbsolutePath}")
 
     jreVersionMap = dataDir
       .listFiles(new FileFilter {

@@ -3,6 +3,7 @@ package org.anon.spareuse.core.storage.postgresql
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.core.storage.postgresql.ResultFormatPredef.allPredefFormats
 import org.anon.spareuse.core.utils.ObjectCache
+import org.postgresql.ds.PGSimpleDataSource
 import org.slf4j.{Logger, LoggerFactory}
 import slick.dbio.DBIO
 import slick.jdbc.JdbcBackend.Database
@@ -24,7 +25,26 @@ trait PostgresSparriSupport extends PostgresAnalysisTables with PostgresEntityTa
   protected val simpleQueryTimeout: FiniteDuration = 5.seconds
   protected val longActionTimeout: FiniteDuration = 60.seconds
 
-  protected lazy val db = Database.forConfig("spa-reuse.postgres")
+  protected lazy val db = {
+    val dbUser = System.getenv("SPARRI_DB_USER")
+
+    // Use environment-supplied credentials if they are present (mostly for integration testing)
+    if(dbUser != null){
+      val dbPass = System.getenv("SPARRI_DB_PASS")
+      val dbUrl = System.getenv("SPARRI_DB_URL")
+      val dataSource = new PGSimpleDataSource()
+      dataSource.setProperty("user", dbUser)
+      dataSource.setProperty("password", dbPass)
+      dataSource.setURL(dbUrl)
+      dataSource.setDatabaseName("spa-results")
+
+      Database.forDataSource(dataSource, maxConnections = Some(10))
+    } else {
+      Database.forConfig("spa-reuse.postgres")
+    }
+  }
+
+
 
   override def initializeEntityTables(): Unit = {
 

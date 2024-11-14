@@ -4,23 +4,24 @@ import akka.stream.scaladsl.Sink
 import akka.{Done, NotUsed}
 import akka.stream.scaladsl.Source
 import org.anon.spareuse.core.model.{AnalysisResultData, RunState}
-import org.anon.spareuse.core.model.entities.{MinerCommand, MinerCommandJsonSupport}
+import org.anon.spareuse.core.model.entities.{MinerCommandJsonSupport, SoftwareEntityData}
 import org.anon.spareuse.core.utils.rabbitmq.{MqMessageWriter, MqStreamIntegration}
 import org.anon.spareuse.execution.utils.{AnalysisRunNotPossibleException, ValidRunnerCommand, ValidStartRunCommand}
 import org.anon.spareuse.core.formats.json.CustomObjectWriter
-import org.anon.spareuse.core.maven.MavenIdentifier
 import org.anon.spareuse.core.model.analysis.{AnalysisCommand, IncrementalAnalysisCommand, RunnerCommand}
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
-import org.anon.spareuse.core.utils.http
+import org.anon.spareuse.core.utils.{ObjectCache, wcTime}
 import org.anon.spareuse.core.utils.streaming.AsyncStreamWorker
 import org.anon.spareuse.execution.analyses.impl.cg.JreModelLoader
-import org.anon.spareuse.execution.analyses.impl.{MvnConstantClassAnalysisImpl, MvnDependencyAnalysisImpl, MvnPartialCallgraphAnalysisImpl}
+import org.anon.spareuse.execution.analyses.impl.ifds.IFDSTaintFlowSummaryBuilderImpl
+import org.anon.spareuse.execution.analyses.impl.{MvnConstantClassAnalysisImpl, MvnConstantMethodsAnalysisImpl, MvnDependencyAnalysisImpl, MvnPartialCallgraphAnalysisImpl}
 import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisRegistry, ExistingResult, FreshResult}
-import spray.json.{enrichAny, enrichString}
+import spray.json.enrichString
 
 import java.time.LocalDateTime
-import scala.concurrent.Future
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 import scala.util.{Failure, Success, Try}
 
 class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
@@ -34,14 +35,18 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
   private val dataAccessor: DataAccessor = new PostgresDataAccessor()(streamMaterializer.executionContext)
 
+  private final val entityCache: ObjectCache[Long, SoftwareEntityData] = new ObjectCache[Long, SoftwareEntityData](100000)
+
 
   override def initialize(): Unit = {
     // Load information about JRE representations. Representations themselves will be index lazily
-    JreModelLoader.indexJreData(configuration)
+    JreModelLoader.indexJreData(configuration.jreDataDir)
 
     AnalysisRegistry.registerRegularAnalysis(MvnConstantClassAnalysisImpl, () => new MvnConstantClassAnalysisImpl)
     AnalysisRegistry.registerRegularAnalysis(MvnDependencyAnalysisImpl, () => new MvnDependencyAnalysisImpl)
     AnalysisRegistry.registerRegularAnalysis(MvnPartialCallgraphAnalysisImpl, () => new MvnPartialCallgraphAnalysisImpl)
+    AnalysisRegistry.registerRegularAnalysis(MvnConstantMethodsAnalysisImpl, () => new MvnConstantMethodsAnalysisImpl)
+    AnalysisRegistry.registerIncrementalAnalysis(IFDSTaintFlowSummaryBuilderImpl.descriptor, opt => new IFDSTaintFlowSummaryBuilderImpl(opt))
 
     entityQueueWriter.initialize()
 
@@ -68,7 +73,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       .map(cmdOpt => validatePrerequisites(cmdOpt.get))
       .filter(_.isDefined)
       .map(_.get)
-      .runWith(buildExecutionSink())(streamMaterializer)
+      .runWith(buildExecutionSinkSequential())(streamMaterializer)
   }
 
   private def parseCommand(msg: String): Option[RunnerCommand] = {
@@ -118,18 +123,25 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
                 val baselineRun = if(baselineRunId.isBlank) None
                 else {
                   if(dataAccessor.hasAnalysisRun(analysisName, analysisVersion, baselineRunId)){
+                    val start = System.currentTimeMillis()
+                    val rawRun = dataAccessor.getAnalysisRun(analysisName, analysisVersion, baselineRunId, includeResults = true).get
+                    val r1 = System.currentTimeMillis()
+                    log.info(s"Getting the run object took ${r1 - start} ms")
 
-                    // Make sure the run that we pass to the analysis as a baseline has fully resolved entity hierarchies
-                    val theRun = dataAccessor
-                      .getAnalysisRun(analysisName, analysisVersion, baselineRunId, includeResults = true)
-                      .get
-                      .withResolvedGenerics( uid => dataAccessor.awaitGetEntity(uid, None).get , forceResolve = true)
+                    val allEntityIdsToResolve = rawRun.results.flatMap(r => r.affectedEntities.map(_.id)).filterNot(entityCache.hasValue)
+                    val entityLookup = Await.result(dataAccessor.getAllEntities(allEntityIdsToResolve), 10.minutes).map(e => (e.id, e)).toMap
+                    val resolvedRun = rawRun.withResolvedGenerics(data => entityCache.getWithCache(data.id, () => entityLookup(data.id)), forceResolve = true)
+                    val resTime = System.currentTimeMillis() - r1
+                    log.info(s"Resolution took $resTime ms")
 
-                    Some(theRun)
+
+
+                    Some(resolvedRun)
                   } else
                     throw new AnalysisRunNotPossibleException(s"Baseline run ID invalid: " + baselineRunId, command)
                 }
 
+                log.info(s"Done resolving baseline for run $baselineRunId.")
                 Some(AnalysisRegistry.getIncrementalAnalysisImplementation(analysisName, analysisVersion, baselineRun))
               } else None
 
@@ -151,7 +163,10 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
             ensureAnalysisIsRegistered(analysisName, analysisVersion)
 
             // Filter out all input entities for which results already exist (if analysis is batch processing)
-            var namesToProcess = filterUnprocessedEntityNames(command.inputEntityNames, theAnalysisImpl)
+            var idsToProcess = filterUnprocessedEntityIds(command.inputEntityIds, theAnalysisImpl)
+
+            // Filter invalid IDs: WebAPI should make sure this does not happen
+            val invalidEntityIds = getEntityIdsNotInDb(idsToProcess, theAnalysisImpl)
 
             // If some inputs are not indexed yet:
             //  - For Batch analyses we can execute the analysis now with all indexed inputs, and queue non-indexed inputs for mining.
@@ -160,23 +175,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
             //  - For Non-Batch analyses we have to queue all missing inputs for mining and wait for the callback to re-trigger the
             //    analysis. If there are inputs that are not indexed and not valid (i.e. mining will never succeed), we can throw a
             //    terminal error, since the analysis can never be executed with this input configuration.
-            val entityNamesNotIndexed = getEntityNamesNotInDb(namesToProcess, theAnalysisImpl)
-
-            val entityNamesToQueue = entityNamesNotIndexed.filter { n =>
-              val isValidName = isValidEntityName(n)
-
-              if (!isValidName) {
-                log.warn("Input is not a valid entity name: " + n)
-
-                if (!theAnalysisImpl.descriptor.inputBatchProcessing)
-                  throw new AnalysisRunNotPossibleException("Set of inputs contains an invalid entity name that can never be resolved: " + n, command)
-              }
-
-              isValidName
-            }
-
-
-            if (entityNamesToQueue.nonEmpty) {
+            /*if (entityNamesToQueue.nonEmpty) {
               val deferredAnalysisCommand = if(!theAnalysisImpl.descriptor.inputBatchProcessing || namesToProcess.diff(entityNamesNotIndexed).isEmpty) command// If no current run is executed, we do not need to generate a second run UID
               else {
                 //If the current run is 'split into two', we need to generate a new run UID for the deferred analysis execution
@@ -193,25 +192,30 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
                 log.warn("Analysis will be rescheduled once input mining is done.")
                 return None
               }
-            }
+            }*/
 
 
-            namesToProcess = namesToProcess.diff(entityNamesNotIndexed)
+            idsToProcess = idsToProcess.diff(invalidEntityIds)
 
-            // Check that after all non-indexed names have been removed, there are in fact inputs left to process.
-            if (namesToProcess.isEmpty) {
+            // Check that after all invalid IDs have been removed, there are in fact inputs left to process.
+            if (idsToProcess.isEmpty) {
 
-              if(entityNamesToQueue.isEmpty){
-                log.error(s"No valid input entity names remain, and no deferred execution was possible for run ${command.associatedRunId}.")
-                dataAccessor.setRunState(command.associatedRunId, RunState.Failed, Some(command.inputEntityNames))
-              } else log.warn("No inputs left to process at this time")
+              if(invalidEntityIds.nonEmpty){
+                log.error(s"No valid input entity names remain, there have been invalid input entity IDs (${invalidEntityIds.mkString(",")}) for run ${command.associatedRunId}.")
+                dataAccessor.setRunState(command.associatedRunId, RunState.Failed, Some(command.inputEntityIds))
+              } else log.warn("No inputs left to process")
 
               return None
+            } else if(invalidEntityIds.nonEmpty){
+              log.warn(s"There have been invalid input entity IDs (${invalidEntityIds.mkString(",")} for run ${command.associatedRunId}")
             }
 
+            log.info(s"Starting to download entity information from DB: ${idsToProcess.mkString(",")}")
+
             // Download entity information for the analysis from the DB
-            Try(namesToProcess.map(name => dataAccessor.awaitGetEntity(name, theAnalysisImpl.descriptor.requiredInputResolutionLevel).get)) match {
+            Try(idsToProcess.map(name => dataAccessor.awaitGetEntity(name, theAnalysisImpl.descriptor.requiredInputResolutionLevel).get)) match {
               case Success(entities) =>
+                log.info(s"Done downloading entity information for ${entities.size} entities")
                 // Finally check that the analysis can in fact be executed with those parameters
                 if (theAnalysisImpl.executionPossible(entities.toSeq, command.configurationRaw)) {
                   log.info(s"Command successfully validated, analysis $analysisName:$analysisVersion will be started shortly.")
@@ -234,7 +238,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
         Some(validRunnerCommand)
       case Failure(ex) =>
         log.error("Command validation failed, no analysis will be executed.", ex)
-        Try(dataAccessor.setRunState(command.associatedRunId, RunState.Failed, Some(command.inputEntityNames)))
+        Try(dataAccessor.setRunState(command.associatedRunId, RunState.Failed, Some(command.inputEntityIds)))
         None
     }
 
@@ -246,19 +250,21 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
       log.info(s"Starting analysis ${cmd.analysisName} with ${inputEntities.size} inputs. Requested by user ${cmd.userName}.")
 
       // Sets state of analysis run to "Running" and connects inputs to run
-      Try(dataAccessor.setRunState(cmd.associatedRunId, RunState.Running, Some(inputEntities.map(_.uid)))) match {
+      Try(dataAccessor.setRunState(cmd.associatedRunId, RunState.Running, Some(inputEntities.map(_.id)))) match {
         case Failure(ex) =>
           log.error("Failed to update analysis run record in db", ex)
         case _ =>
       }
 
       Future {
-        analysisImpl.executeAnalysis(inputEntities.toSeq, cmd.configurationRaw) match {
+        val timedResult = wcTime { () => analysisImpl.executeAnalysis(inputEntities.toSeq, cmd.configurationRaw) }
+
+        timedResult.result match {
           case Success(results) =>
 
             val numberOfFreshResults = results.count( _.isFresh )
 
-            log.info(s"Analysis execution finished with ${results.size} results ($numberOfFreshResults fresh results).")
+            log.info(s"Analysis execution finished with ${results.size} results ($numberOfFreshResults fresh results) in ${timedResult.timeMs}ms.")
 
             val serializer = new CustomObjectWriter(analysisImpl.descriptor.analysisData.resultFormat)
 
@@ -277,7 +283,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
             val dbRunId = cmd.associatedRunId
 
-            dataAccessor.setRunResults(dbRunId, LocalDateTime.now(), runLogs.toArray, freshResults, unchangedResultIds)(serializer) match {
+            dataAccessor.setRunResults(dbRunId, LocalDateTime.now(), timedResult.timeMs, runLogs.toArray, freshResults, unchangedResultIds)(serializer) match {
               case Success(_) =>
                 log.info(s"Successfully stored ${results.size} results.")
               case Failure(ex) =>
@@ -286,7 +292,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
           case Failure(ex) =>
             dataAccessor.setRunState(cmd.associatedRunId, RunState.Failed, None)
-            log.error(s"Analysis execution failed.", ex)
+            log.error(s"Analysis execution failed in ${timedResult.timeMs}ms.", ex)
         }
       }(this.streamMaterializer.executionContext)
 
@@ -308,6 +314,17 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
     }
   }
 
+  private def buildExecutionSinkSequential(): Sink[ValidRunnerCommand, Future[Done]] = {
+    Sink.foreach{cmd =>
+      Try(Await.result(processRunnerCommand(cmd), 10.hours)) match {
+        case Success(_) =>
+          log.info(s"Execution for command finished successfully: ${cmd.runnerCommand}")
+        case Failure(ex) =>
+          log.error(s"Failed to execute command: $cmd", ex)
+      }
+    }
+  }
+
 
   // --------------------------------------------------------------------------
   // |                       COMMAND VALIDATION UTILS                         |
@@ -318,30 +335,30 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
 
     if(nameParts.length != 2 || nameParts(0).isBlank || nameParts(1).isBlank) false
     else if(cmd.userName.isBlank) false
-    else if(cmd.inputEntityNames.isEmpty || cmd.inputEntityNames.forall(_.isBlank)) false
+    else if(cmd.inputEntityIds.isEmpty) false
     else true
 
   }
 
-  private def getEntityNamesNotInDb(inputEntityNames: Set[String], analysisImpl: AnalysisImplementation): Set[String] = {
-    inputEntityNames.filterNot(name => dataAccessor.hasEntity(name, analysisImpl.descriptor.inputEntityKind))
+  private def getEntityIdsNotInDb(inputEntityIds: Set[Long], analysisImpl: AnalysisImplementation): Set[Long] = {
+    inputEntityIds.filterNot(id => dataAccessor.hasEntity(id, analysisImpl.descriptor.inputEntityKind))
   }
 
 
-  private def filterUnprocessedEntityNames(inputEntityNames: Set[String], analysisImpl: AnalysisImplementation)(implicit cmd: RunnerCommand): Set[String] = {
+  private def filterUnprocessedEntityIds(inputEntityIds: Set[Long], analysisImpl: AnalysisImplementation)(implicit cmd: RunnerCommand): Set[Long] = {
     dataAccessor.getAnalysisRuns(analysisImpl.descriptor.name, analysisImpl.descriptor.version) match {
       case Success(runData) =>
         if (analysisImpl.descriptor.inputBatchProcessing) {
           val allInputsProcessed = runData
             .filter(_.state.equals(RunState.Finished)) // Only consider non-failed runs!
-            .flatMap(_.inputs.map(_.uid))
-          inputEntityNames.diff(allInputsProcessed)
+            .flatMap(_.inputs.map(_.id))
+          inputEntityIds.diff(allInputsProcessed)
         } else {
           val allInputSets = runData
             .filter(_.state.equals(RunState.Finished)) // Only consider non-failed runs!
-            .map(_.inputs.map(_.uid))
-          if (allInputSets.contains(inputEntityNames)) Set.empty
-          else inputEntityNames
+            .map(_.inputs.map(_.id))
+          if (allInputSets.contains(inputEntityIds)) Set.empty
+          else inputEntityIds
         }
       case Failure(ex) =>
         throw AnalysisRunNotPossibleException("Failed to check database for analysis runs",  ex)
@@ -359,6 +376,7 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
     }
   }
 
+  /*
 
   private def isValidEntityName(name: String): Boolean = {
 
@@ -389,5 +407,5 @@ class AnalysisRunner(private[execution] val configuration: AnalysisRunnerConfig)
     }
 
 
-  }
+  }*/
 }

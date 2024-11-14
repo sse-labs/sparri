@@ -175,10 +175,10 @@ class MvnPartialCallgraphAnalysisImpl extends AnalysisImplementation {
           Some(FreshResult(resultContent, Set(program)))
 
         case Failure(HttpDownloadException(status, _, _)) if status == 404 =>
-          log.warn(s"No JAR file available for ${program.identifier}")
+          log.warn(s"No JAR file available for ${program.name}")
           None
         case Failure(ex) =>
-          log.error(s"Failed to download JAR file contents for ${program.identifier}", ex)
+          log.error(s"Failed to download JAR file contents for ${program.name}", ex)
           throw ex
 
       }

@@ -12,7 +12,7 @@ class MvnDependencyAnalysisImplTest extends AnyFlatSpec with must.Matchers {
 
   private val emptyConfig = ""
   private val sampleProgram = new JavaProgram("org.springframework:spring-jmx:2.0.5",
-    "org.springframework:spring-jmx!org.springframework:spring-jmx:2.0.5", "org.springframework:spring-jmx!org.springframework:spring-jmx:2.0.5", "mvn", "<NONE>", Array.empty)
+    "2.0.5", -1L, "mvn", "<NONE>", Array.empty)
   private val samplePackage = buildPackageFor(sampleProgram, "test")
 
   private val expectedResultFormat = ListResultFormat(ObjectResultFormat(Set(NamedPropertyFormat("identifier", ObjectResultFormat(Set(NamedPropertyFormat("groupId", formats.StringFormat), NamedPropertyFormat("artifactId", formats.StringFormat), NamedPropertyFormat("version", formats.StringFormat)))), NamedPropertyFormat("scope", formats.StringFormat))))

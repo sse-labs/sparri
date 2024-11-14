@@ -20,11 +20,11 @@ object SoftwareEntityTestDataFactory {
    * @return GenericEntityData object with no parent
    */
   def genericEntity(name: String = "dummy.group:artifact:1.0.0",
-                    uid: String = "dummy.group!dummy.group:artifact:1.0.0",
+                    ident: String = "dummy.group!dummy.group:artifact:1.0.0",
                     kind: SoftwareEntityKind = SoftwareEntityKind.Program,
                     language: String = "Java",
                     repository: String = "Maven"): SoftwareEntityData =
-    new GenericEntityData(name, language, kind, repository, None, uid, None)
+    new GenericEntityData(name, language, kind, repository, None, -1L, ident, None)
 
 
   def fullProgram(gav: String): JavaProgram = {

@@ -1,10 +1,10 @@
 package org.anon.spareuse.webapi.core
 
-import org.anon.spareuse.webapi.model.{genericEntityToEntityRepr, toAnalysisFormatRepr, toAnalysisRepr, toEntityRepr, toResultRepr, toRunRepr}
+import org.anon.spareuse.webapi.model.{toAnalysisFormatRepr, toAnalysisRepr, toEntityRepr, toResultRepr, toRunRepr}
 import org.anon.spareuse.core.utils.rabbitmq.MqMessageWriter
 import org.anon.spareuse.core.model.{RunState, SoftwareEntityKind}
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
-import org.anon.spareuse.core.model.analysis.{AnalysisCommand, IncrementalAnalysisCommand, RunnerCommand, RunnerCommandJsonSupport}
+import org.anon.spareuse.core.model.analysis.{AnalysisCommand, RunnerCommandJsonSupport}
 import org.anon.spareuse.core.model.entities.{MinerCommand, MinerCommandJsonSupport}
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.webapi.WebapiConfig
@@ -20,8 +20,18 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
 
   private val log: Logger = LoggerFactory.getLogger(getClass)
 
-  def hasEntity(entityName: String): Boolean = {
-    dataAccessor.hasEntity(entityName)
+  def hasEntity(eid: Long): Boolean = {
+    dataAccessor.hasEntity(eid)
+  }
+
+  def validIndexEntity(ident: String): Boolean = {
+    val parts = ident.split(":")
+
+    parts.size match {
+      case 2 => true // Libraries can always be re-indexed to update new versions
+      case 3 => !dataAccessor.hasProgram(ident)
+      case _ => false // We only allow G:A or G:A:Vs to be indexed
+    }
   }
 
   def getAnalyses(limit: Int, skip: Int): Try[Set[AnalysisInformationRepr]] = {
@@ -48,15 +58,22 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
       .map(toAnalysisFormatRepr)
   }
 
-  def getAnalysisRuns(analysisName: String, analysisVersion: String, limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
-    dataAccessor
-      .getAnalysisRuns(analysisName, analysisVersion, includeResults = false, skip, limit)
-      .map(allRuns => allRuns.map(toRunRepr))
+  def getAnalysisRuns(analysisName: String, analysisVersion: String, inputFilter: Option[Long], limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
+
+    if(inputFilter.isDefined){
+      dataAccessor
+        .getAnalysisRunsForEntity(inputFilter.get, Some(analysisName, analysisVersion), skip, limit)
+        .map(allRuns => allRuns.map(toRunRepr))
+    } else {
+      dataAccessor
+        .getAnalysisRuns(analysisName, analysisVersion, includeResults = false, skip, limit)
+        .map(allRuns => allRuns.map(toRunRepr))
+    }
   }
 
-  def getAnalysisRunsForEntity(entityName: String, limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
+  def getAnalysisRunsForEntity(entityId: Long, limit: Int, skip: Int): Try[Set[AnalysisRunRepr]] = {
     dataAccessor
-      .getAnalysisRunsForEntity(entityName, skip, limit)
+      .getAnalysisRunsForEntity(entityId, None, skip, limit)
       .map(allRuns => allRuns.map(toRunRepr))
   }
 
@@ -69,7 +86,7 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     dataAccessor.hasAnalysisRun(analysisName, version, runUid)
   }
 
-  def getAllEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[String]): Future[Seq[EntityRepr]] = {
+  def getAllEntities(limit: Int, skip: Int, kindFilter: Option[SoftwareEntityKind], parentFilter: Option[Long]): Future[Seq[EntityRepr]] = {
 
     dataAccessor
       .getEntities(limit, skip, kindFilter, parentFilter)
@@ -78,30 +95,30 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
       }
   }
 
-  def getEntity(entityName: String, resolutionDepth: Option[Int]): Future[EntityRepr] = {
+  def getEntity(eid: Long, resolutionDepth: Option[Int]): Future[EntityRepr] = {
 
     // Make sure the default depth is 2. If somebody wants the entire tree, they need to pass a value larger than 5
     dataAccessor
-      .getEntity(entityName, Some(resolutionDepth.getOrElse(2)))
+      .getEntity(eid, Some(resolutionDepth.getOrElse(2)))
       .map(toEntityRepr)
   }
 
-  def isLibrary(entityName: String): Boolean = {
-    dataAccessor.getEntityKind(entityName).map( _ == SoftwareEntityKind.Library).getOrElse(false)
+  def isLibrary(eid: Long): Boolean = {
+    dataAccessor.getEntityKind(eid).map( _ == SoftwareEntityKind.Library).getOrElse(false)
   }
 
-  def getEntityChildren(entityName: String, skip: Int, limit: Int): Try[Seq[EntityRepr]] = Try {
-    dataAccessor.getEntityChildren(entityName, skip, limit).get.map(toEntityRepr)
+  def getEntityChildren(eid: Long, skip: Int, limit: Int): Try[Seq[EntityRepr]] = Try {
+    dataAccessor.getEntityChildren(eid, skip, limit).get.map(toEntityRepr)
   }
 
-  def getAllResultsFor(entityName: String, analysisFilter: Option[String], limit: Int, skip: Int): Try[Set[AnalysisResultRepr]] = {
+  def getAllResultsFor(eid: Long, analysisFilter: Option[String], limit: Int, skip: Int): Try[Set[AnalysisResultRepr]] = {
     val analysisNameAndVersionOpt = analysisFilter.map( s => {
       val parts = s.split(":")
       (parts(0).trim, parts(1).trim)
     })
 
     dataAccessor
-      .getJSONResultsFor(entityName, analysisNameAndVersionOpt, limit, skip)
+      .getJSONResultsFor(eid, analysisNameAndVersionOpt, limit, skip)
       .map(results => results.map(toResultRepr))
   }
 
@@ -114,14 +131,19 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
   def getRunIdIfPresent(analysisName: String, analysisVersion: String, request: ExecuteAnalysisRequest): Try[Option[String]] = {
     dataAccessor.getAnalysisRuns(analysisName, analysisVersion) match {
       case Success(runs) =>
-        val requestInputs = request.Inputs.toSet
+        val requestInputsRaw = request.Inputs.toSet
+        val requestInputIdOpts = requestInputsRaw.map(iName => dataAccessor.getEntityIdFor(iName.split("!").toIndexedSeq))
+
+        // Run cannot be present if input is not known
+        if(requestInputIdOpts.exists(_.isEmpty)) return Success(None)
+
         Success(
           runs.find{ r =>
 
-            val runInputs = r.inputs.map(_.uid)
+            val runInputs = r.inputs.map(_.id)
 
             r.configuration.equals(request.Configuration) &&
-            runInputs.equals(requestInputs) &&
+            runInputs.equals(requestInputIdOpts.map(_.get)) &&
             r.state.equals(RunState.Finished)
           }.map(_.uid)
         )
@@ -135,6 +157,14 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
 
     val isIncrementalAnalysis = dataAccessor.isIncrementalAnalysis(analysisName, analysisVersion)
 
+    val allEntityIdOpts = request.Inputs.map(iName => (iName, dataAccessor.getEntityIdFor(iName.split("!").toIndexedSeq)))
+
+    val invalidEntityIds = allEntityIdOpts.filter(_._2.isEmpty).map(_._1)
+
+    if(invalidEntityIds.nonEmpty){
+      return (false, s"Input entities not found in index: ${invalidEntityIds.mkString(",")}")
+    }
+
     if(request.BaselineRun.isDefined && !isIncrementalAnalysis) {
       (false, "A baseline run cannot be specified for non-incremental analyses.")
     } else if(!isIncrementalAnalysis){
@@ -143,11 +173,10 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
       log.warn(s"An incremental analysis has been triggered without specifying a baseline run: $analysisName:$analysisVersion")
       (true, "Running incremental analysis with empty baseline.")
     } else {
-      dataAccessor.getAnalysisRun(analysisName, analysisVersion, request.BaselineRun.get) match {
-        case Success(_) =>
-          (true, "")
-        case Failure(_) =>
-          (false, s"Invalid baseline run specified, id ${request.BaselineRun.get} not found")
+      if (dataAccessor.hasAnalysisRun(analysisName, analysisVersion, request.BaselineRun.get)) {
+        (true, "")
+      } else {
+        (false, s"Invalid baseline run specified, id ${request.BaselineRun.get} not found")
       }
     }
   }
@@ -162,8 +191,11 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
     // Queue run execution
     val name = s"$analysisName:$analysisVersion"
 
+    // This "get" works because the validation would have filtered out invalid entity names beforehand
+    val entityIds = request.Inputs.toSet[String].map(iName => dataAccessor.getEntityIdFor(iName.split("!").toIndexedSeq).get)
+
     // We assume all validation has been done beforehand, i.e. validateRunRequest has been called
-    val command = AnalysisCommand(name, newId, request.User.getOrElse("Anonymous"), request.Inputs.toSet, request.Configuration)
+    val command = AnalysisCommand(name, newId, request.User.getOrElse("Anonymous"), entityIds, request.Configuration)
 
     val commandJson = if(isIncrementalAnalysis) command.asIncremental(request.BaselineRun).toJson.compactPrint
     else command.toJson.compactPrint
@@ -179,8 +211,12 @@ class RequestHandler(val configuration: WebapiConfig, dataAccessor: DataAccessor
 
   }
 
+  def identifierToEntityId(identifier: String): Option[Long] = {
+    dataAccessor.getEntityIdFor(identifier.split("!").toIndexedSeq)
+  }
+
   def getRunResults(runId: String, limit: Int, skip: Int): Try[Set[AnalysisResultRepr]] = {
-    dataAccessor.getRunResultsAsJSON(runId, skip, limit).map { allResults =>
+    dataAccessor.getRunResultsAsJSON(runId, includeContents = true, skip, limit).map { allResults =>
       allResults.map(result => toResultRepr(result))
     }
   }

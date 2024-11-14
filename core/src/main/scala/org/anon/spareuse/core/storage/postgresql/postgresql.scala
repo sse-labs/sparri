@@ -16,7 +16,7 @@ import java.time.format.DateTimeFormatter
 
 package object postgresql {
 
-  case class SoftwareEntityRepr(id: Long, name: String, fqn: String, language: String, kindId: Int,
+  case class SoftwareEntityRepr(id: Long, name: String, identifier: String, language: String, kindId: Int,
                                 repository: String, parentId: Option[Long], hexHash: Option[String])
 
   class SoftwareEntities(tag: Tag) extends Table[SoftwareEntityRepr](tag, "entities") {
@@ -25,7 +25,7 @@ package object postgresql {
 
     def name: Rep[String] = column[String]("NAME")
 
-    def qualifier: Rep[String] = column[String]("FQ", O.Unique)
+    def identifier: Rep[String] = column[String]("IDENTIFIER")
 
     def language: Rep[String] = column[String]("LANG")
 
@@ -38,10 +38,12 @@ package object postgresql {
     def hash: Rep[Option[String]] = column[Option[String]]("HASH")
 
     override def * : ProvenShape[SoftwareEntityRepr] =
-      (id, name, qualifier, language, kind, repository, parentID, hash)<> ((SoftwareEntityRepr.apply _).tupled, SoftwareEntityRepr.unapply)
+      (id, name, identifier, language, kind, repository, parentID, hash)<> ((SoftwareEntityRepr.apply _).tupled, SoftwareEntityRepr.unapply)
 
     def parent: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
       foreignKey("PARENT_FK", parentID, TableQuery[SoftwareEntities])(_.id.?)
+
+    def idx = index("unique_ident", (parentID, identifier), unique = true)
   }
 
 
@@ -93,12 +95,12 @@ package object postgresql {
       foreignKey("FORMAT_FK", formatId, TableQuery[ResultFormats])(_.id)
   }
 
-  case class SoftwareAnalysisRunRepr(id: Long, uid:String, config: String, state: Int, isRevoked: Boolean, parentId: Long, logs: String, timestamp: String){
+  case class SoftwareAnalysisRunRepr(id: Long, uid:String, config: String, state: Int, isRevoked: Boolean, parentId: Long, logs: String, timestamp: String, duration: Long){
 
     def toAnalysisRunData(analysisName: String, analysisVersion: String, inputs: Set[SoftwareEntityData] = Set.empty,
                           results: Set[AnalysisResultData] = Set.empty): AnalysisRunData = {
       val rState = RunState(state)
-      AnalysisRunData(uid, LocalDateTime.from(DateTimeFormatter.ISO_DATE_TIME.parse(timestamp)), logs.split(";;;"),
+      AnalysisRunData(uid, LocalDateTime.from(DateTimeFormatter.ISO_DATE_TIME.parse(timestamp)), duration, logs.split(";;;"),
         config, rState, isRevoked, inputs, results, analysisName, analysisVersion)
     }
 
@@ -122,9 +124,11 @@ package object postgresql {
 
     def timestamp: Rep[String] = column[String]("TIMESTAMP")
 
+    def duration: Rep[Long] = column[Long]("DURATION")
+
 
     override def * : ProvenShape[SoftwareAnalysisRunRepr] =
-      (id, uid, configuration, state, isRevoked, parentID, logs, timestamp) <>
+      (id, uid, configuration, state, isRevoked, parentID, logs, timestamp, duration) <>
         ((SoftwareAnalysisRunRepr.apply _).tupled, SoftwareAnalysisRunRepr.unapply)
 
     def parent: ForeignKeyQuery[SoftwareAnalyses, SoftwareAnalysisRepr] =

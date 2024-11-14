@@ -6,7 +6,6 @@ import org.anon.spareuse.core.maven.MavenIdentifier
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaMethod, JavaProgram, buildMethodIdent}
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
-import org.anon.spareuse.core.model.entities.conversion.OPALJavaConverter
 import org.anon.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData, SoftwareEntityKind}
 import org.anon.spareuse.core.opal.OPALProjectHelper
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.{FactRep, InternalActivationRep, InternalVariableRep, MethodIFDSRep, StatementRep}
@@ -22,17 +21,9 @@ import scala.util.{Failure, Success, Try}
 
 abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]) extends IncrementalAnalysisImplementation(baselineRunOpt) {
 
-  // Information to customize analysis descriptor for concrete IFDS Summary Builders
-  protected val analysisName: String
-  protected val analysisVersion: String
-  protected val analysisDescription: String
-
   protected val opalHelper = new OPALProjectHelper(loadJreClassImplementation = false)
 
   private var squashStatements = true
-
-
-  override val descriptor: AnalysisImplementationDescriptor = DefaultIFDSSummaryBuilder.buildDescriptor(analysisName, analysisVersion, analysisDescription)
 
   override def executionPossible(inputs: Seq[SoftwareEntityData], rawConfig: String): Boolean = {
     if (inputs.exists(e => !e.isInstanceOf[JavaProgram])) {
@@ -53,25 +44,36 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
   override def executeIncremental(input: SoftwareEntityData, previousResults: Set[AnalysisResultData], rawConfig: String): Try[Set[AnalysisResult]] = {
     this.squashStatements = !rawConfig.trim.equalsIgnoreCase("--keep-identity-stmts")
 
-    def findValidPreviousResult(method: Method): Option[AnalysisResultData] = {
-      val methodHash = OPALJavaConverter.buildMethodHash(method)
-      previousResults
-        .find{ r =>
-          r.affectedEntities.exists{
-            case jm: JavaMethod =>
-              methodHash == jm.methodHash &&
-                method.descriptor.toJVMDescriptor == jm.descriptor &&
-                method.name == jm.name
-            case _ => false
+    val allInputMethods = input.asInstanceOf[JavaProgram].allMethods
+
+    val inputPrevResultMap = allInputMethods
+      .map { inputMethod =>
+        previousResults
+          .find{ result =>
+            result.affectedEntities.exists{
+              case affectedMethod: JavaMethod =>
+                affectedMethod.name == inputMethod.name &&
+                  affectedMethod.descriptor == inputMethod.descriptor &&
+                  affectedMethod.methodHash == inputMethod.methodHash
+              case _ => false
+            }
           }
-        }
+          .map{ result =>
+            val ident = s"${inputMethod.enclosingClass.get.thisType}${buildMethodIdent(inputMethod.name, inputMethod.descriptor)}"
+            (ident, ExistingResult(result.uid))
+          }
+      }
+      .filter(_.isDefined)
+      .map(_.get)
+      .toMap
+
+    if(inputPrevResultMap.size == allInputMethods.size){
+      // This means that all current methods have a previous result, no computations are needed
+      return Success(inputPrevResultMap.values.toSet)
     }
 
-    val inputMethodMap = input
-      .getChildren
-      .flatMap( packageEnt => packageEnt.getChildren.flatMap( classEnt => classEnt.getChildren))
-      .map(_.asInstanceOf[JavaMethod])
-      .map(jm => (buildMethodIdent(jm.name, jm.descriptor), jm))
+    val inputMethodMap = allInputMethods
+      .map(jm => (s"${jm.enclosingClass.get.thisType}${buildMethodIdent(jm.name, jm.descriptor)}", jm))
       .toMap
 
     getFileFor(input) match {
@@ -95,40 +97,31 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
           // Mapping of methods to their TAC
           implicit val TACAIProvider: MethodTACProvider = project.get(ComputeTACAIKey)
 
-          // Detect changedMethods / new methods that need full graph recomputations
+          val previousResultsToLink = inputPrevResultMap.values.toSet
 
-          val previousResultsToLink = project
-            .allMethodsWithBody
-            .flatMap(findValidPreviousResult)
-            .map(r => ExistingResult(r.uid))
-
-          val totalMethodCnt = project.allMethodsWithBody.size
+          val totalMethodCnt = project.allProjectClassFiles.flatMap(_.methods).size
           val unchangedMethodCnt = previousResultsToLink.size
-          val computationsNeeded = totalMethodCnt - unchangedMethodCnt
 
           log.info(s"Found $totalMethodCnt methods with bodies, $unchangedMethodCnt results can be reused.")
 
-          var methodCnt = 0
-
           val results = project
-            .allMethodsWithBody
-            .filterNot(m => findValidPreviousResult(m).isDefined)
+            .allProjectClassFiles
+            .flatMap(_.methods)
+            .filterNot(m => inputPrevResultMap.contains(s"${m.classFile.thisType.fqn}${buildMethodIdent(m.name, m.descriptor.toJVMDescriptor)}"))
             .map{ m =>
-              log.info(s"\t [ $methodCnt / $computationsNeeded ] Building IFDS summary for method: ${m.toJava}")
-              methodCnt += 1
-
               val ifdsGraph = analyzeMethod(m)
               val resultData = ifdsGraph.toResultRepresentation(squashStatements)
 
-              val correspondingEntity = inputMethodMap.get(buildMethodIdent(m.name, m.descriptor.toJVMDescriptor))
+              val correspondingEntity = inputMethodMap.get(s"${m.classFile.thisType.fqn}${buildMethodIdent(m.name, m.descriptor.toJVMDescriptor)}")
 
-              if(correspondingEntity.isEmpty) throw new IllegalStateException(s"Could not find defined method in input entities: ${m.toJava}")
+              if(correspondingEntity.isEmpty)
+                throw new IllegalStateException(s"Could not find defined method in input entities: ${m.toJava}")
 
               FreshResult(resultData, Set(correspondingEntity.get))
             }
-            .toSet[AnalysisResult]
+            .toSet[AnalysisResult] ++ previousResultsToLink
 
-          log.info(s"Done building $methodCnt IFDS summaries. Freeing OPAL resources ..")
+          log.info(s"Done building ${results.size} IFDS summaries. Freeing OPAL resources ..")
           opalHelper.freeOpalResources()
           results
         }
@@ -153,11 +146,13 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
    * @param TACAIProvider A TAC provider to get the three-address-code representation of a methods body
    * @return Finalized IFDSMethodGraph that contains all possible fact activations
    */
-  protected[ifds] def analyzeMethod(method: Method)(implicit TACAIProvider: MethodTACProvider): IFDSMethodGraph = {
+  def analyzeMethod(method: Method)(implicit TACAIProvider: MethodTACProvider): IFDSMethodGraph = {
+
+    val graph = IFDSMethodGraph(method)
+    if (method.body.isEmpty) return graph
 
     val theTAC = TACAIProvider(method)
     val cfg = theTAC.cfg
-    val graph = IFDSMethodGraph(method)
 
     val firstStmt = cfg.code.instructions(theTAC.pcToIndex(0))
     val firstNode = graph.createStatement(firstStmt, None)
@@ -168,10 +163,14 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
     while (workList.nonEmpty) {
 
       val currentNode = workList.remove(0)
-      val stmtIdx = theTAC.pcToIndex(currentNode.stmtPc)
+
+      val stmtIdx = if(currentNode.stmtPc < 0 || currentNode.stmtPc >= theTAC.pcToIndex.length){
+        cfg.code.instructions.zipWithIndex.find(_._1.pc == currentNode.stmtPc).map(_._2).get
+      } else theTAC.pcToIndex(currentNode.stmtPc)
+
       val stmt = cfg.code.instructions(stmtIdx)
 
-      analyzeStatement(currentNode, stmt, method, graph)
+      analyzeStatement(currentNode, stmt, method, graph)(theTAC)
 
       cfg
         .foreachSuccessor(stmtIdx) { successorIdx =>
@@ -194,7 +193,7 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
     graph
   }
 
-  protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStatement: TACStmt, currentMethod: Method, graph: IFDSMethodGraph): Unit
+  protected[ifds] def analyzeStatement(currentNode: StatementNode, currentStatement: TACStmt, currentMethod: Method, graph: IFDSMethodGraph)(implicit tac: MethodTAC): Unit
 
 }
 
@@ -266,7 +265,7 @@ object DefaultIFDSSummaryBuilder {
       aName,
       aVersion,
       aDescription,
-      "OPAL 4.0.0",
+      "OPAL 5.0.0",
       Set("java", "scala"),
       methodFormat,
       SoftwareEntityKind.Program,

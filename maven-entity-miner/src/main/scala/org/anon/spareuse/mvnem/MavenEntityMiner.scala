@@ -16,7 +16,8 @@ import org.anon.spareuse.mvnem.storage.EntityMinerStorageAdapter
 import org.anon.spareuse.mvnem.storage.impl.PostgresStorageAdapter
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.Future
+import scala.concurrent.duration.DurationInt
+import scala.concurrent.{Await, Future}
 import scala.language.implicitConversions
 import scala.util.{Failure, Success, Try}
 
@@ -28,7 +29,10 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
   override val workerName: String = "maven-entity-miner"
 
-  private final val downloader = new MavenJarDownloader()
+  private var downloader = new MavenJarDownloader()
+  private var jarCnt = 0
+
+
   private final val opalProjectHelper = new OPALProjectHelper()
   private final val storageAdapter: EntityMinerStorageAdapter = new PostgresStorageAdapter()(streamMaterializer.executionContext)
 
@@ -52,8 +56,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
   override protected def buildStreamPipeline(source: Source[String, NotUsed]): Future[Done] = {
     source
       .map(messageToCommand)
-      .buffer(20, OverflowStrategy.backpressure)
-      .runWith(storeAllEntitiesSink)(streamMaterializer)
+      .runWith(storeAllSink)(streamMaterializer)
   }
 
   private def messageToCommand(message: String): MinerCommand = {
@@ -80,6 +83,66 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
       log.info(s"All programs already indexed for command ${command.toString}")
 
     allNewIdentifiers
+  }
+
+  def transformAndStore(minerCommand: MinerCommand): Unit = {
+    minerCommand.entityReferences.foreach { entityRef =>
+      Try {
+        val programsToProcess = messageToIdentifiers(entityRef) match {
+          case Some(identifiers) =>
+
+            val newIdents = identifiers.filterNot(i => storageAdapter.hasProgram(i.toString))
+            log.info(s"${newIdents.size} new identifiers found for message $entityRef")
+
+            newIdents
+
+          case None =>
+            log.info(s"No identifiers for message $entityRef")
+            Iterable.empty
+
+        }
+
+        programsToProcess.foreach{ identifier =>
+          Try{
+            downloadJar(identifier) match {
+              case Some(jarFile) =>
+                log.info(s"Start building index model for ${identifier.toString} ... ")
+                val representation = transform(jarFile)
+                log.info(s"Done building index model for ${identifier.toString}.")
+                Await.result(storageAdapter.storeJavaProgram(representation), 15.minutes)
+              case None =>
+                log.info(s"No JAR present for $identifier")
+            }
+          } match {
+            case Success(programName) =>
+              log.info(s"Successfully stored index model for $programName")
+            case Failure(ex) =>
+              log.error(s"Failed to process ${identifier.toString}", ex)
+          }
+        }
+
+      } match {
+        case Success(_) =>
+          log.info(s"Done processing all identifiers for $entityRef")
+        case Failure(ex) =>
+          log.error(s"Failed to enumerate identifiers for $entityRef", ex)
+      }
+
+    }
+
+    if (minerCommand.analysisToTrigger.isDefined) {
+      Try {
+        analysisQueueWriter.appendToQueue(minerCommand.analysisToTrigger.get.toJson.compactPrint)
+      } match {
+        case Success(_) =>
+          log.info(s"Successfully queued follow-up analysis after indexing finished")
+        case Failure(ex) =>
+          log.error(s"Failed to queue follow-up analysis for command ${minerCommand.toJson.compactPrint}", ex)
+      }
+    }
+
+
+    opalProjectHelper.freeOpalResources()
   }
 
 
@@ -157,6 +220,15 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
   }
 
   def downloadJar(identifier: MavenIdentifier): Option[MavenOnlineJar] = {
+
+    // Refresh downloader instance every so often to avoid deadlocks
+    if(jarCnt >= 50){
+      downloader = new MavenJarDownloader
+      jarCnt = 0
+    }
+
+    jarCnt += 1
+
     downloader.downloadJar(identifier) match {
       case Success(jarFile) => Some(jarFile)
       case Failure(HttpDownloadException(404, _, _)) =>
@@ -164,6 +236,12 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
         None
       case Failure(ex) =>
         throw ex
+    }
+  }
+
+  val storeAllSink: Sink[MinerCommand, Future[Done]] = {
+    Sink.foreach{ minerCommand =>
+      transformAndStore(minerCommand)
     }
   }
 
@@ -242,7 +320,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
 
         programTry match {
           case Success(programRep) =>
-            programRep.setParent(new JavaLibrary(jarFile.identifier.toGA, "central"))
+            programRep.setParent(new JavaLibrary(jarFile.identifier.toGA, "central", -1L))
             log.info(s"Processing ${classes.size} classes in ${programRep.getChildren.size} packages @  ${jarFile.url.toString}")
             result = programRep
           case Failure(ex) =>

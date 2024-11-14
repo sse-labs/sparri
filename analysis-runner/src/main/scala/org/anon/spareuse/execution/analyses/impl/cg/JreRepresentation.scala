@@ -10,7 +10,7 @@ case class JreType(t: String, s: Option[String], i: Seq[String], iI: Boolean, m:
   def allTypesInstantiated: Set[String]= m.flatMap(_.allTypesInstantiated).toSet
 
   lazy val asModel: JavaClass = {
-    val jc = new JavaClass(t, t, "<none>", s, i.toSet, iI, finalType = false, abstractType = false, "<default>", hashedBytes = Array.empty)
+    val jc = new JavaClass(t, t, -1L, s, i.toSet, iI, finalType = false, abstractType = false, "<default>", hashedBytes = Array.empty)
     m.foreach{ jreM => jc.addChild(jreM.asModel)}
     jc
   }
@@ -29,7 +29,7 @@ case class JreMethod(n: String, d: String, t: Seq[JreNew], i: Seq[JreInvoke], iA
   def allTypesInstantiated: Set[String] = t.map(_.t).toSet
 
   def asModel: JavaMethod = {
-    val jm = new JavaMethod(n, d, "<none>", finalMethod = false, staticMethod = false, abstractMethod = false, "<none>", "<default>", -1)
+    val jm = new JavaMethod(n, d, -1L, finalMethod = false, staticMethod = false, abstractMethod = false, "<none>", "<default>", -1)
 
     t.foreach(jreNew => jm.addChild(jreNew.asModel))
     i.foreach(jreInvoke => jm.addChild(jreInvoke.asModel))
@@ -46,7 +46,7 @@ case class JreMethod(n: String, d: String, t: Seq[JreNew], i: Seq[JreInvoke], iA
 case class JreNew(t: String, p: Long){
 
   def asModel: JavaNewInstanceStatement =
-    new JavaNewInstanceStatement(t, p.toInt, "<none>", "<default>")
+    new JavaNewInstanceStatement(t, p.toInt, -1L, "<default>")
 
 }
 
@@ -61,7 +61,7 @@ case class JreNew(t: String, p: Long){
 case class JreInvoke(t: String, n: String, d: String, p: Long, k: Int){
 
   def asModel: JavaInvokeStatement =
-    new JavaInvokeStatement(n, t, d, JavaInvocationType.fromId(k), p.toInt, "<none>", "<default>")
+    new JavaInvokeStatement(n, t, d, JavaInvocationType.fromId(k), p.toInt, -1L, "<default>")
 
 }
 

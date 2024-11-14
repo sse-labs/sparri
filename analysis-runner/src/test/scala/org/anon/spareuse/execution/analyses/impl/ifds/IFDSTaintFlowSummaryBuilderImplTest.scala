@@ -1,22 +1,18 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.TaintFunctionReturn
 import org.anon.spareuse.execution.analyses.{buildProject, getTACProvider, loadFixture}
-import org.opalj.br.ObjectType
 import org.scalatest.funspec.AnyFunSpec
 
 class IFDSTaintFlowSummaryBuilderImplTest extends AnyFunSpec {
 
+  private implicit final val emptyTargetProvider: MethodIdent => Int => Set[IFDSMethodGraph] = {_ => {_ => Set.empty}}
+
   describe("The IFDS Taint Flow Summary Builder"){
 
     it("should keep track of taint across field stores and reads") {
-      val project = buildProject(loadFixture("SimpleStringTaint.class"))
-      val tacProvider = getTACProvider(project)
-      val allMethods = project.allMethodsWithBody.filterNot(m => m.toJava.contains("init"))
-
-      val ifdsBuilder = new IFDSTaintFlowSummaryBuilderImpl(None)
-
-      val graphs = allMethods.map(m => ifdsBuilder.analyzeMethod(m)(tacProvider))
+      val graphs = getMethodSummariesFromFixture("SimpleStringTaint.class", Set.empty)
 
       var foundSink = false
 
@@ -57,10 +53,153 @@ class IFDSTaintFlowSummaryBuilderImplTest extends AnyFunSpec {
       assert(mainGraph.hasStatement(0))
       findSink(mainGraph.getStatement(0).get, Set(IFDSZeroFact))
       assert(foundSink)
+    }
 
+    it("should handle String additions correctly"){
+
+      val concatGraph = getMethodSummariesFromFixture("StringConcatenation.class", Set("$string_concat$add")).head
+
+      assert(concatGraph.statementNodes.nonEmpty)
+
+      concatGraph.print()
+
+      val param1Opt = concatGraph.allFacts.find(_.displayName == "param1")
+      val param2Opt = concatGraph.allFacts.find(_.displayName == "param2")
+      val returnOpt = concatGraph.statementNodes.find(_.isReturnValue).flatMap(_.asReturnNode.variableReturned)
+
+      assert(param1Opt.isDefined && param2Opt.isDefined && returnOpt.isDefined)
+      val returnFact = TaintVariableFacts.buildFact(returnOpt.get)
+
+
+      def yieldsTaintedReturn(initialFacts: Set[IFDSFact]):  Boolean = {
+        var currFacts = initialFacts
+        concatGraph.statementNodes.foreach{ snode =>
+          currFacts = snode.getFactsAfter(currFacts)
+        }
+
+        currFacts.contains(returnFact)
+      }
+
+      // Assert that one tainted parameter in a + b yields tainted result
+      val param1 = param1Opt.get
+      assert(yieldsTaintedReturn(Set(IFDSZeroFact, param1)))
+      assert(concatGraph.runWith(Set(IFDSZeroFact, param1)).contains(returnFact))
+
+      val param2 = param2Opt.get
+      assert(yieldsTaintedReturn(Set(IFDSZeroFact, param2)))
+      assert(concatGraph.runWith(Set(IFDSZeroFact, param2)).contains(returnFact))
+
+      // Assert that both tainted parameters yield a tainted result
+      assert(yieldsTaintedReturn(Set(IFDSZeroFact, param1, param2)))
+      assert(concatGraph.runWith(Set(IFDSZeroFact, param1, param2)).contains(returnFact))
+
+      // Assert that no tainted parameter yields untainted result
+      assert(! yieldsTaintedReturn(Set(IFDSZeroFact)))
+      assert(! concatGraph.runWith(Set(IFDSZeroFact)).contains(returnFact))
 
     }
 
+    it("should handle invocations of String additions correctly"){
+      val graphs = getMethodSummariesFromFixture("StringConcatenation.class", Set("add", "$string_concat$add"))
+      val addGraph = graphs.find(_.methodName == "add").get
+      val concatGraph = graphs.find(_.methodName.startsWith("$")).get
+
+      def callTargetProvider(mi: MethodIdent): Int => Set[IFDSMethodGraph] = mi match {
+        case MethodIdent(addGraph.methodIdentifier.declaredType, addGraph.methodIdentifier.methodName, addGraph.methodIdentifier.methodDescriptor) =>
+          {
+            case 7 => Set(concatGraph)
+            case _ => Set.empty
+          }
+        case _ =>
+           _ => Set.empty
+
+      }
+
+      assert(addGraph.statementNodes.nonEmpty)
+
+      addGraph.print()
+
+      val param1Opt = concatGraph.allFacts.find(_.displayName == "param1")
+      val param2Opt = concatGraph.allFacts.find(_.displayName == "param2")
+      val returnFactOpt = addGraph.statementNodes.find(_.isReturnValue).flatMap(_.asReturnNode.variableReturned).map(TaintVariableFacts.buildFact)
+
+      assert(param1Opt.isDefined && param2Opt.isDefined && returnFactOpt.isDefined)
+
+      val param1 = param1Opt.get
+      val param2 = param2Opt.get
+      val returnFact = returnFactOpt.get
+
+      // If no parameter is tainted, then the result should not be tainted
+      val noTaintResult = addGraph.runWith(Set(IFDSZeroFact))(callTargetProvider)
+      assert(!noTaintResult.contains(returnFact))
+
+      // If the first parameter is tainted, then the result should be tainted
+      val oneTaintResult = addGraph.runWith(Set(IFDSZeroFact, param1))(callTargetProvider)
+      assert(oneTaintResult.contains(returnFact))
+
+      // If the second parameter is tainted, the result should not be tainted - it is overridden
+      val twoTaintResult = addGraph.runWith(Set(IFDSZeroFact, param2))(callTargetProvider)
+      assert(! twoTaintResult.contains(returnFact))
+
+      // If both parameters are tainted, the result should be tainted
+      val bothTaintResult = addGraph.runWith(Set(IFDSZeroFact, param1, param2))(callTargetProvider)
+      assert(bothTaintResult.contains(returnFact))
+
+    }
+
+    it("should handle initializations of StringBuilders correctly") {
+      assertSingleParamTaintsResults("StringConcatenation.class", "initTaint")
+    }
+
+    it("should handle replacements correctly"){
+      assertSingleParamTaintsResults("StringConcatenation.class", "replace")
+    }
+
+    it("should handle insertions correctly") {
+      assertSingleParamTaintsResults("StringConcatenation.class", "insert")
+    }
+
+    it("should handle aliasing correctly") {
+      assertSingleParamTaintsResults("StringConcatenation.class", "alias")
+    }
+
+    it("should handle transitive aliasing correctly") {
+      assertSingleParamTaintsResults("StringConcatenation.class", "transitiveAlias")
+    }
+
+  }
+
+  private def getMethodSummariesFromFixture(fixtureName: String, methodNames: Set[String]): Set[IFDSMethodGraph] = {
+    val project = buildProject(loadFixture(fixtureName))
+    val tacProvider = getTACProvider(project)
+
+    val relevantMethods = if(methodNames.isEmpty) project.allMethodsWithBody else project.allMethodsWithBody.filter(m => methodNames.exists(s => m.name.startsWith(s)))
+
+    assert(relevantMethods.nonEmpty)
+
+    val ifdsBuilder = new IFDSTaintFlowSummaryBuilderImpl(None)
+    val graphs = relevantMethods.map(m => ifdsBuilder.analyzeMethod(m)(tacProvider)).toSet
+
+    assert(graphs.size == relevantMethods.size)
+
+    graphs
+  }
+
+  private def assertSingleParamTaintsResults(fixtureName: String, methodName: String): Unit = {
+    val graphs = getMethodSummariesFromFixture(fixtureName, Set(methodName))
+    val graph = graphs.head
+    assert(graph.statementNodes.nonEmpty)
+
+    val param1Opt = graph.allFacts.find(_.displayName == "param1")
+    val returnFactOpt = graph.statementNodes.find(_.isReturnValue).flatMap(_.asReturnNode.variableReturned).map(TaintVariableFacts.buildFact)
+
+    assert(param1Opt.isDefined && returnFactOpt.isDefined)
+
+    val noTaintResult = graph.runWith(Set(IFDSZeroFact))
+    assert(!noTaintResult.contains(returnFactOpt.get))
+
+    val taintResult = graph.runWith(Set(IFDSZeroFact, param1Opt.get))
+    assert(taintResult.contains(returnFactOpt.get))
   }
 
 }

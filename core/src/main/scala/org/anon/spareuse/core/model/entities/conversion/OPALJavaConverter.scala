@@ -1,6 +1,6 @@
 package org.anon.spareuse.core.model.entities.conversion
 
-import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaPackage, JavaProgram, JavaStatement, JavaNewInstanceStatement}
+import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaFieldAccessStatement, JavaFieldAccessType, JavaInvocationType, JavaInvokeStatement, JavaMethod, JavaNewInstanceStatement, JavaPackage, JavaProgram, JavaStatement}
 import org.anon.spareuse.core.model.entities.JavaEntities
 import org.opalj.ba
 import org.opalj.bc.Assembler
@@ -9,12 +9,13 @@ import org.opalj.br.{ClassFile, Method}
 
 import java.security.MessageDigest
 import scala.collection.mutable
+import scala.util.Try
 
 object OPALJavaConverter {
 
   private def hashBytes(bytes: Array[Byte]): Array[Byte] = MessageDigest.getInstance("md5").digest(bytes)
 
-  private def hashClass(cf: ClassFile): Array[Byte] = hashBytes(Assembler(ba.toDA(cf)))
+  private def hashClass(cf: ClassFile): Array[Byte] = Try(hashBytes(Assembler(ba.toDA(cf)))).getOrElse(hashBytes(Array.empty))
 
   def convertProgram(programIdent: String,
                      repositoryIdent: String,
@@ -95,8 +96,6 @@ object OPALJavaConverter {
 
   def convertStatement(i: Instruction, pc: Int, m: JavaMethod): Option[JavaStatement] = {
 
-    val ident = m.uid + "!" + String.valueOf(pc)
-
     i.opcode match {
       case PUTSTATIC.opcode | PUTFIELD.opcode | GETSTATIC.opcode | GETFIELD.opcode =>
         val accessInstr = i.asInstanceOf[FieldAccess]
@@ -112,7 +111,7 @@ object OPALJavaConverter {
           case _: GETFIELD => JavaFieldAccessType.InstanceGet
         }
 
-        Some(new JavaFieldAccessStatement(fieldName, fieldType, fieldClass, accessType, pc, ident, m.repository))
+        Some(new JavaFieldAccessStatement(fieldName, fieldType, fieldClass, accessType, pc, -1L, m.repository))
 
       case INVOKESTATIC.opcode | INVOKEVIRTUAL.opcode | INVOKESPECIAL.opcode | INVOKEINTERFACE.opcode | INVOKEDYNAMIC.opcode =>
         val invokeInstr = i.asInvocationInstruction
@@ -123,28 +122,28 @@ object OPALJavaConverter {
         invokeInstr match {
           case static: INVOKESTATIC =>
             Some(new JavaInvokeStatement(targetMethodName, static.declaringClass.toJVMTypeName, descriptor, JavaInvocationType.Static,
-              pc, ident, m.repository))
+              pc, -1L, m.repository))
 
           case special: INVOKESPECIAL =>
             Some(new JavaInvokeStatement(targetMethodName, special.declaringClass.toJVMTypeName, descriptor, JavaInvocationType.Special,
-              pc, ident, m.repository))
+              pc, -1L, m.repository))
 
           case virtual: INVOKEVIRTUAL =>
             Some(new JavaInvokeStatement(targetMethodName, virtual.declaringClass.toJVMTypeName, descriptor, JavaInvocationType.Virtual,
-              pc, ident, m.repository))
+              pc, -1L, m.repository))
 
           case interface: INVOKEINTERFACE =>
             Some(new JavaInvokeStatement(targetMethodName, interface.declaringClass.toJVMTypeName, descriptor, JavaInvocationType.Interface,
-              pc, ident, m.repository))
+              pc, -1L, m.repository))
 
           case _: INVOKEDYNAMIC =>
             Some(new JavaInvokeStatement(targetMethodName, "<DYNAMIC>", descriptor, JavaInvocationType.Dynamic,
-              pc, ident, m.repository))
+              pc, -1L, m.repository))
         }
 
       case NEW.opcode =>
         val newInstr = i.asNEW
-        Some(new JavaNewInstanceStatement(newInstr.objectType.fqn, pc, ident, m.repository))
+        Some(new JavaNewInstanceStatement(newInstr.objectType.fqn, pc, -1L, m.repository))
 
       case _ => None
     }

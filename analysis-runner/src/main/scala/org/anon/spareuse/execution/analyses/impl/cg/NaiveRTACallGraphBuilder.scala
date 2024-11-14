@@ -1,6 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
 
 import scala.collection.mutable
 import scala.util.Try
@@ -24,7 +25,7 @@ class NaiveRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: Opt
           val currentDefinedMethod = asDefinedMethod(javaMethod)
           javaMethod.invocationStatements.foreach { jis =>
 
-            resolveInvocation(jis, allInstantiatedTypes, simpleCaching = true)
+            resolveInvocation(jis, currentDefinedMethod, allInstantiatedTypes.contains, simpleCaching = true)
               .foreach(targetDefinedMethod => putCall(currentDefinedMethod, jis.instructionPc, targetDefinedMethod))
           }
         }
@@ -43,8 +44,8 @@ class NaiveRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: Opt
 
       if(!methodsAnalyzed.contains(currentMethod.hashCode())){
 
-        currentMethod.javaMethod.invocationStatements.foreach { jis =>
-          resolveInvocation(jis, allInstantiatedTypes, simpleCaching = true).foreach { target =>
+        currentMethod.invocationStatements.foreach { jis =>
+          resolveInvocation(jis, currentMethod, allInstantiatedTypes.contains, simpleCaching = true).foreach { target =>
             putCall(currentMethod, jis.instructionPc, target)
             if (!methodsAnalyzed.contains(target.hashCode()))
               workList.enqueue(target)
