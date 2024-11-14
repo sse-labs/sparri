@@ -106,10 +106,12 @@ lazy val compileRunnerFixtures = taskKey[Unit]("Compile java test fixtures for a
 
 compileRunnerFixtures := {
 	import scala.sys.process._
-	import java.nio.file.Paths
+	import java.nio.file.{Files, Paths}
+	import scala.jdk.CollectionConverters._
+	val cpString = Files.list(Paths.get("./analysis-runner/src/test/fixtures-java")).toList.asScala.mkString(" ")
 	val p = Paths.get("./analysis-runner/src/test/fixtures-java")
-	println(s"${p.toFile.absolutePath} --> ${p.toFile.exists()}")
-	"javac -d ./analysis-runner/src/test/resources/ ./analysis-runner/src/test/fixtures-java/*.java" !
+	println(s"Compiling java runner fixtures: $cpString")
+	s"javac -d ./analysis-runner/src/test/resources/ $cpString" !
 }
 
 lazy val `client-analyses` = (project in file("client-analyses"))
