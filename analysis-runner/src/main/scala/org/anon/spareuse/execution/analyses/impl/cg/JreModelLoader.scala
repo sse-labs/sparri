@@ -20,7 +20,7 @@ object JreModelLoader extends JreRepresentationJsonSupport {
     val dataDir = new File(jreDataDir)
 
     if(!dataDir.exists() || !dataDir.isDirectory)
-      throw new IllegalArgumentException(s"Not a valid JRE data directory: ${dataDir.getName}")
+      throw new IllegalArgumentException(s"Not a valid JRE data directory: ${dataDir.getAbsolutePath}")
 
     jreVersionMap = dataDir
       .listFiles(new FileFilter {

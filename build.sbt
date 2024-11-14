@@ -4,6 +4,10 @@ ThisBuild / organization := "org.anon"
 ThisBuild / version      := "0.1.0-SNAPSHOT"
 ThisBuild / scalaVersion := "2.13.12"
 ThisBuild / scalacOptions ++= Seq("-unchecked", "-deprecation")
+ThisBuild / fork := true
+ThisBuild / javaOptions ++= Seq(
+	"-Xmx12G"
+)
 
 lazy val dockerSettings = docker / dockerfile := {
 
