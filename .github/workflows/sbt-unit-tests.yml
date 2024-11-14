@@ -27,5 +27,7 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
         cache: 'sbt'
+    - name: Build Fixtures
+      run: sbt compileRunnerFixtures
     - name: Run tests
-      run: sbt compileRunnerFixtures; test
+      run: sbt test
