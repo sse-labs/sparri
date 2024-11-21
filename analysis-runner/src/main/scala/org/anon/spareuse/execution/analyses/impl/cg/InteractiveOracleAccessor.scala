@@ -144,6 +144,9 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
         isFatal = false, isUserError = true, interactionType = MethodRequest)
       logError(error)
       Right(error)
+    } else if(!oracleCGBuilderOpt.get.needsProcessing(callingContext, typesInstantiated, ccPC)){
+      log.info(s"Entrypoint does not need to be processed: ${callingContext.definingTypeName}.${callingContext.methodName} [PC=$ccPC]")
+      Left(())
     } else {
       log.info(s"Starting resolution at new entrypoint: ${callingContext.definingTypeName}.${callingContext.methodName} [PC=$ccPC]")
       isRunning.set(true)
@@ -196,7 +199,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
         oracleCGBuilderOpt.get.processResponse(response)
       } else {
         log.info(s"Waiting for responses on ${unansweredRequestIds.size} requests from client")
-        Thread.sleep(1000)
+        Thread.sleep(200)
 
         if(System.currentTimeMillis() - lastResponseTime > clientResponseTimeoutMillis){
           val error = OracleInteractionError(s"Timed out while waiting for client response (timeout $clientResponseTimeoutMillis ms)", isFatal = true, isUserError = true, MethodRequest)

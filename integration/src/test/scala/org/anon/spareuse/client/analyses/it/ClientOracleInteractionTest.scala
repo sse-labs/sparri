@@ -82,7 +82,7 @@ class ClientOracleInteractionTest extends AnyFlatSpec with TestContainersForAll 
 
       val projectRoot = new File(getClass.getClassLoader.getResource("modular-analysis-demo-target").toURI)
 
-      val theAnalysis = new IFDSTaintFlowAnalysis(new File(Paths.get(projectRoot.getPath, "target", "classes").toAbsolutePath.toString), new File(Paths.get(projectRoot.getPath, "pom.xml").toAbsolutePath.toString))
+      val theAnalysis = new IFDSTaintFlowAnalysis(projectRoot.toPath)
 
       val requirements = theAnalysis.requirements
 

@@ -69,6 +69,13 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
     typeNamesInstantiatedInApplication = Set.empty
   }
 
+  def needsProcessing(am: ApplicationMethod, typesInstantiated: Set[String], startAtPc: Int): Boolean = {
+    resolutionMode match {
+      case OracleCallGraphResolutionMode.CHA | OracleCallGraphResolutionMode.NaiveRTA => !methodsAnalyzed.contains(am.hashCode())
+      case OracleCallGraphResolutionMode.RTA => true //TODO: Implement check if new types are reachable
+    }
+  }
+
   private[cg] lazy val allInstantiatedLibraryTypes = programs
     .flatMap(_.allMethods)
     .flatMap(_.newStatements)

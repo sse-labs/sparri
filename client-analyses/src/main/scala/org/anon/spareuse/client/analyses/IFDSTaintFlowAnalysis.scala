@@ -2,21 +2,28 @@ package org.anon.spareuse.client.analyses
 
 import org.anon.spareuse.client.http.SparriOracleApiClient
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.LookupRequestRepresentation
-import org.anon.spareuse.execution.analyses.impl.ifds.{IFDSTaintFlowSummaryBuilderImpl, MethodTACProvider}
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphResolutionMode
+import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
+import org.anon.spareuse.execution.analyses.impl.ifds.{IFDSMethodGraph, IFDSTaintFlowSummaryBuilderImpl, MethodTACProvider}
 import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodWithSummaryRepr, LookupResponse, TypeNodeRepr}
-import org.opalj.br.{ClassFile, Method}
+import org.opalj.ai.Domain
+import org.opalj.ai.domain.RecordDefUse
+import org.opalj.ai.fpcf.properties.AIDomainFactoryKey
+import org.opalj.br.{ClassFile, Method, MethodDescriptor}
 import org.opalj.br.analyses.Project
+import org.opalj.br.fpcf.properties.Context
 import org.opalj.br.instructions.NEW
 import org.opalj.tac.ComputeTACAIKey
-import org.opalj.tac.cg.CFA_1_1_CallGraphKey
+import org.opalj.tac.cg.{CFA_1_1_CallGraphKey, CHACallGraphKey, RTACallGraphKey, XTACallGraphKey}
 
 import java.io.File
 import java.net.URL
+import java.nio.file.Path
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
 //TODO: Build a return type / warning
-class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends ClientAnalysis[Int](classesDirectory, pomFile) {
+class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnalysis[Int](mavenProjectDir) {
 
   private val remoteAnalysisName: String = IFDSTaintFlowSummaryBuilderImpl.analysisName
   private val remoteAnalysisVersion: String = "0.0.2"
@@ -26,6 +33,12 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
   // (Ab)use the existing taint flow summary builder, which is normally used in the context of an AnalysisRunner instance
   private val taintFlowSummaryBuilder: IFDSTaintFlowSummaryBuilderImpl = new IFDSTaintFlowSummaryBuilderImpl(None)
 
+  private var noOfLookups: Int = 0
+  private var noOfTargetsSent: Int = 0
+  private val methodSummaryCache: mutable.Map[Method, ApplicationMethodWithSummaryRepr] = mutable.HashMap.empty
+
+  private def noOfMethodsAnalyzed: Int = methodSummaryCache.size
+
   override def close(): Unit = {
     super.close()
     oracleApiClient.close()
@@ -34,7 +47,7 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
   override protected[analyses] def requirements: Seq[AnalysisRequirement] =
     getAllDependencies
       .get // Note that any exceptions thrown here will be caught by the calling (final) method ClientAnalysis.checkRequirements()
-      .map(dep => AnalysisRequirement(dep.identifier.toGA + "!" + dep.identifier.toString, remoteAnalysisName, remoteAnalysisVersion))
+      .map(dep => AnalysisRequirement(dep.identifier.toGA + "!" + dep.identifier.version, remoteAnalysisName, remoteAnalysisVersion))
       .toSeq
 
   override def execute(): Try[Int] = Try {
@@ -62,7 +75,7 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
 
     implicit val provider: MethodTACProvider = p.get(ComputeTACAIKey)
 
-    Try(oracleApiClient.startOracleSession(dependencies, projectTypeNodes, allTypesInitialized, 0, Some("17"))) match {
+    Try(oracleApiClient.startOracleSession(dependencies, projectTypeNodes, allTypesInitialized, OracleCallGraphResolutionMode.NaiveRTA.id, Some("17"))) match {
       case Success(_) =>
         log.info(s"Successfully started resolution session with server, session-id = ${oracleApiClient.getToken.getOrElse("<NONE>")}")
 
@@ -71,28 +84,39 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
           Thread.sleep(100)
         }
 
+        val startTime = System.currentTimeMillis()
+
         log.info(s"Oracle ready for interaction.")
 
         // Add all library entry points to a work stack
         val entryPointsToProcess = mutable.Stack.from(getLibraryEntryPoints(p))
 
-        log.info(s"Found a total of ${entryPointsToProcess.size} library entry points.")
+        val entryCnt = entryPointsToProcess.size
+        var currEntry = 0
+
+        log.info(s"Found a total of $entryCnt library entry points.")
 
         // Handle one entry point after the other
         while(entryPointsToProcess.nonEmpty){
           val currentEntry = entryPointsToProcess.pop()
           Try(oracleApiClient.startResolutionAt(currentEntry.callingContext, currentEntry.ccPC, currentEntry.typesInitialized)).flatten match {
             case Success(_) =>
-              log.info(s"Successfully started resolution at entrypoint: ${currentEntry.callingContext.descriptor.toJava(currentEntry.callingContext.name)} , PC=${currentEntry.ccPC}")
+              log.info(s"Successfully started resolution for entrypoint $currEntry / $entryCnt")
               handleOracleInteractionUntilFinished(currentEntry, projectTypeMap)
             case Failure(ex) =>
               log.error(s"Failed to start resolution at entrypoint: ${currentEntry.callingContext.descriptor.toJava(currentEntry.callingContext.name)} , PC=${currentEntry.ccPC}", ex)
           }
+          currEntry += 1
         }
 
         oracleApiClient.finalizeSession() match {
           case Success(_) =>
-            log.info(s"Successfully finalized resolution session")
+            val durationSeconds = (System.currentTimeMillis() - startTime) / 1000
+            log.info(s"Successfully finalized resolution session. Stats:")
+            log.info(s"\t - Number of lookup request by oracle: $noOfLookups")
+            log.info(s"\t - Number of methods summarized: $noOfMethodsAnalyzed")
+            log.info(s"\t - Number of method summaries sent to oracle: $noOfTargetsSent")
+            log.info(s"\t - Duration of main resolution loop: $durationSeconds sec")
           case Failure(ex) =>
             log.error(s"Failure during session finalization", ex)
         }
@@ -106,14 +130,15 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
   }
 
   private def getLibraryEntryPoints(project: Project[URL]): Set[EntryPoint] = {
-    val cg = project.get(CFA_1_1_CallGraphKey)
+
+    val cg = project.get(RTACallGraphKey)
 
     cg
       .reachableMethods()
       .flatMap(ctx => cg.calleesOf(ctx.method).flatMap(t => t._2.map(t2 => (ctx, t._1, t2))))
       .filter{
-        case (_, _, callee) =>
-          callee.hasContext && !project.isProjectType(callee.method.declaringClassType) && !callee.method.declaringClassType.fqn.startsWith("java")
+        case (caller, _, callee) =>
+          !project.isProjectType(callee.method.declaringClassType) && project.isProjectType(caller.method.declaringClassType) && !callee.method.declaringClassType.fqn.startsWith("java")
       }.map{
       case (callerCtx, pc, _) =>
         EntryPoint(callerCtx.method.definedMethod, pc, Set.empty)
@@ -148,7 +173,7 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
         }
       } else {
         // Wait until action is needed
-        Thread.sleep(1000)
+        Thread.sleep(20)
       }
       statusResponse = oracleApiClient.pullStatus()
     }
@@ -164,6 +189,8 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
 
   private def handleMethodRequest(request: LookupRequestRepresentation, projectTypes: Map[String, ClassFile])(implicit provider: MethodTACProvider): Try[LookupResponse] = Try {
 
+    noOfLookups += 1
+
     val targetsFound: mutable.Set[ApplicationMethodWithSummaryRepr] = mutable.Set.empty
     val typesWithNoDef: mutable.Set[String] = mutable.Set.empty
 
@@ -173,10 +200,13 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
           targetClassFile
             .methods
             .find(method => method.name == request.mName && method.descriptor.toJVMDescriptor == request.mDescriptor) match {
+            case Some(method) if methodSummaryCache.contains(method) =>
+              targetsFound.add(methodSummaryCache(method))
             case Some(method) =>
-
               val ifdsSummary = taintFlowSummaryBuilder.analyzeMethod(method).toResultRepresentation(true)
-              targetsFound.add(ApplicationMethodWithSummaryRepr(oracleApiClient.opalToApiModel(method), ifdsSummary))
+              val methodSummary = ApplicationMethodWithSummaryRepr(oracleApiClient.opalToApiModel(method), ifdsSummary)
+              methodSummaryCache.put(method, methodSummary)
+              targetsFound.add(methodSummary)
             case None =>
               typesWithNoDef.add(targetFqn)
           }
@@ -184,6 +214,8 @@ class IFDSTaintFlowAnalysis(classesDirectory: File, pomFile: File) extends Clien
           log.error(s"Oracle requested information on a type that we do not know: $targetFqn")
       }
     }
+
+    noOfTargetsSent += targetsFound.size
 
     LookupResponse(request.requestId, targetsFound.toSet, typesWithNoDef.toSet, hasFatalErrors = false)
   }

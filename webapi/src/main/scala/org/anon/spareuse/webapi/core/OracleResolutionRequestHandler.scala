@@ -89,14 +89,6 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
       else {
         val accessor = sessionOracleAccessors(session.uid)
 
-        var req = accessor.nextRequest()
-        val requests = mutable.ListBuffer.empty[LookupRequestRepresentation]
-
-        while (req.nonEmpty) {
-          requests.addOne(req.get)
-          req = accessor.nextRequest()
-        }
-
         if (accessor.succeeded) {
           // We successfully processed the last entrypoint, so we are ready for another one (or finalization)
           PullLookupRequestsResponse(isInitialized = true, isResolving = false, requests = Set.empty, hasFailed = false, fatalError = None)
@@ -108,6 +100,15 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
           // ready to process entrypoints
           PullLookupRequestsResponse(isInitialized = true, isResolving = false, requests = Set.empty, hasFailed = false, fatalError = None)
         } else {
+
+          var req = accessor.nextRequest()
+          val requests = mutable.ListBuffer.empty[LookupRequestRepresentation]
+
+          while (req.nonEmpty) {
+            requests.addOne(req.get)
+            req = accessor.nextRequest()
+          }
+
           if (accessor.hasFatalErrors) {
             // Accessor thinks we are working, but has encountered fatal errors
             PullLookupRequestsResponse(isInitialized = true, isResolving = false, requests = requests.toSet, hasFailed = true,

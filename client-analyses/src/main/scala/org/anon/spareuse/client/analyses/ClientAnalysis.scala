@@ -19,7 +19,7 @@ import java.util.regex.Pattern
 import scala.jdk.CollectionConverters.CollectionHasAsScala
 import scala.util.{Failure, Success, Try}
 
-abstract class ClientAnalysis[T](classFilesDirectory: File, pomFile: File) extends EnhancedLogging with AutoCloseable {
+abstract class ClientAnalysis[T](protected val classFilesDirectory: File, protected val pomFile: File) extends EnhancedLogging with AutoCloseable {
 
   protected[analyses] val api: SparriApiClient = new SparriApiClient
 

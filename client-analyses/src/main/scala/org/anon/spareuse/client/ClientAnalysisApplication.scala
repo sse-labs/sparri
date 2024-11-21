@@ -12,12 +12,9 @@ object ClientAnalysisApplication {
   private final val log: Logger = LoggerFactory.getLogger(getClass)
 
   def main(args: Array[String]): Unit = {
-    if(args.length < 1 || args.length > 2) throw new IllegalArgumentException(s"Usage: ClientAnalysisApplication <classes-dir> <pom-file> OR ClientAnalysisApplication <maven-project-root>")
+    if(args.length != 1) throw new IllegalArgumentException(s"Usage: ClientAnalysisApplication <maven-project-root>")
 
-    val classesDir = if(args.length == 1) Paths.get(args(0), "target", "classes").toFile else new File(args(0))
-    val pomFile = if(args.length == 1) Paths.get(args(0), "pom.xml").toFile else new File(args(1))
-
-    val theAnalysis = new IFDSTaintFlowAnalysis(classesDir, pomFile)
+    val theAnalysis = new IFDSTaintFlowAnalysis(Paths.get(args(0)))
 
     if(theAnalysis.checkRequirements()){
       log.info("Analysis requirements are met.")
