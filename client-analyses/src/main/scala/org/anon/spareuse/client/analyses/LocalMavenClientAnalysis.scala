@@ -1,12 +1,14 @@
 package org.anon.spareuse.client.analyses
 
 import com.typesafe.config.{Config, ConfigFactory}
+import org.anon.spareuse.core.maven.MavenDependencyIdentifier
 import org.opalj.br.analyses.Project
 import org.opalj.bytecode.RTJar
 
 import java.io.File
 import java.net.URL
 import java.nio.file.Path
+import scala.util.Try
 
 abstract class LocalMavenClientAnalysis[T](mavenProjectDir: Path) extends ClientAnalysis[T](
   classFilesDirectory = mavenProjectDir.resolve("target").resolve("classes").toFile,
@@ -17,7 +19,8 @@ abstract class LocalMavenClientAnalysis[T](mavenProjectDir: Path) extends Client
   private final val loadLibrariesKey = "sparri.client.load-lib-contents"
   private final val loadJreKey = "sparri.client.load-jre"
 
-  protected[analyses] val mavenRoot: File = mavenProjectDir.toFile
+  protected[analyses] lazy val mavenRoot: File = mavenProjectDir.toFile
+  protected[analyses] lazy val mavenDependenciesTry: Try[Set[MavenDependencyIdentifier]] = getAllDependencies
 
   protected[analyses] lazy val projectConfig: Option[Config] = {
     val configFile = mavenProjectDir.resolve(".sparri").toFile

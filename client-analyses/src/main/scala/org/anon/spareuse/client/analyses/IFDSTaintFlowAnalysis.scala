@@ -45,7 +45,7 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
   }
 
   override protected[analyses] def requirements: Seq[AnalysisRequirement] =
-    getAllDependencies
+    mavenDependenciesTry
       .get // Note that any exceptions thrown here will be caught by the calling (final) method ClientAnalysis.checkRequirements()
       .map(dep => AnalysisRequirement(dep.identifier.toGA + "!" + dep.identifier.version, remoteAnalysisName, remoteAnalysisVersion))
       .toSeq
@@ -53,7 +53,7 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
   override def execute(): Try[Int] = Try {
     val p = getOpalProject(loadJre = false)
 
-    val dependencies = getAllDependencies.get.map(_.identifier.toString)
+    val dependencies = mavenDependenciesTry.get.map(_.identifier.toString)
 
     val projectTypeMap = p
       .allProjectClassFiles
