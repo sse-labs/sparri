@@ -1,6 +1,5 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
-import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaProgram, gavToProgramIdent}
 import org.anon.spareuse.core.storage.DataAccessor
@@ -311,7 +310,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
 
     val builder = oracleCGBuilderOpt.get
 
-    val typeToLibraryLookup = builder.getLibraries.flatMap(library => library.allClasses.map(c => (c.thisType, (library.name, c.thisType)))).toMap
+    val typeToLibraryLookup = builder.getLibraries.flatMap(library => library.allClasses.map(c => (c.thisType, library.gav))).toMap
 
     builder
       .getGraph
@@ -323,11 +322,10 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
           if(!typeToLibraryLookup.contains(ident.declaredType))
             log.warn(s"Failed to locate type for summary lookup: ${ident.declaredType}")
           else{
-            val tuple = typeToLibraryLookup(ident.declaredType)
-            val sparriLibraryName = tuple._1
-            val sparriClassIdent = tuple._2
+            val sparriLibraryGAV = typeToLibraryLookup(ident.declaredType)
+            val sparriClassIdent = ident.declaredType
             val sparriMethodIdent = JavaEntities.buildMethodIdent(ident.methodName, ident.methodDescriptor)
-            resolver(sparriLibraryName, sparriClassIdent, sparriMethodIdent) match {
+            resolver(sparriLibraryGAV, sparriClassIdent, sparriMethodIdent) match {
               case Success(summary) =>
                 log.info(s"Successfully got summary for $sparriMethodIdent")
                 summaryLookup.put(ident, summary)

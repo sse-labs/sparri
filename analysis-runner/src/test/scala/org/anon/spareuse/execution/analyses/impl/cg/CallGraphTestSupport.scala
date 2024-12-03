@@ -8,11 +8,20 @@ import org.anon.spareuse.execution.analyses.{getCallGraphProject, toObjectModel}
 import org.opalj.br.analyses.Project
 
 import java.net.URL
+import java.nio.file.{Files, Paths}
 
 trait CallGraphTestSupport {
 
   protected val objFqn: String = "java/lang/Object"
   protected val theOpalHelper: OPALProjectHelper = new OPALProjectHelper(loadJreClassImplementation = false)
+
+  def indexJre(): Unit  = {
+    if(Files.exists(Paths.get("..", "jre-data"))){
+      JreModelLoader.indexJreData("../jre-data")
+    } else {
+      JreModelLoader.indexJreData("jre-data")
+    }
+  }
 
   protected lazy val jreObjectModel: JavaProgram = {
     println("Loading JRE domain model, this might take some time ... ")
@@ -30,7 +39,7 @@ trait CallGraphTestSupport {
 
   protected def resetModelLoader(): Unit = {
     JreModelLoader.clear()
-    JreModelLoader.indexJreData("../jre-data")
+    indexJre()
   }
 
 }

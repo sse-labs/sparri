@@ -1,5 +1,6 @@
 package org.anon.spareuse.core.model.entities
 
+import org.anon.spareuse.core.maven.MavenIdentifier
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaFieldAccessType.JavaFieldAccessType
@@ -9,10 +10,7 @@ import org.opalj.br.MethodDescriptor
 object JavaEntities {
 
   def gavToProgramIdent(gav: String): Option[String] = {
-    if(gav.count(_ ==':') != 2) return None
-    val ga = gav.substring(0, gav.lastIndexOf(":"))
-
-    Some(s"$ga!$gav")
+    MavenIdentifier.fromGAV(gav).map(_.toString)
   }
 
   def buildLibrary(ga: String, repoIdent: String = "mvn"): JavaLibrary = new JavaLibrary(ga, repoIdent, -1L)
@@ -91,10 +89,9 @@ object JavaEntities {
 
     override val kind: SoftwareEntityKind = SoftwareEntityKind.Program
 
-    private lazy val isGAV: Boolean = programName.count(_ == ':') == 2
-
-    val ga: String = if(isGAV) programName.substring(0, programName.lastIndexOf(":")) else programName
-    val v: String = if(isGAV) programName.substring(programName.lastIndexOf(":") + 1) else programName
+    lazy val ga: String = getParent.map(_.name).getOrElse("<UNKNOWN>")
+    lazy val v: String = programVersion
+    lazy val gav: String = s"$ga:$v"
 
     val publishedAt: String = uploadTime
 
