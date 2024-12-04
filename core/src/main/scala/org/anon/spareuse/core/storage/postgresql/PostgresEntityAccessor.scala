@@ -52,15 +52,22 @@ trait PostgresEntityAccessor extends EntityAccessor {
   }
 
   def getClassIdF(gav: String, classFqn: String): Future[Option[Long]] = {
-    val packageName = classFqn.substring(classFqn.lastIndexOf("/") + 1)
+    val (packageName, classSimpleName) = if(classFqn.contains("/")){
+      val splitIdx = classFqn.lastIndexOf("/")
+      (classFqn.take(splitIdx), classFqn.drop(splitIdx + 1))
+    } else {
+      ("", classFqn)
+    }
     getProgramIdF(gav).flatMap{
       case Some(progId) =>
         db.run(entitiesTable.filter(swe => swe.parentID === progId && swe.identifier === packageName).take(1).map(_.id).result).map(_.headOption).flatMap{
           case Some(packageId) =>
-            db.run(entitiesTable.filter(swe => swe.parentID === packageId && swe.identifier === classFqn).take(1).map(_.id).result).map(_.headOption)
-          case None => Future.successful(None)
+            db.run(entitiesTable.filter(swe => swe.parentID === packageId && swe.identifier === classSimpleName).take(1).map(_.id).result).map(_.headOption)
+          case None =>
+            Future.successful(None)
         }
-      case None => Future.successful(None)
+      case None =>
+        Future.successful(None)
     }
   }
 
@@ -68,7 +75,8 @@ trait PostgresEntityAccessor extends EntityAccessor {
     getClassIdF(gav, classFqn).flatMap{
       case Some(classId) =>
         db.run(entitiesTable.filter(swe => swe.parentID === classId && swe.identifier === methodIdent).take(1).map(_.id).result).map(_.headOption)
-      case None => Future.successful(None)
+      case None =>
+        Future.successful(None)
     }
   }
 

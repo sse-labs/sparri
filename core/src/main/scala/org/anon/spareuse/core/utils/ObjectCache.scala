@@ -2,7 +2,7 @@ package org.anon.spareuse.core.utils
 
 import scala.collection.mutable
 
-class ObjectCache[K <: AnyVal, T <: AnyRef](maxEntries: Int) {
+class ObjectCache[K <: Any, T <: Any](maxEntries: Int) {
 
   assert(maxEntries > 0)
 

@@ -21,6 +21,7 @@ trait PostgresSparriSupport extends PostgresAnalysisTables with PostgresEntityTa
   protected val log: Logger = LoggerFactory.getLogger(getClass)
 
   protected val idToIdentifierCache = new ObjectCache[Long, String](maxEntries = 10000)
+  protected val analysisLookupCache = new ObjectCache[String, Long](maxEntries = 100)
 
   protected val simpleQueryTimeout: FiniteDuration = 5.seconds
   protected val longActionTimeout: FiniteDuration = 60.seconds
@@ -93,5 +94,13 @@ trait PostgresSparriSupport extends PostgresAnalysisTables with PostgresEntityTa
         }
       case _ => throw new IllegalStateException("Illegal database state: Predefined Formats are not stored correctly")
     }
+  }
+
+  protected def getAnalysisId(analysisName: String, analysisVersion: String): Long = {
+    val ident = analysisName + ":" + analysisVersion
+
+    analysisLookupCache.getWithCache(ident, { () =>
+      Await.result(db.run(analysesTable.filter(a => a.name === analysisName && a.version === analysisVersion).take(1).result), simpleQueryTimeout).head.id
+    })
   }
 }

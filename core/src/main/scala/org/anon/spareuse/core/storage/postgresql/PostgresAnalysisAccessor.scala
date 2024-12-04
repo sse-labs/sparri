@@ -375,6 +375,21 @@ trait PostgresAnalysisAccessor {
     uuid
   }
 
+  override def getResultJSONContent(eid: Long, analysisName: String, analysisVersion: String): Try[Option[String]] = {
+    val analysisId = getAnalysisId(analysisName, analysisVersion)
+
+    val resultsForEntityF = db.run(resultValiditiesTable.filter(_.entityId === eid).map(_.resultId).result).map(_.toSet)
+
+    val theResult = resultsForEntityF.flatMap { resultIds =>
+      val query = for{ (result, run) <- analysisResultsTable.filter(res => res.id inSet resultIds) join analysisRunsTable on (_.runID === _.id) }
+        yield (result.content, run.parentID)
+
+      db.run(query.filter(_._2 === analysisId).take(1).result).map(_.headOption.map(_._1))
+    }
+
+    Try(Await.result(theResult, simpleQueryTimeout))
+  }
+
   override def getJSONResultsFor(eid: Long, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]] = Try {
 
     // Get all results associated with this entity
@@ -386,9 +401,9 @@ trait PostgresAnalysisAccessor {
 
     val allEntityResults = {
       if (analysisFilter.isDefined) {
-        val analysisRepr = getAnalysisRepr(analysisFilter.get._1, analysisFilter.get._2)
+        val analysisId = getAnalysisId(analysisFilter.get._1, analysisFilter.get._2)
 
-        val filteredResultsQuery = for {(result, _) <- allEntityResultsQuery join analysisRunsTable on (_.runID === _.id) filter (_._2.parentID === analysisRepr.id)}
+        val filteredResultsQuery = for {(result, _) <- allEntityResultsQuery join analysisRunsTable on (_.runID === _.id) filter (_._2.parentID === analysisId)}
           yield result
 
         Await.result(db.run(filteredResultsQuery.drop(skip).take(limit).result), longActionTimeout)

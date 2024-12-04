@@ -140,30 +140,30 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
     val accessor = sessionOracleAccessors(session.uid)
 
     val resolver: (String, String, String) => Try[MethodIFDSRep] = (gav, className, methodIdent) => {
-
-      val id = dataAccessor.getMethodEntityId(gav, className, methodIdent).get
-
-      dataAccessor
-        .getJSONResultsFor(
-          id,
-          Some(IFDSTaintFlowSummaryBuilderImpl.analysisName, IFDSTaintFlowSummaryBuilderImpl.analysisVersion),
-          limit = 1,
-          skip = 0) match {
-        case Success(results) if results.nonEmpty =>
-          if(results.size > 1)
-            log.warn(s"More than one IFDS summary present for entity, picking one at random")
-
-          val theResult = results.head
-
-          Try(theResult.content.asInstanceOf[String].parseJson.convertTo[MethodIFDSRep])
-        case Failure(ex) =>
-          log.error(s"Error while getting IFDS summaries from database: $methodIdent", ex)
-          Failure(ex)
-        case _ =>
-          log.error(s"No results found when accessing IFDS summary for $methodIdent")
-          Success(null) //TODO: Proper handling here
-          //Failure(new IllegalStateException(s"Required summaries not found in database"))
+      val start = System.currentTimeMillis()
+      val idOpt = dataAccessor.getMethodEntityId(gav, className, methodIdent)
+      val time = System.currentTimeMillis() - start
+      idOpt match{
+        case Some(id) =>
+          val start2 = System.currentTimeMillis()
+          val jsonOpt = dataAccessor.getResultJSONContent(id, IFDSTaintFlowSummaryBuilderImpl.analysisName, IFDSTaintFlowSummaryBuilderImpl.analysisVersion)
+          val time2 = System.currentTimeMillis() - start2
+          jsonOpt match {
+            case Success(Some(content)) =>
+              log.info(s"ID fetch took $time ms, JSON fetch took $time2 ms")
+              Try(content.parseJson.convertTo[MethodIFDSRep])
+            case Failure(ex) =>
+              log.error(s"Error while getting IFDS summaries from database: $methodIdent", ex)
+              Failure(ex)
+            case _ =>
+              log.error(s"No results found when accessing IFDS summary for $methodIdent")
+              Success(null) //TODO: Proper handling here
+          }
+        case None =>
+          Failure(new RuntimeException(s"Could not retrieve IFDS summary, method not found: gav=$gav, class=$className, method=$methodIdent"))
       }
+
+
 
     }
 

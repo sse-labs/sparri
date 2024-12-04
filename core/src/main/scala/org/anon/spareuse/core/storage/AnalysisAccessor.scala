@@ -86,6 +86,15 @@ trait AnalysisAccessor {
    */
   def getJSONResultsFor(eid: Long, analysisFilter: Option[(String, String)], limit: Int, skip: Int): Try[Set[AnalysisResultData]]
 
+  /**
+   * Retrieves exactly one result for the given entity produced by the given analysis, and returns its JSON content
+   * @param eid ID of the entity
+   * @param analysisName The name of the analysis
+   * @param analysisVersion The version of the analysis
+   * @return JSON content string
+   */
+  def getResultJSONContent(eid: Long, analysisName: String, analysisVersion: String): Try[Option[String]]
+
   def getAllResults(analysisName: String, analysisVersion: String, limit: Int, skip: Int): Future[Set[AnalysisResultData]]
 
   def registerIfNotPresent(analysis: AnalysisData): Unit
