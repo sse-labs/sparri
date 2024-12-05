@@ -1,6 +1,6 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
-import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.MethodIdent
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.opalj.br.{FieldType, ObjectType}
 
 import scala.annotation.switch

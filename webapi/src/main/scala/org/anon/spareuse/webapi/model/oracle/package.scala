@@ -2,8 +2,9 @@ package org.anon.spareuse.webapi.model
 
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaInvocationType, JavaInvokeStatement}
 import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.LookupResponseRepresentation
-import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, MethodIdent}
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.ApplicationMethod
 import org.anon.spareuse.execution.analyses.impl.ifds.ApplicationMethodWithSummary
 
 package object oracle {

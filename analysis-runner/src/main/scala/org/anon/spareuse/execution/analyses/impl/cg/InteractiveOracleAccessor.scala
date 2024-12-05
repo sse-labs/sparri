@@ -4,9 +4,10 @@ import org.anon.spareuse.core.model.entities.JavaEntities
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaProgram, gavToProgramIdent}
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.{DefinedMethod, MethodIdent}
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.InteractionType.{Initialization, InteractionType, Internal, MethodRequest}
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{InteractionType, LookupRequestRepresentation, LookupResponseRepresentation, OracleInteractionError}
-import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, LookupApplicationMethodRequest, LookupApplicationMethodResponse, MethodIdent}
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, LookupApplicationMethodRequest, LookupApplicationMethodResponse}
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphResolutionMode.{CHA, NaiveRTA, OracleCallGraphResolutionMode, RTA}
 import org.anon.spareuse.execution.analyses.impl.ifds.ApplicationMethodWithSummary
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
@@ -104,6 +105,9 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       val libraries = libraryGAVs.map(dataAccessor.getProgramEntityId(_).get).map(dataAccessor.awaitGetEntity(_, None).get.asInstanceOf[JavaProgram])
       val builder = new OracleCallGraphBuilder(libraries, libraryTypes, jreVersion, queueRequest)
 
+      // Whenever we see newly reachable methods, we want to queue them
+      builder.setOnReachableMethodListener(BackgroundSummaryLoader.queueMethod)
+
       mode match {
         case CHA => builder.useCHA()
         case NaiveRTA => builder.useNaiveRTA(typesInstantiated)
@@ -132,12 +136,15 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
    * @param callingContext Application method that the entry call has been made in
    * @param ccPC PC that the entry call has been made at
    * @param typesInstantiated Types that have been instantiated so far (at the call site). Only needed for full-blown RTA.
+   * @param summaryLoader Method loading IFDS summaries from the DB. This method will be invoked for every reachable method
+   *                      exactly once.
    * @param ec Implicit execution context to run the main resolver loop on
    * @return Either a unit value (if successful) or an OracleInteractionError
    */
   def startResolution(callingContext: ApplicationMethod,
                       ccPC: Int,
-                      typesInstantiated: Set[String])(implicit ec: ExecutionContext): Either[Unit, OracleInteractionError] = {
+                      typesInstantiated: Set[String],
+                      summaryLoader: BackgroundSummaryLoader.SummaryLoader)(implicit ec: ExecutionContext): Either[Unit, OracleInteractionError] = {
     if(isRunning.get()){
       val error = OracleInteractionError(s"Request for a new entry point while still resolving - wait for resolution to finish!",
         isFatal = false, isUserError = true, interactionType = MethodRequest)
@@ -148,6 +155,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       Left(())
     } else {
       log.info(s"Starting resolution at new entrypoint: ${callingContext.definingTypeName}.${callingContext.methodName} [PC=$ccPC]")
+      BackgroundSummaryLoader.startLoadingSummaries(summaryLoader)
       isRunning.set(true)
       resolverLoopFuture = Some(Future(runBuilderLoop(callingContext, ccPC, typesInstantiated)))
       Left(())
@@ -261,7 +269,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
 
     summaryLookup.synchronized {
       response.targetMethods.foreach{ m =>
-        summaryLookup.put(m.method.identifier, m.ifdsSummary)
+        summaryLookup.put(m.method.methodIdentifier, m.ifdsSummary)
       }
     }
 
@@ -304,7 +312,16 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
   def succeeded: Boolean = !hasFatalErrors && resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isSuccess)
   def failed: Boolean = hasFatalErrors || resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isFailure)
 
-  def loadRemainingSummaries(resolver: (String, String, String) => Try[MethodIFDSRep]): Try[Unit] = Try {
+  def finalizeSummaries(): Unit = {
+    BackgroundSummaryLoader.setWorkloadIsFinal()
+
+    while(!BackgroundSummaryLoader.isFinished){
+      log.info(s"Waiting for background worker to load summaries...")
+      Thread.sleep(1000)
+    }
+  }
+
+  /*def loadRemainingSummaries(resolver: (String, String, String) => Try[MethodIFDSRep]): Try[Unit] = Try {
     if(oracleCGBuilderOpt.isEmpty)
       return Failure(new IllegalStateException("Cannot finalize summaries, not initialized"))
 
@@ -312,28 +329,158 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
 
     val typeToLibraryLookup = builder.getLibraries.flatMap(library => library.allClasses.map(c => (c.thisType, library.gav))).toMap
 
-    builder
+    val methodsToLookup = builder
       .getGraph
       .reachableMethods()
-      .filterNot(dm => dm.definingTypeName.startsWith("java") || dm.definingTypeName.startsWith("sun") || dm.definingTypeName.startsWith("jdk") || dm.definingTypeName.startsWith("com/sun"))
-      .foreach{ dm =>
-        val ident = MethodIdent(dm.definingTypeName, dm.methodName, dm.descriptor)
-        if(!summaryLookup.contains(ident)){
-          if(!typeToLibraryLookup.contains(ident.declaredType))
-            log.warn(s"Failed to locate type for summary lookup: ${ident.declaredType}")
-          else{
-            val sparriLibraryGAV = typeToLibraryLookup(ident.declaredType)
-            val sparriClassIdent = ident.declaredType
-            val sparriMethodIdent = JavaEntities.buildMethodIdent(ident.methodName, ident.methodDescriptor)
-            resolver(sparriLibraryGAV, sparriClassIdent, sparriMethodIdent) match {
-              case Success(summary) =>
-                log.info(s"Successfully got summary for $sparriMethodIdent")
-                summaryLookup.put(ident, summary)
-              case Failure(ex) =>
-                log.error(s"Failed to lookup method summary for: $sparriMethodIdent", ex)
-            }
+      .map(dm => dm.methodIdentifier)
+      .filterNot(mi => mi.declaredType.startsWith("java") || mi.declaredType.startsWith("sun") || mi.declaredType.startsWith("jdk") || mi.declaredType.startsWith("com/sun"))
+      .filterNot(summaryLookup.contains)
+
+    log.info(s"Got ${summaryLookup.size} summaries so far, looking up another ${methodsToLookup.size} summaries in DB")
+
+    var cnt = 0
+    var err = 0
+
+    methodsToLookup
+      .foreach{ ident =>
+        cnt += 1
+        if(!typeToLibraryLookup.contains(ident.declaredType))
+          log.warn(s"Failed to locate type for summary lookup: ${ident.declaredType}")
+        else{
+          val sparriLibraryGAV = typeToLibraryLookup(ident.declaredType)
+          val sparriClassIdent = ident.declaredType
+          val sparriMethodIdent = JavaEntities.buildMethodIdent(ident.methodName, ident.methodDescriptor)
+          resolver(sparriLibraryGAV, sparriClassIdent, sparriMethodIdent) match {
+            case Success(summary) =>
+              //log.info(s"Successfully got summary for $sparriMethodIdent")
+              summaryLookup.put(ident, summary)
+            case Failure(ex) =>
+              err += 1
+              log.error(s"Failed to lookup method summary for: $sparriMethodIdent ${ex.getMessage}")
           }
         }
+
+        if(cnt % 100 == 0)
+          log.info(s"Loaded $cnt / ${methodsToLookup.size} summaries so far ($err errors)")
+    }
+  }*/
+
+  private[this] object BackgroundSummaryLoader extends Runnable {
+
+    type SummaryLoader = (String, MethodIdent) => Try[MethodIFDSRep]
+
+    private lazy val builder: OracleCallGraphBuilder = {
+      if (oracleCGBuilderOpt.isEmpty)
+        throw new IllegalStateException("Cannot load summaries, builder not initialized")
+      else oracleCGBuilderOpt.get
+    }
+
+    private lazy val typeToLibraryLookup =  builder
+      .getLibraries
+      .flatMap(library => library.allClasses.map(c => (c.thisType, library.gav)))
+      .toMap
+
+    private var summaryLoader: SummaryLoader = null
+
+    private val worklist: mutable.Queue[MethodIdent] = mutable.Queue.empty[MethodIdent]
+
+    private val stopRequested: AtomicBoolean = new AtomicBoolean(false)
+    private val workloadFinal: AtomicBoolean = new AtomicBoolean(false)
+    private val isRunning: AtomicBoolean = new AtomicBoolean(false)
+
+    private var workerThreadOpt: Option[Thread] = None
+
+    def queueMethod(dm: DefinedMethod): Unit = {
+      val isJavaType = (typeName: String) => typeName.startsWith("java") || typeName.startsWith("sun") || typeName.startsWith("jdk") || typeName.startsWith("com/sun")
+
+      // Application method summaries are automatically pushed by the client and cannot be retrieved from the DB
+      if(!dm.isInstanceOf[ApplicationMethod] && !isJavaType(dm.definingTypeName)){
+        worklist.synchronized {
+          worklist.append(dm.methodIdentifier)
+        }
+        this.synchronized { this.notify() }
+      }
+    }
+
+    def startLoadingSummaries(sLoader: SummaryLoader): Unit = {
+      workerThreadOpt match {
+        case Some(_) =>
+          log.warn(s"No need to start loading summaries, worker is already started.")
+        case None =>
+          summaryLoader = sLoader
+          stopRequested.set(false)
+          workerThreadOpt = Some(new Thread(this))
+          workerThreadOpt.foreach(_.start())
+          log.info("Started background worker to load summaries.")
+      }
+    }
+
+    def requestStop(): Unit = {
+      stopRequested.set(true)
+      this.synchronized { this.notify() }
+    }
+
+    def setWorkloadIsFinal(): Unit = {
+      val queueLength = worklist.synchronized{ worklist.length }
+      log.info(s"Workload is now final, queue length: $queueLength")
+      workloadFinal.set(true)
+      this.synchronized { this.notify() }
+    }
+
+    def isFinished: Boolean = !isRunning.get() && workloadFinal.get()
+
+    override def run(): Unit = {
+      var totalSummariesHandled = 0
+      var totalSummariesFailed = 0
+
+      isRunning.set(true)
+      log.info(s"Starting to load summaries in the background")
+      while(!stopRequested.get()){
+
+        val methodIdentOpt = worklist.synchronized{
+          if(worklist.nonEmpty)
+            Some(worklist.dequeue())
+          else
+           None
+        }
+
+        if(totalSummariesHandled % 100 == 0)
+          log.info(s"Loaded $totalSummariesHandled summaries so far ($totalSummariesFailed errors)")
+
+        methodIdentOpt match {
+          case Some(identToProcess) =>
+            val isNewIdent = summaryLookup.synchronized{ !summaryLookup.contains(identToProcess) }
+
+            if(isNewIdent){
+              totalSummariesHandled += 1
+
+              if(!typeToLibraryLookup.contains(identToProcess.declaredType)) {
+                totalSummariesFailed += 1
+                log.warn(s"Failed to locate type for summary lookup: ${identToProcess.declaredType}")
+              } else {
+                val libraryGAV = typeToLibraryLookup(identToProcess.declaredType)
+                val sparriMethodIdent = identToProcess
+
+                summaryLoader(libraryGAV, sparriMethodIdent) match {
+                  case Success(ifdsRep) =>
+                    summaryLookup.synchronized {
+                      summaryLookup.put(identToProcess, ifdsRep)
+                    }
+                  case Failure(ex) =>
+                    totalSummariesFailed += 1
+                    log.error(s"Failed to lookup method summary for: $sparriMethodIdent ${ex.getMessage}")
+                }
+              }
+            }
+          case None =>
+            if(workloadFinal.get()){
+              log.info(s"Worklist empty, no more work to be scheduled - stopping background work.")
+              requestStop()
+            } else this.synchronized(this.wait(1000))
+        }
+      }
+      isRunning.set(false)
+      log.info("Finished background worker execution for loading summaries")
     }
   }
 

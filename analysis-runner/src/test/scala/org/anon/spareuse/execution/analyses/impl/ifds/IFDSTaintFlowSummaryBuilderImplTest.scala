@@ -1,6 +1,6 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
-import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.MethodIdent
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.TaintFunctionReturn
 import org.anon.spareuse.execution.analyses.{buildProject, getTACProvider, loadFixture}
 import org.scalatest.funspec.AnyFunSpec
@@ -105,7 +105,7 @@ class IFDSTaintFlowSummaryBuilderImplTest extends AnyFunSpec {
       val concatGraph = graphs.find(_.methodName.startsWith("$")).get
 
       def callTargetProvider(mi: MethodIdent): Int => Set[IFDSMethodGraph] = mi match {
-        case MethodIdent(addGraph.methodIdentifier.declaredType, addGraph.methodIdentifier.methodName, addGraph.methodIdentifier.methodDescriptor) =>
+        case _: MethodIdent =>
           {
             case 7 => Set(concatGraph)
             case _ => Set.empty

@@ -2,8 +2,8 @@ package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaInvocationType, JavaInvokeStatement, JavaProgram}
 import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
-import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
-import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, LookupApplicationMethodRequest, LookupApplicationMethodResponse, MethodIdent}
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.{DefinedMethod, MethodIdent}
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, LookupApplicationMethodRequest, LookupApplicationMethodResponse}
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphResolutionMode.{CHA, NaiveRTA, OracleCallGraphResolutionMode, RTA}
 
 import scala.collection.mutable
@@ -507,14 +507,12 @@ class OracleCallGraphBuilder(programs: Set[JavaProgram],
 
 object OracleCallGraphBuilder {
 
-  case class MethodIdent(declaredType: String, methodName: String, methodDescriptor: String)
-
   case class LookupApplicationMethodRequest(mInvokeType: Int, mName: String, mDescriptor: String, types: Set[String], ccPC: Int, ccIdent: MethodIdent)
 
-  class ApplicationMethod(val identifier: MethodIdent,
+  class ApplicationMethod(identifier: MethodIdent,
                           mIsStatic: Boolean,
                           typesInstantiated: List[String],
-                          invocations: Seq[JavaInvokeStatement]) extends DefinedMethod(identifier.declaredType, identifier.methodName, identifier.methodDescriptor, mIsStatic, newTypesProvider = () => typesInstantiated, invocationProvider = () => invocations)
+                          invocations: Seq[JavaInvokeStatement]) extends DefinedMethod(identifier, mIsStatic, newTypesProvider = () => typesInstantiated, invocationProvider = () => invocations)
 
   /**
    * Class representing a clients response to a lookup request.

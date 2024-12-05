@@ -1,6 +1,7 @@
 package org.anon.spareuse.webapi.core
 
 import org.anon.spareuse.core.storage.DataAccessor
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.cg.{InteractiveOracleAccessor, OracleCallGraphResolutionMode}
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{LookupRequestRepresentation, OracleInteractionError}
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
@@ -70,7 +71,7 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
       if(session.getState.currentState != OracleState.Initialized)
         throw ClientOracleInteractionException(session, s"Accessor needs to be initialized and not busy to process entry points")
 
-      sessionOracleAccessors(session.uid).startResolution(toModel(startRequest.cc), startRequest.ccPC, startRequest.types) match {
+      sessionOracleAccessors(session.uid).startResolution(toModel(startRequest.cc), startRequest.ccPC, startRequest.types, this.loadSummary) match {
         case Left(_) =>
         case Right(error) =>
           log.warn(s"[$sessionUid] Cannot resolve from entrypoint: ${error.toString}")
@@ -135,6 +136,31 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
     }
   }
 
+  private def loadSummary(libGAV: String, methodIdent: MethodIdent): Try[MethodIFDSRep] = {
+    val start = System.currentTimeMillis()
+    val idOpt = dataAccessor.getMethodEntityId(libGAV, methodIdent.declaredType, methodIdent.sparriMethodIdent)
+    val time = System.currentTimeMillis() - start
+    idOpt match{
+      case Some(id) =>
+        val start2 = System.currentTimeMillis()
+        val jsonOpt = dataAccessor.getResultJSONContent(id, IFDSTaintFlowSummaryBuilderImpl.analysisName, IFDSTaintFlowSummaryBuilderImpl.analysisVersion)
+        val time2 = System.currentTimeMillis() - start2
+        jsonOpt match {
+          case Success(Some(content)) =>
+            log.info(s"ID fetch took $time ms, JSON fetch took $time2 ms")
+            Try(content.parseJson.convertTo[MethodIFDSRep])
+          case Failure(ex) =>
+            log.error(s"Error while getting IFDS summaries from database: $methodIdent", ex)
+            Failure(ex)
+          case _ =>
+            log.error(s"No results found when accessing IFDS summary for $methodIdent")
+            Success(null) //TODO: Proper handling here
+        }
+      case None =>
+        Failure(new RuntimeException(s"Could not retrieve IFDS summary, method not found: gav=$libGAV, method=$methodIdent"))
+    }
+  }
+
   def finalize(sessionUid: String): Try[Any] = ensureValidSession(sessionUid){ session =>
 
     val accessor = sessionOracleAccessors(session.uid)
@@ -167,8 +193,7 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
 
     }
 
-    val result = accessor
-      .loadRemainingSummaries(resolver)
+    val result = Try(accessor.finalizeSummaries())
 
     invalidateSession(sessionUid)
 

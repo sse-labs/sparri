@@ -1,6 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl
 
-import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, MethodIdent}
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
+import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.ApplicationMethod
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
 import org.opalj.br.Method
 import org.opalj.tac.{AITACode, DUVar, DVar, Stmt, TACMethodParameter, UVar}

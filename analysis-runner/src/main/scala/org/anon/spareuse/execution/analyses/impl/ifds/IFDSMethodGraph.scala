@@ -1,6 +1,6 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
-import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.MethodIdent
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.{FactRep, InternalActivationRep, InternalVariableRep, MethodIFDSRep, StatementRep}
 import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.{ParameterTaintVariable, TaintFunctionReturn, TaintVariable}
 import org.opalj.br.{ArrayType, Method, ObjectType}

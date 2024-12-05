@@ -7,7 +7,8 @@ import org.anon.spareuse.core.model.entities.JavaEntities.JavaLibrary
 import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.model.{AnalysisData, SoftwareEntityKind}
 import org.anon.spareuse.core.utils.{SemVer, compareSemanticVersions, parseSemVer}
-import org.anon.spareuse.execution.analyses.impl.MvnConstantMethodsAnalysisImpl.{LibraryResult, MethodIdent, ReleaseResult}
+import org.anon.spareuse.execution.analyses.impl.MvnConstantMethodsAnalysisImpl.{LibraryResult, ReleaseResult}
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.{AnalysisImplementation, AnalysisImplementationDescriptor, AnalysisResult, FreshResult}
 
 import scala.collection.mutable
@@ -132,12 +133,6 @@ object MvnConstantMethodsAnalysisImpl extends AnalysisImplementationDescriptor {
 
 
   override val requiredInputResolutionLevel: SoftwareEntityKind = SoftwareEntityKind.Method
-
-  private case class MethodIdent(classFqn: String, methodName: String, descriptor: String) {
-    override def toString: String = s"$classFqn.$methodName : $descriptor"
-
-    override def hashCode(): Int = classFqn.hashCode + 11*methodName.hashCode + 17*descriptor.hashCode
-  }
 
   case class LibraryResult(ga: String, numReleases: Int, avgMethodsPerRelease: Double, releaseInfo: List[ReleaseResult])
   case class ReleaseResult(version: String, totalMethods: Int, overallNewMethods: Int, updateNewMethods: Int, updateType: String)
