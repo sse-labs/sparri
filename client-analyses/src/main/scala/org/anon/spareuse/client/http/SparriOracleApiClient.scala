@@ -4,7 +4,8 @@ import akka.http.scaladsl.model.StatusCodes.{BadRequest, InternalServerError}
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaInvocationType
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.LookupResponseRepresentation
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.ApplicationMethod
-import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodRepr, InitializeResolutionRequest, InvokeStmtRepr, LookupResponse, MethodIdentifierRepr, OracleJsonSupport, PullLookupRequestsResponse, StartResolutionRequest, TypeNodeRepr}
+import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
+import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodRepr, ApplicationMethodWithSummaryRepr, InitializeResolutionRequest, InvokeStmtRepr, LookupResponse, MethodIdentifierRepr, OracleJsonSupport, PullLookupRequestsResponse, StartResolutionRequest, TypeNodeRepr}
 import org.apache.http.client.HttpResponseException
 import org.opalj.br.instructions.{INVOKEDYNAMIC, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL, NEW}
 import org.opalj.br.{Code, DefinedMethod, Method}
@@ -42,9 +43,9 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
 
   }
 
-  def startResolutionAt(opalMethod: Method, pc: Int, typesInitialized: Set[String]): Try[Unit] = {
+  def startResolutionAt(opalMethod: Method, methodIFDSRep: MethodIFDSRep, pc: Int, typesInitialized: Set[String]): Try[Unit] = {
     val apiMethod = opalToApiModel(opalMethod)
-    val request = StartResolutionRequest(apiMethod, pc, typesInitialized)
+    val request = StartResolutionRequest(ApplicationMethodWithSummaryRepr(apiMethod, methodIFDSRep), pc, typesInitialized)
 
     Try(postJsonAndReturnString("/api/oracle/resolve-entry",
       request.toJson.compactPrint, Map("session-id" -> sessionToken.get))).flatten match {

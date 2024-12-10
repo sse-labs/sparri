@@ -71,7 +71,7 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
       if(session.getState.currentState != OracleState.Initialized)
         throw ClientOracleInteractionException(session, s"Accessor needs to be initialized and not busy to process entry points")
 
-      sessionOracleAccessors(session.uid).startResolution(toModel(startRequest.cc), startRequest.ccPC, startRequest.types, this.loadSummary) match {
+      sessionOracleAccessors(session.uid).startResolution(toModel(startRequest.cc), startRequest.ccPC, startRequest.types, this.loadSummaries) match {
         case Left(_) =>
         case Right(error) =>
           log.warn(s"[$sessionUid] Cannot resolve from entrypoint: ${error.toString}")
@@ -136,75 +136,28 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
     }
   }
 
-  private def loadSummary(libGAV: String, methodIdent: MethodIdent, dbIdOpt: Option[Long]): Try[MethodIFDSRep] = {
+  private def loadSummaries(inputBatch: Set[(String, MethodIdent, Option[Long])]): Set[(MethodIdent, Try[MethodIFDSRep])] = {
+    // Assume DB ID is present for every method
+    val dbIdIdentMap = inputBatch.map( triple => (triple._3.get, triple._2)).toMap
 
-    def retrieveResult(methodId: Long): Try[MethodIFDSRep] = {
-      val start2 = System.currentTimeMillis()
-      val jsonOpt = dataAccessor.getResultJSONContent(methodId, IFDSTaintFlowSummaryBuilderImpl.analysisName, IFDSTaintFlowSummaryBuilderImpl.analysisVersion)
-      val time2 = System.currentTimeMillis() - start2
-      jsonOpt match {
-        case Success(Some(content)) =>
-          log.info(s"JSON fetch took $time2 ms")
-          Try(content.parseJson.convertTo[MethodIFDSRep])
-        case Failure(ex) =>
-          log.error(s"Error while getting IFDS summaries from database: $methodIdent", ex)
-          Failure(ex)
-        case _ =>
-          log.error(s"No results found when accessing IFDS summary for $methodIdent")
-          Success(null) //TODO: Proper handling here
-      }
-    }
+    val start = System.currentTimeMillis()
+    val result = dataAccessor.getResultJSONContentBatch(dbIdIdentMap.keySet, IFDSTaintFlowSummaryBuilderImpl.analysisName, IFDSTaintFlowSummaryBuilderImpl.analysisVersion)
+    val time = System.currentTimeMillis() - start
 
-    dbIdOpt match {
-      case Some(dbId) =>
-        retrieveResult(dbId)
-      case None =>
-        val start = System.currentTimeMillis()
-        val idOpt = dataAccessor.getMethodEntityId(libGAV, methodIdent.declaredType, methodIdent.sparriMethodIdent)
-        val time = System.currentTimeMillis() - start
+    log.info(s"Summary batch fetch took ${time}ms for ${inputBatch.size} summaries")
 
-        log.info(s"ID fetch took $time ms")
-
-        idOpt match {
-          case Some(dbId) =>
-            retrieveResult(dbId)
-          case None =>
-            Failure(new RuntimeException(s"Could not retrieve IFDS summary, method not found: gav=$libGAV, method=$methodIdent"))
-        }
+    result match {
+      case Success(resultMap) =>
+        resultMap.map { case (id, summary) => (dbIdIdentMap(id), Try(summary.parseJson.convertTo[MethodIFDSRep])) }.toSet
+      case Failure(ex) =>
+        log.error(s"Failed to retrieve IFDS summary batch from DB", ex)
+        dbIdIdentMap.values.map( ident => (ident, Failure(ex))).toSet
     }
   }
 
   def finalize(sessionUid: String): Try[Any] = ensureValidSession(sessionUid){ session =>
 
     val accessor = sessionOracleAccessors(session.uid)
-
-    val resolver: (String, String, String) => Try[MethodIFDSRep] = (gav, className, methodIdent) => {
-      val start = System.currentTimeMillis()
-      val idOpt = dataAccessor.getMethodEntityId(gav, className, methodIdent)
-      val time = System.currentTimeMillis() - start
-      idOpt match{
-        case Some(id) =>
-          val start2 = System.currentTimeMillis()
-          val jsonOpt = dataAccessor.getResultJSONContent(id, IFDSTaintFlowSummaryBuilderImpl.analysisName, IFDSTaintFlowSummaryBuilderImpl.analysisVersion)
-          val time2 = System.currentTimeMillis() - start2
-          jsonOpt match {
-            case Success(Some(content)) =>
-              log.info(s"ID fetch took $time ms, JSON fetch took $time2 ms")
-              Try(content.parseJson.convertTo[MethodIFDSRep])
-            case Failure(ex) =>
-              log.error(s"Error while getting IFDS summaries from database: $methodIdent", ex)
-              Failure(ex)
-            case _ =>
-              log.error(s"No results found when accessing IFDS summary for $methodIdent")
-              Success(null) //TODO: Proper handling here
-          }
-        case None =>
-          Failure(new RuntimeException(s"Could not retrieve IFDS summary, method not found: gav=$gav, class=$className, method=$methodIdent"))
-      }
-
-
-
-    }
 
     val result = Try(accessor.finalizeSummaries())
 

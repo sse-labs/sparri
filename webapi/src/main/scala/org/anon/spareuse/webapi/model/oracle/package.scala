@@ -20,6 +20,10 @@ package object oracle {
     new ApplicationMethod(toModel(appMethodRepr.ident), appMethodRepr.isStatic, appMethodRepr.types, appMethodRepr.invokes.map(toModel))
   }
 
+  def toModel(appWithSummaryRepr: ApplicationMethodWithSummaryRepr): ApplicationMethodWithSummary = {
+    ApplicationMethodWithSummary(toModel(appWithSummaryRepr.methodRep), appWithSummaryRepr.summaryRepr)
+  }
+
   def toModel(nodeRepr: TypeNodeRepr): TypeNode = new TypeNode(nodeRepr.fqn, nodeRepr.superFqn, nodeRepr.interfaceFqns, nodeRepr.isInterface)
 
   def toModel(response: LookupResponse): LookupResponseRepresentation = LookupResponseRepresentation(

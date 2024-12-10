@@ -99,7 +99,11 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
         // Handle one entry point after the other
         while(entryPointsToProcess.nonEmpty){
           val currentEntry = entryPointsToProcess.pop()
-          Try(oracleApiClient.startResolutionAt(currentEntry.callingContext, currentEntry.ccPC, currentEntry.typesInitialized)).flatten match {
+          Try {
+            // IMPROVE: Use summary cache here, entrypoint might have been reached before!
+            val summary = taintFlowSummaryBuilder.analyzeMethod(currentEntry.callingContext).toResultRepresentation(true)
+            oracleApiClient.startResolutionAt(currentEntry.callingContext, summary, currentEntry.ccPC, currentEntry.typesInitialized)
+          } match {
             case Success(_) =>
               log.info(s"Successfully started resolution for entrypoint $currEntry / $entryCnt")
               handleOracleInteractionUntilFinished(currentEntry, projectTypeMap)

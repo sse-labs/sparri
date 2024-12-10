@@ -1,6 +1,5 @@
 package org.anon.spareuse.execution.analyses.impl.cg
 
-import org.anon.spareuse.core.model.entities.JavaEntities
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaProgram, gavToProgramIdent}
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.execution.analyses.impl.cg.AbstractRTABuilder.TypeNode
@@ -141,7 +140,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
    * @param ec Implicit execution context to run the main resolver loop on
    * @return Either a unit value (if successful) or an OracleInteractionError
    */
-  def startResolution(callingContext: ApplicationMethod,
+  def startResolution(callingContext: ApplicationMethodWithSummary,
                       ccPC: Int,
                       typesInstantiated: Set[String],
                       summaryLoader: BackgroundSummaryLoader.SummaryLoader)(implicit ec: ExecutionContext): Either[Unit, OracleInteractionError] = {
@@ -150,14 +149,15 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
         isFatal = false, isUserError = true, interactionType = MethodRequest)
       logError(error)
       Right(error)
-    } else if(!oracleCGBuilderOpt.get.needsProcessing(callingContext, typesInstantiated, ccPC)){
-      log.info(s"Entrypoint does not need to be processed: ${callingContext.definingTypeName}.${callingContext.methodName} [PC=$ccPC]")
+    } else if(!oracleCGBuilderOpt.get.needsProcessing(callingContext.method, typesInstantiated, ccPC)){
+      log.info(s"Entrypoint does not need to be processed: ${callingContext.method.definingTypeName}.${callingContext.method.methodName} [PC=$ccPC]")
       Left(())
     } else {
-      log.info(s"Starting resolution at new entrypoint: ${callingContext.definingTypeName}.${callingContext.methodName} [PC=$ccPC]")
+      BackgroundSummaryLoader.queueExtra(callingContext.method.methodIdentifier, callingContext.ifdsSummary)
+      log.info(s"Starting resolution at new entrypoint: ${callingContext.method.definingTypeName}.${callingContext.method.methodName} [PC=$ccPC]")
       BackgroundSummaryLoader.startLoadingSummaries(summaryLoader)
       isRunning.set(true)
-      resolverLoopFuture = Some(Future(runBuilderLoop(callingContext, ccPC, typesInstantiated)))
+      resolverLoopFuture = Some(Future(runBuilderLoop(callingContext.method, ccPC, typesInstantiated)))
       Left(())
     }
   }
@@ -319,11 +319,13 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       log.info(s"Waiting for background worker to load summaries...")
       Thread.sleep(1000)
     }
+
+    log.info(s"All summaries are final now.")
   }
 
   private[this] object BackgroundSummaryLoader extends Runnable {
 
-    type SummaryLoader = (String, MethodIdent, Option[Long]) => Try[MethodIFDSRep]
+    type SummaryLoader = Set[(String, MethodIdent, Option[Long])] => Set[(MethodIdent, Try[MethodIFDSRep])]
 
     private lazy val builder: OracleCallGraphBuilder = {
       if (oracleCGBuilderOpt.isEmpty)
@@ -339,6 +341,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
     private var summaryLoader: SummaryLoader = null
 
     private val worklist: mutable.Queue[MethodLoaderTask] = mutable.Queue.empty[MethodLoaderTask]
+    private val extraSummaries: mutable.Queue[(MethodIdent, MethodIFDSRep)] = mutable.Queue.empty[(MethodIdent, MethodIFDSRep)]
 
     private val stopRequested: AtomicBoolean = new AtomicBoolean(false)
     private val workloadFinal: AtomicBoolean = new AtomicBoolean(false)
@@ -346,9 +349,12 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
 
     private var workerThreadOpt: Option[Thread] = None
 
-    def queueMethod(dm: DefinedMethod): Unit = {
-      val isJavaType = (typeName: String) => typeName.startsWith("java") || typeName.startsWith("sun") || typeName.startsWith("jdk") || typeName.startsWith("com/sun")
+    private val batchSize: Int = 300
 
+    private def isJavaType(typeName: String): Boolean = typeName.startsWith("java") || typeName.startsWith("sun") ||
+      typeName.startsWith("jdk") || typeName.startsWith("com/sun")
+
+    def queueMethod(dm: DefinedMethod): Unit = {
       // Application method summaries are automatically pushed by the client and cannot be retrieved from the DB
       if(!dm.isInstanceOf[ApplicationMethod] && !isJavaType(dm.definingTypeName)){
         worklist.synchronized {
@@ -383,6 +389,10 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       this.synchronized { this.notify() }
     }
 
+    def queueExtra(ident: MethodIdent, summary: MethodIFDSRep): Unit = {
+      extraSummaries.synchronized { extraSummaries.append((ident, summary)) }
+    }
+
     def isFinished: Boolean = !isRunning.get() && workloadFinal.get()
 
     override def run(): Unit = {
@@ -393,49 +403,72 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       log.info(s"Starting to load summaries in the background")
       while(!stopRequested.get()){
 
-        val taskOpt = worklist.synchronized{
-          if(worklist.nonEmpty)
-            Some(worklist.dequeue())
-          else
-           None
+        val taskBatch = worklist.synchronized{
+          val batch = mutable.Set.empty[MethodLoaderTask]
+          while(worklist.nonEmpty && batch.size < batchSize){
+            batch.add(worklist.dequeue())
+            totalSummariesHandled += 1
+          }
+          batch.toSet
         }
 
-        if(totalSummariesHandled % 100 == 0)
-          log.info(s"Loaded $totalSummariesHandled summaries so far ($totalSummariesFailed errors)")
+        log.info(s"Loaded $totalSummariesHandled summaries so far ($totalSummariesFailed errors)")
 
-        taskOpt match {
-          case Some(task) =>
-            val isNewIdent = summaryLookup.synchronized{ !summaryLookup.contains(task.methodIdent) }
+        if(taskBatch.isEmpty){
+          if(workloadFinal.get()){
+            log.info(s"Worklist empty, no more work to be scheduled - stopping background work.")
+            requestStop()
+          } else this.synchronized(this.wait(1000))
+        } else {
+          val summariesToLoad = summaryLookup.synchronized( taskBatch.filterNot(t => summaryLookup.contains(t.methodIdent)) )
 
-            if(isNewIdent){
-              totalSummariesHandled += 1
-
-              if(!typeToLibraryLookup.contains(task.methodIdent.declaredType)) {
+          val effectiveBatch = summariesToLoad
+            .map{ task =>
+              if(typeToLibraryLookup.contains(task.methodIdent.declaredType)){
+                (typeToLibraryLookup(task.methodIdent.declaredType), task.methodIdent, task.methodDbIdOpt)
+              } else {
                 totalSummariesFailed += 1
                 log.warn(s"Failed to locate type for summary lookup: ${task.methodIdent.declaredType}")
-              } else {
-                val libraryGAV = typeToLibraryLookup(task.methodIdent.declaredType)
-
-                summaryLoader(libraryGAV, task.methodIdent, task.methodDbIdOpt) match {
-                  case Success(ifdsRep) =>
-                    summaryLookup.synchronized {
-                      summaryLookup.put(task.methodIdent, ifdsRep)
-                    }
-                  case Failure(ex) =>
-                    totalSummariesFailed += 1
-                    log.error(s"Failed to lookup method summary for: ${task.methodIdent} ${ex.getMessage}")
-                }
+                null
               }
             }
-          case None =>
-            if(workloadFinal.get()){
-              log.info(s"Worklist empty, no more work to be scheduled - stopping background work.")
-              requestStop()
-            } else this.synchronized(this.wait(1000))
+            .filter(_ != null)
+
+          val allResults = summaryLoader(effectiveBatch)
+
+          allResults.foreach { case (ident, result) =>
+            result match {
+              case Success(ifdsRep) =>
+                summaryLookup.synchronized {
+                  summaryLookup.put(ident, ifdsRep)
+                }
+              case Failure(ex) =>
+                totalSummariesFailed += 1
+                log.error(s"Failed to lookup method summary for: $ident ${ex.getMessage}")
+            }
+          }
+
         }
       }
+
+      summaryLookup.synchronized{
+        extraSummaries.foreach{ case (ident, summary) => summaryLookup.put(ident, summary) }
+      }
+
       isRunning.set(false)
-      log.info("Finished background worker execution for loading summaries")
+      log.info(s"Finished background worker execution for loading summaries - got ${summaryLookup.size} summaries")
+
+      val summariesMissing = oracleCGBuilderOpt
+        .get
+        .getGraph
+        .reachableMethods()
+        .filterNot(dm => isJavaType(dm.definingTypeName))
+        .filterNot(dm => summaryLookup.contains(dm.methodIdentifier))
+
+      summariesMissing.foreach{ dm =>
+        log.warn(s"Missing summary for non-jdk method: $dm")
+      }
+
     }
 
     private[this] case class MethodLoaderTask(methodIdent: MethodIdent, methodDbIdOpt: Option[Long])

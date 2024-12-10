@@ -375,6 +375,13 @@ trait PostgresAnalysisAccessor {
     uuid
   }
 
+  override def getResultJSONContentBatch(eids: Set[Long], analysisName: String, analysisVersion: String): Try[Map[Long, String]] = Try {
+    val analysisId = getAnalysisId(analysisName, analysisVersion)
+    val query = ((analysisResultsTable join analysisRunsTable on (_.runID === _.id)).filter(_._2.parentID === analysisId) join resultValiditiesTable on (_._1.id === _.resultId)).filter(_._2.entityId inSet eids).map(res => (res._2.entityId, res._1._1.content)).result
+
+    Await.result(db.run(query), longActionTimeout).toMap
+  }
+
   override def getResultJSONContent(eid: Long, analysisName: String, analysisVersion: String): Try[Option[String]] = {
     val analysisId = getAnalysisId(analysisName, analysisVersion)
 

@@ -95,6 +95,8 @@ trait AnalysisAccessor {
    */
   def getResultJSONContent(eid: Long, analysisName: String, analysisVersion: String): Try[Option[String]]
 
+  def getResultJSONContentBatch(eids: Set[Long], analysisName: String, analysisVersion: String): Try[Map[Long, String]]
+
   def getAllResults(analysisName: String, analysisVersion: String, limit: Int, skip: Int): Future[Set[AnalysisResultData]]
 
   def registerIfNotPresent(analysis: AnalysisData): Unit
