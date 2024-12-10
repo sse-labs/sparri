@@ -321,53 +321,9 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
     }
   }
 
-  /*def loadRemainingSummaries(resolver: (String, String, String) => Try[MethodIFDSRep]): Try[Unit] = Try {
-    if(oracleCGBuilderOpt.isEmpty)
-      return Failure(new IllegalStateException("Cannot finalize summaries, not initialized"))
-
-    val builder = oracleCGBuilderOpt.get
-
-    val typeToLibraryLookup = builder.getLibraries.flatMap(library => library.allClasses.map(c => (c.thisType, library.gav))).toMap
-
-    val methodsToLookup = builder
-      .getGraph
-      .reachableMethods()
-      .map(dm => dm.methodIdentifier)
-      .filterNot(mi => mi.declaredType.startsWith("java") || mi.declaredType.startsWith("sun") || mi.declaredType.startsWith("jdk") || mi.declaredType.startsWith("com/sun"))
-      .filterNot(summaryLookup.contains)
-
-    log.info(s"Got ${summaryLookup.size} summaries so far, looking up another ${methodsToLookup.size} summaries in DB")
-
-    var cnt = 0
-    var err = 0
-
-    methodsToLookup
-      .foreach{ ident =>
-        cnt += 1
-        if(!typeToLibraryLookup.contains(ident.declaredType))
-          log.warn(s"Failed to locate type for summary lookup: ${ident.declaredType}")
-        else{
-          val sparriLibraryGAV = typeToLibraryLookup(ident.declaredType)
-          val sparriClassIdent = ident.declaredType
-          val sparriMethodIdent = JavaEntities.buildMethodIdent(ident.methodName, ident.methodDescriptor)
-          resolver(sparriLibraryGAV, sparriClassIdent, sparriMethodIdent) match {
-            case Success(summary) =>
-              //log.info(s"Successfully got summary for $sparriMethodIdent")
-              summaryLookup.put(ident, summary)
-            case Failure(ex) =>
-              err += 1
-              log.error(s"Failed to lookup method summary for: $sparriMethodIdent ${ex.getMessage}")
-          }
-        }
-
-        if(cnt % 100 == 0)
-          log.info(s"Loaded $cnt / ${methodsToLookup.size} summaries so far ($err errors)")
-    }
-  }*/
-
   private[this] object BackgroundSummaryLoader extends Runnable {
 
-    type SummaryLoader = (String, MethodIdent) => Try[MethodIFDSRep]
+    type SummaryLoader = (String, MethodIdent, Option[Long]) => Try[MethodIFDSRep]
 
     private lazy val builder: OracleCallGraphBuilder = {
       if (oracleCGBuilderOpt.isEmpty)
@@ -382,7 +338,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
 
     private var summaryLoader: SummaryLoader = null
 
-    private val worklist: mutable.Queue[MethodIdent] = mutable.Queue.empty[MethodIdent]
+    private val worklist: mutable.Queue[MethodLoaderTask] = mutable.Queue.empty[MethodLoaderTask]
 
     private val stopRequested: AtomicBoolean = new AtomicBoolean(false)
     private val workloadFinal: AtomicBoolean = new AtomicBoolean(false)
@@ -396,7 +352,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       // Application method summaries are automatically pushed by the client and cannot be retrieved from the DB
       if(!dm.isInstanceOf[ApplicationMethod] && !isJavaType(dm.definingTypeName)){
         worklist.synchronized {
-          worklist.append(dm.methodIdentifier)
+          worklist.append(MethodLoaderTask(dm.methodIdentifier, if(dm.hasDataBaseId) Some(dm.getDataBaseId) else None))
         }
         this.synchronized { this.notify() }
       }
@@ -415,7 +371,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       }
     }
 
-    def requestStop(): Unit = {
+    private[this] def requestStop(): Unit = {
       stopRequested.set(true)
       this.synchronized { this.notify() }
     }
@@ -437,7 +393,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       log.info(s"Starting to load summaries in the background")
       while(!stopRequested.get()){
 
-        val methodIdentOpt = worklist.synchronized{
+        val taskOpt = worklist.synchronized{
           if(worklist.nonEmpty)
             Some(worklist.dequeue())
           else
@@ -447,28 +403,27 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
         if(totalSummariesHandled % 100 == 0)
           log.info(s"Loaded $totalSummariesHandled summaries so far ($totalSummariesFailed errors)")
 
-        methodIdentOpt match {
-          case Some(identToProcess) =>
-            val isNewIdent = summaryLookup.synchronized{ !summaryLookup.contains(identToProcess) }
+        taskOpt match {
+          case Some(task) =>
+            val isNewIdent = summaryLookup.synchronized{ !summaryLookup.contains(task.methodIdent) }
 
             if(isNewIdent){
               totalSummariesHandled += 1
 
-              if(!typeToLibraryLookup.contains(identToProcess.declaredType)) {
+              if(!typeToLibraryLookup.contains(task.methodIdent.declaredType)) {
                 totalSummariesFailed += 1
-                log.warn(s"Failed to locate type for summary lookup: ${identToProcess.declaredType}")
+                log.warn(s"Failed to locate type for summary lookup: ${task.methodIdent.declaredType}")
               } else {
-                val libraryGAV = typeToLibraryLookup(identToProcess.declaredType)
-                val sparriMethodIdent = identToProcess
+                val libraryGAV = typeToLibraryLookup(task.methodIdent.declaredType)
 
-                summaryLoader(libraryGAV, sparriMethodIdent) match {
+                summaryLoader(libraryGAV, task.methodIdent, task.methodDbIdOpt) match {
                   case Success(ifdsRep) =>
                     summaryLookup.synchronized {
-                      summaryLookup.put(identToProcess, ifdsRep)
+                      summaryLookup.put(task.methodIdent, ifdsRep)
                     }
                   case Failure(ex) =>
                     totalSummariesFailed += 1
-                    log.error(s"Failed to lookup method summary for: $sparriMethodIdent ${ex.getMessage}")
+                    log.error(s"Failed to lookup method summary for: ${task.methodIdent} ${ex.getMessage}")
                 }
               }
             }
@@ -482,6 +437,8 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       isRunning.set(false)
       log.info("Finished background worker execution for loading summaries")
     }
+
+    private[this] case class MethodLoaderTask(methodIdent: MethodIdent, methodDbIdOpt: Option[Long])
   }
 
 }

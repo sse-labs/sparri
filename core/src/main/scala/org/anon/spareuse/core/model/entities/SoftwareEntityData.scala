@@ -2,11 +2,12 @@ package org.anon.spareuse.core.model.entities
 
 import org.anon.spareuse.core.model.SoftwareEntityKind
 import org.anon.spareuse.core.model.SoftwareEntityKind.SoftwareEntityKind
+import org.anon.spareuse.core.storage.IdentifiableDataBaseEntity
 
 import scala.annotation.tailrec
 import scala.collection.mutable
 
-trait SoftwareEntityData {
+trait SoftwareEntityData extends IdentifiableDataBaseEntity {
 
   val name: String
   val language: String

@@ -136,28 +136,41 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
     }
   }
 
-  private def loadSummary(libGAV: String, methodIdent: MethodIdent): Try[MethodIFDSRep] = {
-    val start = System.currentTimeMillis()
-    val idOpt = dataAccessor.getMethodEntityId(libGAV, methodIdent.declaredType, methodIdent.sparriMethodIdent)
-    val time = System.currentTimeMillis() - start
-    idOpt match{
-      case Some(id) =>
-        val start2 = System.currentTimeMillis()
-        val jsonOpt = dataAccessor.getResultJSONContent(id, IFDSTaintFlowSummaryBuilderImpl.analysisName, IFDSTaintFlowSummaryBuilderImpl.analysisVersion)
-        val time2 = System.currentTimeMillis() - start2
-        jsonOpt match {
-          case Success(Some(content)) =>
-            log.info(s"ID fetch took $time ms, JSON fetch took $time2 ms")
-            Try(content.parseJson.convertTo[MethodIFDSRep])
-          case Failure(ex) =>
-            log.error(s"Error while getting IFDS summaries from database: $methodIdent", ex)
-            Failure(ex)
-          case _ =>
-            log.error(s"No results found when accessing IFDS summary for $methodIdent")
-            Success(null) //TODO: Proper handling here
-        }
+  private def loadSummary(libGAV: String, methodIdent: MethodIdent, dbIdOpt: Option[Long]): Try[MethodIFDSRep] = {
+
+    def retrieveResult(methodId: Long): Try[MethodIFDSRep] = {
+      val start2 = System.currentTimeMillis()
+      val jsonOpt = dataAccessor.getResultJSONContent(methodId, IFDSTaintFlowSummaryBuilderImpl.analysisName, IFDSTaintFlowSummaryBuilderImpl.analysisVersion)
+      val time2 = System.currentTimeMillis() - start2
+      jsonOpt match {
+        case Success(Some(content)) =>
+          log.info(s"JSON fetch took $time2 ms")
+          Try(content.parseJson.convertTo[MethodIFDSRep])
+        case Failure(ex) =>
+          log.error(s"Error while getting IFDS summaries from database: $methodIdent", ex)
+          Failure(ex)
+        case _ =>
+          log.error(s"No results found when accessing IFDS summary for $methodIdent")
+          Success(null) //TODO: Proper handling here
+      }
+    }
+
+    dbIdOpt match {
+      case Some(dbId) =>
+        retrieveResult(dbId)
       case None =>
-        Failure(new RuntimeException(s"Could not retrieve IFDS summary, method not found: gav=$libGAV, method=$methodIdent"))
+        val start = System.currentTimeMillis()
+        val idOpt = dataAccessor.getMethodEntityId(libGAV, methodIdent.declaredType, methodIdent.sparriMethodIdent)
+        val time = System.currentTimeMillis() - start
+
+        log.info(s"ID fetch took $time ms")
+
+        idOpt match {
+          case Some(dbId) =>
+            retrieveResult(dbId)
+          case None =>
+            Failure(new RuntimeException(s"Could not retrieve IFDS summary, method not found: gav=$libGAV, method=$methodIdent"))
+        }
     }
   }
 

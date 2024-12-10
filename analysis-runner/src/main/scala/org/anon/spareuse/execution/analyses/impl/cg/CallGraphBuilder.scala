@@ -2,6 +2,7 @@ package org.anon.spareuse.execution.analyses.impl.cg
 
 import org.anon.spareuse.core.model.entities.JavaEntities
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaInvokeStatement, JavaMethod}
+import org.anon.spareuse.core.storage.IdentifiableDataBaseEntity
 import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
 
 import java.util.Objects
@@ -10,7 +11,7 @@ import scala.util.Try
 
 trait CallGraphBuilder {
 
-  type ReachableMethodListener = DefinedMethod => Unit
+  private type ReachableMethodListener = DefinedMethod => Unit
 
   protected[cg] val callerMap: mutable.Map[DefinedMethod, mutable.Set[DefinedMethod]] = mutable.Map()
   protected[cg] val calleeMap: mutable.Map[DefinedMethod, mutable.Map[Int, mutable.Set[DefinedMethod]]] = mutable.Map()
@@ -64,13 +65,18 @@ trait CallGraphBuilder {
   private val defMCache = mutable.HashMap[JavaMethod, DefinedMethod]()
 
   def asDefinedMethod(jm: JavaMethod): DefinedMethod = {
-    if (!defMCache.contains(jm))
-      defMCache(jm) = DefinedMethod(jm.enclosingClass.get.thisType,
+    if (!defMCache.contains(jm)) {
+      val dm = DefinedMethod(jm.enclosingClass.get.thisType,
         jm.name,
         jm.descriptor,
         jm.isStatic,
         () => jm.newStatements.map(_.instantiatedTypeName).toList,
         () => jm.invocationStatements)
+
+      if(jm.hasDataBaseId) dm.setDataBaseId(jm.getDataBaseId)
+
+      defMCache(jm) = dm
+    }
 
     defMCache(jm)
   }
@@ -119,7 +125,10 @@ object CallGraphBuilder {
     }
   }
 
-  class DefinedMethod(mIdent: MethodIdent, mIsStatic: Boolean, newTypesProvider: () => List[String], invocationProvider: () => Seq[JavaInvokeStatement]) {
+  class DefinedMethod(mIdent: MethodIdent,
+                      mIsStatic: Boolean,
+                      newTypesProvider: () => List[String],
+                      invocationProvider: () => Seq[JavaInvokeStatement]) extends IdentifiableDataBaseEntity {
 
     val methodIdentifier: MethodIdent = mIdent
 
