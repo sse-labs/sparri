@@ -52,7 +52,9 @@ trait OracleRouteDefinitions extends OracleJsonSupport {
   private def startResolving(sessionId: String): Route = entity(as[JsObject]){ e =>
     val startRequest = e.convertTo[StartResolutionRequest]
 
-    oracleRequestHandler.resolveFromEntrypoint(sessionId, startRequest) match {
+    val result = oracleRequestHandler.resolveFromEntrypoint(sessionId, startRequest)
+
+    result match {
       case Success(_) =>
         complete(OK)
       case Failure(isx: InvalidSessionException) =>

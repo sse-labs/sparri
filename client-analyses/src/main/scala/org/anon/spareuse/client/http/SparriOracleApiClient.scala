@@ -2,14 +2,11 @@ package org.anon.spareuse.client.http
 
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, InternalServerError}
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaInvocationType
-import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.LookupResponseRepresentation
-import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.ApplicationMethod
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
 import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodRepr, ApplicationMethodWithSummaryRepr, InitializeResolutionRequest, InvokeStmtRepr, LookupResponse, MethodIdentifierRepr, OracleJsonSupport, PullLookupRequestsResponse, StartResolutionRequest, TypeNodeRepr}
-import org.apache.http.client.HttpResponseException
 import org.opalj.br.instructions.{INVOKEDYNAMIC, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL, NEW}
-import org.opalj.br.{Code, DefinedMethod, Method}
-import spray.json.{JsObject, JsString, enrichAny, enrichString, jsonReader}
+import org.opalj.br.{Code, Method}
+import spray.json.{JsString, enrichAny, enrichString}
 
 import scala.util.{Failure, Success, Try}
 
@@ -49,15 +46,15 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
 
     Try(postJsonAndReturnString("/api/oracle/resolve-entry",
       request.toJson.compactPrint, Map("session-id" -> sessionToken.get))).flatten match {
-      case Failure(hrx: HttpResponseException) if hrx.getStatusCode == BadRequest.intValue =>
-        if(hrx.getReasonPhrase.contains("session ID")){
+      case Failure(hrx: HttpResponseException) if hrx.code == BadRequest.intValue =>
+        if(hrx.msg.contains("session ID")){
           log.error(s"Server failed to recognize our session token")
         } else {
-          log.error(s"Request for resolving entry point was invalid: ${hrx.getReasonPhrase}")
+          log.error(s"Request for resolving entry point was invalid: ${hrx.msg}")
         }
         Failure(hrx)
 
-      case Failure(hrx: HttpResponseException) if hrx.getStatusCode == InternalServerError.intValue =>
+      case Failure(hrx: HttpResponseException) if hrx.code == InternalServerError.intValue =>
         log.error(s"Internal server error while requesting resolution of entry point")
         Failure(hrx)
 
@@ -89,9 +86,7 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
   }
 
   def closeSession(): Try[Unit] = Try {
-    val response = postJsonRaw("/api/oracle/close", None, Map("session-id" -> sessionToken.get)).get
-
-    response.close()
+    postJsonRaw("/api/oracle/close", None, Map("session-id" -> sessionToken.get)).get
 
     log.debug("Successfully closed session")
   }
@@ -99,17 +94,13 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
   def pushResponse(response: LookupResponse): Try[Unit] = Try {
     val json = response.toJson.compactPrint
 
-    val httpResponse = postJsonRaw("/api/oracle/push-update", Some(json), Map("session-id" -> sessionToken.get)).get
-
-    httpResponse.close()
+    postJsonRaw("/api/oracle/push-update", Some(json), Map("session-id" -> sessionToken.get)).get
 
     log.debug(s"Successfully pushed update to oracle")
   }
 
   def finalizeSession(): Try[Unit] = Try {
-    val httpResponse = postJsonRaw("/api/oracle/finalize", None, Map("session-id" -> sessionToken.get)).get
-
-    httpResponse.close()
+    postJsonRaw("/api/oracle/finalize", None, Map("session-id" -> sessionToken.get)).get
 
     log.debug(s"Session finalized: ${sessionToken.get}")
   }
@@ -125,7 +116,7 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
     ApplicationMethodRepr(ident, opalMethod.isStatic, types, invokes)
   }
 
-  def getAllInvocationInstructionsAsApiModel(code: Code): List[InvokeStmtRepr] = {
+  private def getAllInvocationInstructionsAsApiModel(code: Code): List[InvokeStmtRepr] = {
     code
       .instructions
       .zipWithIndex

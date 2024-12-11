@@ -102,6 +102,7 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
           Try {
             // IMPROVE: Use summary cache here, entrypoint might have been reached before!
             val summary = taintFlowSummaryBuilder.analyzeMethod(currentEntry.callingContext).toResultRepresentation(true)
+            log.info(s"Starting resolution for entrypoint ${currentEntry.callingContext.descriptor.toJava(currentEntry.callingContext.name)}")
             oracleApiClient.startResolutionAt(currentEntry.callingContext, summary, currentEntry.ccPC, currentEntry.typesInitialized)
           } match {
             case Success(_) =>
