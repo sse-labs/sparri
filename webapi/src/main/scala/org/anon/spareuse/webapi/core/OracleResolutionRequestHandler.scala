@@ -1,11 +1,8 @@
 package org.anon.spareuse.webapi.core
 
 import org.anon.spareuse.core.storage.DataAccessor
-import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.cg.{InteractiveOracleAccessor, OracleCallGraphResolutionMode}
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{LookupRequestRepresentation, OracleInteractionError}
-import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
-import org.anon.spareuse.execution.analyses.impl.ifds.{DefaultIFDSMethodRepJsonFormat, IFDSTaintFlowSummaryBuilderImpl}
 import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.OracleState.OracleState
 import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.{ClientOracleInteractionException, InvalidSessionException, OracleSessionState, OracleState}
 import org.anon.spareuse.webapi.model.Session
@@ -14,9 +11,8 @@ import org.anon.spareuse.webapi.model.oracle.{InitializeResolutionRequest, Looku
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
-import spray.json.enrichString
 
-class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit context: ExecutionContext) extends SessionBasedRequestHandler[OracleSessionState] with DefaultIFDSMethodRepJsonFormat {
+class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit context: ExecutionContext) extends SessionBasedRequestHandler[OracleSessionState] {
 
   private[core] val sessionOracleAccessors: mutable.Map[String, InteractiveOracleAccessor] = mutable.Map.empty
 
@@ -71,7 +67,7 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
       if(session.getState.currentState != OracleState.Initialized)
         throw ClientOracleInteractionException(session, s"Accessor needs to be initialized and not busy to process entry points")
 
-      sessionOracleAccessors(session.uid).startResolution(toModel(startRequest.cc), startRequest.ccPC, startRequest.types, this.loadSummaries) match {
+      sessionOracleAccessors(session.uid).startResolution(toModel(startRequest.cc), startRequest.ccPC, startRequest.types) match {
         case Left(_) =>
         case Right(error) =>
           log.warn(s"[$sessionUid] Cannot resolve from entrypoint: ${error.toString}")
@@ -136,37 +132,31 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
     }
   }
 
-  private def loadSummaries(inputBatch: Set[(String, MethodIdent, Option[Long])]): Set[(MethodIdent, Try[MethodIFDSRep])] = {
-    // Assume DB ID is present for every method
-    val dbIdIdentMap = inputBatch.map( triple => (triple._3.get, triple._2)).toMap
-
-    val start = System.currentTimeMillis()
-    val result = dataAccessor.getResultJSONContentBatch(dbIdIdentMap.keySet, IFDSTaintFlowSummaryBuilderImpl.analysisName, IFDSTaintFlowSummaryBuilderImpl.analysisVersion)
-    val time = System.currentTimeMillis() - start
-
-    log.info(s"Summary batch fetch took ${time}ms for ${inputBatch.size} summaries")
-
-    result match {
-      case Success(resultMap) =>
-        resultMap.map { case (id, summary) => (dbIdIdentMap(id), Try(summary.parseJson.convertTo[MethodIFDSRep])) }.toSet
-      case Failure(ex) =>
-        log.error(s"Failed to retrieve IFDS summary batch from DB", ex)
-        dbIdIdentMap.values.map( ident => (ident, Failure(ex))).toSet
-    }
-  }
-
   def finalize(sessionUid: String): Try[Any] = ensureValidSession(sessionUid){ session =>
 
     val accessor = sessionOracleAccessors(session.uid)
 
-    val result = Try(accessor.finalizeSummaries())
+    Try(accessor.finalizeSummaries()) match {
+      case Success(_) =>
+        session.sessionState.currentState = OracleState.WaitingForQueries
+        log.info(s"Done building call graph and aggregating summaries - accessor is ready for queries.")
+        Success(())
+      case Failure(ex) =>
+        log.error(s"Failed to finalize oracle session", ex)
+        invalidateSession(sessionUid)
+        Failure(ex)
+    }
+  }
 
-    invalidateSession(sessionUid)
+  def close(sessionUid: String): Try[Unit] = ensureValidSession(sessionUid){ session =>
+    log.info(s"Closing session $sessionUid due to client request")
 
-    result
+    if(sessionOracleAccessors.contains(session.uid))
+      sessionOracleAccessors.remove(session.uid)
 
-    //Try { throw new RuntimeException("Not implemented")}
-    //TODO: stitch summaries
+    session.sessionState.currentState = OracleState.Closed
+
+    Try(invalidateSession(sessionUid))
   }
 
 
@@ -220,9 +210,14 @@ object OracleResolutionRequestHandler {
   object OracleState extends Enumeration {
     type OracleState = Value
 
-    val NotInitialized: Value = Value(0) // Client needs to send initial information to initialize accessor
-    val Initialized: Value = Value(1) // Accessor is ready for entrypoints to be uploaded to start processing
-    val Finalized: Value = Value(2) // Accessor is finished and client confirmed that no more entrypoints are waiting for processing
+    // Client needs to send initial information to initialize accessor
+    val NotInitialized: Value = Value(0)
+    // Accessor is ready for entrypoints to be uploaded to start processing
+    val Initialized: Value = Value(1)
+    // Accessor is done building callgraph and aggregating summaries, client confirmed that no more entrypoints are waiting for processing
+    val WaitingForQueries: Value = Value(2)
+    // Client confirmed all queries are done and seesion is finalized
+    val Closed: Value = Value(3)
   }
 
   case class InvalidSessionException(uid: String, reasonPhrase: String) extends Exception {

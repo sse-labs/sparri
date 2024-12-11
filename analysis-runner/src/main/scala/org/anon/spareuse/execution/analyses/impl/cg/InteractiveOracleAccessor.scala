@@ -8,7 +8,7 @@ import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.In
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{InteractionType, LookupRequestRepresentation, LookupResponseRepresentation, OracleInteractionError}
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphBuilder.{ApplicationMethod, LookupApplicationMethodRequest, LookupApplicationMethodResponse}
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphResolutionMode.{CHA, NaiveRTA, OracleCallGraphResolutionMode, RTA}
-import org.anon.spareuse.execution.analyses.impl.ifds.ApplicationMethodWithSummary
+import org.anon.spareuse.execution.analyses.impl.ifds.{ApplicationMethodWithSummary, DefaultIFDSMethodRepJsonFormat, IFDSTaintFlowSummaryBuilderImpl}
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
 import org.slf4j.{Logger, LoggerFactory}
 
@@ -16,6 +16,8 @@ import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
+import spray.json.enrichString
+
 
 /**
  * This class manages concurrent communications between a client analysis application and the oracle CG builder for one
@@ -27,7 +29,7 @@ import scala.util.{Failure, Success, Try}
  *
  * @param dataAccessor The database accessor for this instance. Needed for resolving the third party libraries in the index.
  */
-class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
+class InteractiveOracleAccessor(dataAccessor: DataAccessor) extends DefaultIFDSMethodRepJsonFormat{
 
   private final val log: Logger = LoggerFactory.getLogger(getClass)
 
@@ -142,8 +144,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
    */
   def startResolution(callingContext: ApplicationMethodWithSummary,
                       ccPC: Int,
-                      typesInstantiated: Set[String],
-                      summaryLoader: BackgroundSummaryLoader.SummaryLoader)(implicit ec: ExecutionContext): Either[Unit, OracleInteractionError] = {
+                      typesInstantiated: Set[String])(implicit ec: ExecutionContext): Either[Unit, OracleInteractionError] = {
     if(isRunning.get()){
       val error = OracleInteractionError(s"Request for a new entry point while still resolving - wait for resolution to finish!",
         isFatal = false, isUserError = true, interactionType = MethodRequest)
@@ -155,7 +156,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
     } else {
       BackgroundSummaryLoader.queueExtra(callingContext.method.methodIdentifier, callingContext.ifdsSummary)
       log.info(s"Starting resolution at new entrypoint: ${callingContext.method.definingTypeName}.${callingContext.method.methodName} [PC=$ccPC]")
-      BackgroundSummaryLoader.startLoadingSummaries(summaryLoader)
+      BackgroundSummaryLoader.startLoadingSummaries()
       isRunning.set(true)
       resolverLoopFuture = Some(Future(runBuilderLoop(callingContext.method, ccPC, typesInstantiated)))
       Left(())
@@ -312,6 +313,8 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
   def succeeded: Boolean = !hasFatalErrors && resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isSuccess)
   def failed: Boolean = hasFatalErrors || resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isFailure)
 
+  def getGraph: Option[CallGraphBuilder#CallGraphView] = oracleCGBuilderOpt.map(_.getGraph)
+
   def finalizeSummaries(): Unit = {
     BackgroundSummaryLoader.setWorkloadIsFinal()
 
@@ -325,20 +328,11 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
 
   private[this] object BackgroundSummaryLoader extends Runnable {
 
-    type SummaryLoader = Set[(String, MethodIdent, Option[Long])] => Set[(MethodIdent, Try[MethodIFDSRep])]
-
     private lazy val builder: OracleCallGraphBuilder = {
       if (oracleCGBuilderOpt.isEmpty)
         throw new IllegalStateException("Cannot load summaries, builder not initialized")
       else oracleCGBuilderOpt.get
     }
-
-    private lazy val typeToLibraryLookup =  builder
-      .getLibraries
-      .flatMap(library => library.allClasses.map(c => (c.thisType, library.gav)))
-      .toMap
-
-    private var summaryLoader: SummaryLoader = null
 
     private val worklist: mutable.Queue[MethodLoaderTask] = mutable.Queue.empty[MethodLoaderTask]
     private val extraSummaries: mutable.Queue[(MethodIdent, MethodIFDSRep)] = mutable.Queue.empty[(MethodIdent, MethodIFDSRep)]
@@ -364,12 +358,11 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       }
     }
 
-    def startLoadingSummaries(sLoader: SummaryLoader): Unit = {
+    def startLoadingSummaries(): Unit = {
       workerThreadOpt match {
         case Some(_) =>
           log.warn(s"No need to start loading summaries, worker is already started.")
         case None =>
-          summaryLoader = sLoader
           stopRequested.set(false)
           workerThreadOpt = Some(new Thread(this))
           workerThreadOpt.foreach(_.start())
@@ -396,7 +389,6 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
     def isFinished: Boolean = !isRunning.get() && workloadFinal.get()
 
     override def run(): Unit = {
-      var totalSummariesHandled = 0
       var totalSummariesFailed = 0
 
       isRunning.set(true)
@@ -407,12 +399,9 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
           val batch = mutable.Set.empty[MethodLoaderTask]
           while(worklist.nonEmpty && batch.size < batchSize){
             batch.add(worklist.dequeue())
-            totalSummariesHandled += 1
           }
           batch.toSet
         }
-
-        log.info(s"Loaded $totalSummariesHandled summaries so far ($totalSummariesFailed errors)")
 
         if(taskBatch.isEmpty){
           if(workloadFinal.get()){
@@ -422,30 +411,31 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
         } else {
           val summariesToLoad = summaryLookup.synchronized( taskBatch.filterNot(t => summaryLookup.contains(t.methodIdent)) )
 
-          val effectiveBatch = summariesToLoad
-            .map{ task =>
-              if(typeToLibraryLookup.contains(task.methodIdent.declaredType)){
-                (typeToLibraryLookup(task.methodIdent.declaredType), task.methodIdent, task.methodDbIdOpt)
-              } else {
-                totalSummariesFailed += 1
-                log.warn(s"Failed to locate type for summary lookup: ${task.methodIdent.declaredType}")
-                null
-              }
+          val eidMethodMap = summariesToLoad
+            .filter { task =>
+              if(task.methodDbIdOpt.isEmpty){
+                log.warn(s"Got an entity that did not originate from DB, this should not happen: ${task.methodIdent.toString}")
+                false
+              } else true
             }
-            .filter(_ != null)
+            .map(task => (task.methodDbIdOpt.get, task.methodIdent))
+            .toMap
 
-          val allResults = summaryLoader(effectiveBatch)
-
-          allResults.foreach { case (ident, result) =>
-            result match {
-              case Success(ifdsRep) =>
-                summaryLookup.synchronized {
-                  summaryLookup.put(ident, ifdsRep)
+          dataAccessor.getResultJSONContentBatch(eidMethodMap.keySet, IFDSTaintFlowSummaryBuilderImpl.analysisName,
+            IFDSTaintFlowSummaryBuilderImpl.analysisVersion) match {
+            case Success(resultMap) =>
+              resultMap
+                .foreach { case (eid, summaryString) =>
+                  val ident = eidMethodMap(eid)
+                  val summary = summaryString.parseJson.convertTo[MethodIFDSRep]
+                  summaryLookup.synchronized{
+                    summaryLookup.put(ident, summary)
+                  }
                 }
-              case Failure(ex) =>
-                totalSummariesFailed += 1
-                log.error(s"Failed to lookup method summary for: $ident ${ex.getMessage}")
-            }
+
+            case Failure(ex) =>
+              log.error(s"Failed to retrieve summary batch from DB", ex)
+              totalSummariesFailed += eidMethodMap.size
           }
 
         }
@@ -456,7 +446,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) {
       }
 
       isRunning.set(false)
-      log.info(s"Finished background worker execution for loading summaries - got ${summaryLookup.size} summaries")
+      log.info(s"Finished background worker execution for loading summaries - got ${summaryLookup.size} summaries with $totalSummariesFailed errors.")
 
       val summariesMissing = oracleCGBuilderOpt
         .get

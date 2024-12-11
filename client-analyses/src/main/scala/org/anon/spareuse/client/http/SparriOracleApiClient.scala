@@ -88,6 +88,14 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
     }
   }
 
+  def closeSession(): Try[Unit] = Try {
+    val response = postJsonRaw("/api/oracle/close", None, Map("session-id" -> sessionToken.get)).get
+
+    response.close()
+
+    log.debug("Successfully closed session")
+  }
+
   def pushResponse(response: LookupResponse): Try[Unit] = Try {
     val json = response.toJson.compactPrint
 
@@ -104,8 +112,6 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
     httpResponse.close()
 
     log.debug(s"Session finalized: ${sessionToken.get}")
-
-    sessionToken = None
   }
 
 

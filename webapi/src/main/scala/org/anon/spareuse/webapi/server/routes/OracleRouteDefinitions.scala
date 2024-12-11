@@ -25,11 +25,12 @@ trait OracleRouteDefinitions extends OracleJsonSupport {
       path("resolve-entry"){ headerValueByName("session-id"){ sessionId => post { startResolving(sessionId) }}} ~
       path("pull-status"){ headerValueByName("session-id"){ sessionId => get { pullStatus(sessionId) }}} ~
       path("push-update"){ headerValueByName("session-id"){ sessionId => post { pushUpdate(sessionId) }}} ~
-      path("finalize"){ headerValueByName("session-id"){ sessionId => post { finalize(sessionId) }}}
+      path("finalize"){ headerValueByName("session-id"){ sessionId => post { finalize(sessionId) }}} ~
+      path("close"){ headerValueByName("session-id"){ sessionId => post { close(sessionId) }}}
     }
   }
 
-  private def startNewSession()(implicit request: HttpRequest): Route = entity(as[JsObject]){ e =>
+  private def startNewSession(): Route = entity(as[JsObject]){ e =>
     val initRequest = e.convertTo[InitializeResolutionRequest]
     log.debug(s"New Oracle resolution session requested by client.")
 
@@ -46,11 +47,9 @@ trait OracleRouteDefinitions extends OracleJsonSupport {
       log.error(s"Internal server error while initializing new resolution session")
       complete(InternalServerError, s"Failed to initialize resolution")
     }
-
-
   }
 
-  private def startResolving(sessionId: String)(implicit request: HttpRequest): Route = entity(as[JsObject]){ e =>
+  private def startResolving(sessionId: String): Route = entity(as[JsObject]){ e =>
     val startRequest = e.convertTo[StartResolutionRequest]
 
     oracleRequestHandler.resolveFromEntrypoint(sessionId, startRequest) match {
@@ -69,7 +68,7 @@ trait OracleRouteDefinitions extends OracleJsonSupport {
     }
   }
 
-  private def pullStatus(sessionId: String)(implicit request: HttpRequest): Route = {
+  private def pullStatus(sessionId: String): Route = {
     onComplete(oracleRequestHandler.pullLookupRequests(sessionId)){
       case Success(response) =>
         complete(response.toJson.compactPrint)
@@ -85,7 +84,7 @@ trait OracleRouteDefinitions extends OracleJsonSupport {
     }
   }
 
-  private def pushUpdate(sessionId: String)(implicit request: HttpRequest): Route =  entity(as[JsObject]){ e =>
+  private def pushUpdate(sessionId: String): Route =  entity(as[JsObject]){ e =>
     val response = e.convertTo[LookupResponse]
 
     oracleRequestHandler.pushResponse(sessionId, response) match {
@@ -103,7 +102,7 @@ trait OracleRouteDefinitions extends OracleJsonSupport {
     }
   }
 
-  private def finalize(sessionId: String)(implicit request: HttpRequest): Route = {
+  private def finalize(sessionId: String): Route = {
     log.debug(s"Client requests session finalization for session-id $sessionId")
 
     oracleRequestHandler.finalize(sessionId) match {
@@ -117,6 +116,24 @@ trait OracleRouteDefinitions extends OracleJsonSupport {
         complete(BadRequest, coix.getMessage)
       case Failure(ex) =>
         log.error(s"Failed to finalize session $sessionId due to unknown server error", ex)
+        complete(InternalServerError)
+    }
+  }
+
+  private def close(sessionId: String): Route = {
+    log.debug(s"Client requests to close session with id $sessionId")
+
+    oracleRequestHandler.close(sessionId) match {
+      case Success(_) =>
+        complete(OK)
+      case Failure(isx: InvalidSessionException) =>
+        log.warn(s"Invalid session Id provided: $sessionId", isx)
+        complete(BadRequest, "Invalid session ID")
+      case Failure(coix: ClientOracleInteractionException) =>
+        log.warn(s"Failed to close session $sessionId due to bad request(s) by client", coix)
+        complete(BadRequest, coix.getMessage)
+      case Failure(ex) =>
+        log.error(s"Failed to close session $sessionId due to unknown server error", ex)
         complete(InternalServerError)
     }
   }

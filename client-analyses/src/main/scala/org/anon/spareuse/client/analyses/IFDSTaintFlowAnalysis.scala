@@ -125,6 +125,15 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
             log.error(s"Failure during session finalization", ex)
         }
 
+        //TODO: Query library entry points at oracle
+
+        oracleApiClient.closeSession() match {
+          case Success(_) =>
+            log.info(s"Successfully closed oracle session")
+          case Failure(ex) =>
+            log.error(s"Failed to close session at oracle", ex)
+        }
+
         0
       case Failure(ex) =>
         log.error(s"Failed to start oracle session", ex)
