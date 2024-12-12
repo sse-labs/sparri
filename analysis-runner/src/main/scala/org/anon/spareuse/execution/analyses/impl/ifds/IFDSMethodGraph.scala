@@ -81,53 +81,77 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
     pcToStmtMap.values.toSeq.sortBy(_.stmtPc)
   }
 
+  /**
+   * Computes the set of relevant statement nodes only. Nodes are relevant (to IFDS) if they a) have activations, b) are
+   * a method call, c) are the method entry, d) are a value return or e) are part of the control flow (if / loop). Nodes
+   * are condensed into basic blocks (defined by one relevant node and any number of linear subsequent irrelevant nodes)
+   * and the predecessor / successor relation is preserved over those basic blocks.
+   *
+   * @return A set of virtual statement nodes corresponding to basic blocks - predecessors / successors are set correctly
+   */
   def relevantStatementNodes: Seq[VirtualStatementNode] = {
 
     val visited = mutable.Set.empty[Int]
     val pcToBBLookup = mutable.Map.empty[Int, StatementNode]
+    val bbList = mutable.ListBuffer.empty[VirtualStatementNode]
     val workList = mutable.Stack(statementNodes.head)
 
+    // Nodes can be relevant no matter what - based on their activations of statement type
     def isRelevant(node: StatementNode): Boolean = node.isCallNode || node.hasActivations || node.isReturnValue
+    // Nodes can be trivial in the context of the graph - if they have one successor, one predecessor and are not relevant
     def isTrivial(node: StatementNode): Boolean =
       node.getSuccessors.size == 1 && node.getPredecessors.size == 1 && !isRelevant(node)
 
+    // Build a basic block starting from the given (relevant) node. Entry nodes to a BB are always relevant and define the
+    // BBs PC.
     def buildBasicBlock(entry: StatementNode): VirtualStatementNode = {
       val theNode = new VirtualStatementNode(entry)
       visited.add(entry.stmtPc)
       pcToBBLookup.put(entry.stmtPc, theNode)
 
+      // If the entry to this BB immediately has zero (return) or multiple (if, loop) successors, the block will not contain
+      // any further nodes. Push each successor to the worklist and return the BB as it is.
       if(entry.getSuccessors.size != 1){
         entry.getSuccessors.foreach(workList.push)
         return theNode
       }
 
+      // We now have exactly one successor. Start there...
       var current = entry.getSuccessors.head
+      // And iterate while the current successor is trivial.
       while(isTrivial(current)){
+        // Add the trivial successor to the current BB and update utility structures
         theNode.appendNode(current)
         visited.add(current.stmtPc)
         pcToBBLookup.put(current.stmtPc, theNode)
         current = current.getSuccessors.head
       }
 
+      // We now have that the current successor is no longer trivial. This might be due to two reasons:
       if(isRelevant(current) || current.getPredecessors.size > 1){
-        // Means current node is either loop header or just relevant by definition -> make it a new basic block
+        // Means current successor is either loop header / join of an if (if multiple predecessors)
+        // or just relevant by definition -> make it a new basic block
         workList.push(current)
       } else {
-        // Means current node is not relevant by itself, but has not exactly one successor -> make it part of virtual node
+        // Means current successor is not relevant by itself, but has not exactly one successor, ergo it is the start of
+        // an IF or the end of a loop -> make the current node part of the BB
         theNode.appendNode(current)
         visited.add(current.stmtPc)
         pcToBBLookup.put(current.stmtPc, theNode)
-        theNode.getSuccessors.foreach(workList.push)
+
+        // Start new basic blocks at every successor of the current node
+        current.getSuccessors.foreach(workList.push)
       }
 
       theNode
     }
 
-    val bbList = mutable.ListBuffer.empty[VirtualStatementNode]
 
+    // Iterate the list of regular statement nodes (initially only the entry to the method) that need to be processed
     while(workList.nonEmpty){
       val currentNode = workList.pop()
 
+      // If we did not already process this regular node (could be, due to loops) we need to create a new basic block
       if(!visited.contains(currentNode.stmtPc)){
         val basicBlock = buildBasicBlock(currentNode)
         bbList.addOne(basicBlock)
@@ -135,11 +159,14 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
 
     }
 
-    // Re-set predecessor relation based on each basic blocks entry node
+    // Now that all BBs are final, update the predecessor and successor relations so they point to other BBs, not their
+    // individual regular nodes
     bbList.foreach{ bb =>
       bb.setPredecessors(bb.entryNode.getPredecessors.map(pred => pcToBBLookup(pred.stmtPc)))
+      bb.setSuccessors(bb.getExitNode.getSuccessors.map(succ => pcToBBLookup(succ.stmtPc)))
     }
 
+    // Return the set of all BBs sorted by PC
     bbList.toSeq.sortBy(_.stmtPc)
   }
 
@@ -463,9 +490,10 @@ class VirtualStatementNode(entry: StatementNode) extends StatementNode(entry.stm
   private[this] var exitNode = entry
   private[this] val innerNodes: mutable.ListBuffer[StatementNode] = mutable.ListBuffer(entry)
   private[this] var predecessors: Set[StatementNode] = Set.empty
+  private[this] var successors: Set[StatementNode] = Set.empty
 
   override def getPredecessors: Set[StatementNode] = predecessors
-  override def getSuccessors: Set[StatementNode] = exitNode.getSuccessors
+  override def getSuccessors: Set[StatementNode] = successors
 
   // The entry node is the only non-trivial node of a basic block. No other node is allowed to have activations
   override protected[ifds] val activations: mutable.Map[IFDSFact, mutable.Set[IFDSFact]] = entryNode.activations
@@ -488,6 +516,7 @@ class VirtualStatementNode(entry: StatementNode) extends StatementNode(entry.stm
   }
 
   def setPredecessors(preds: Set[StatementNode]): Unit = predecessors = preds
+  def setSuccessors(succs: Set[StatementNode]): Unit = successors = succs
   def getInnerNodes: Seq[StatementNode] = innerNodes.toSeq
   def getExitNode: StatementNode = exitNode
 }
