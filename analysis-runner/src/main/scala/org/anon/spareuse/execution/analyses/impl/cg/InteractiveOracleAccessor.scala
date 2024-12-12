@@ -137,8 +137,6 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) extends DefaultIFDSM
    * @param callingContext Application method that the entry call has been made in
    * @param ccPC PC that the entry call has been made at
    * @param typesInstantiated Types that have been instantiated so far (at the call site). Only needed for full-blown RTA.
-   * @param summaryLoader Method loading IFDS summaries from the DB. This method will be invoked for every reachable method
-   *                      exactly once.
    * @param ec Implicit execution context to run the main resolver loop on
    * @return Either a unit value (if successful) or an OracleInteractionError
    */
@@ -314,6 +312,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) extends DefaultIFDSM
   def failed: Boolean = hasFatalErrors || resolverLoopFuture.exists(f => f.isCompleted && f.value.get.isFailure)
 
   def getGraph: Option[CallGraphBuilder#CallGraphView] = oracleCGBuilderOpt.map(_.getGraph)
+  def getSummaries: Map[MethodIdent, MethodIFDSRep] = summaryLookup.toMap
 
   def finalizeSummaries(): Unit = {
     BackgroundSummaryLoader.setWorkloadIsFinal()
@@ -327,12 +326,6 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) extends DefaultIFDSM
   }
 
   private[this] object BackgroundSummaryLoader extends Runnable {
-
-    private lazy val builder: OracleCallGraphBuilder = {
-      if (oracleCGBuilderOpt.isEmpty)
-        throw new IllegalStateException("Cannot load summaries, builder not initialized")
-      else oracleCGBuilderOpt.get
-    }
 
     private val worklist: mutable.Queue[MethodLoaderTask] = mutable.Queue.empty[MethodLoaderTask]
     private val extraSummaries: mutable.Queue[(MethodIdent, MethodIFDSRep)] = mutable.Queue.empty[(MethodIdent, MethodIFDSRep)]

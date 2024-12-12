@@ -165,6 +165,9 @@ object TaintVariableFacts {
   }
 
   def parseFact(uniqueIdent: String): IFDSFact = {
+
+    if(uniqueIdent == IFDSZeroFact.uniqueIdent) return IFDSZeroFact
+
     val splits = uniqueIdent.split(" ")
 
     if(splits.length < 2) throw new IllegalArgumentException(s"Not a valid fact identifier: $uniqueIdent")

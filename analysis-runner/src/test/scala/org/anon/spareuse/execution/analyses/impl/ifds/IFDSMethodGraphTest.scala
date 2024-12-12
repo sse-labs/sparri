@@ -2,7 +2,7 @@ package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.core.formats.json.CustomObjectWriter
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
-import org.anon.spareuse.execution.analyses.{buildProject, foreachFixture, getTACProvider}
+import org.anon.spareuse.execution.analyses.{buildProject, foreachFixture, getMethodSummariesFromFixture, getTACProvider}
 import org.scalatest.funspec.AnyFunSpec
 import spray.json.JsObject
 
@@ -16,6 +16,36 @@ class IFDSMethodGraphTest extends AnyFunSpec with DefaultIFDSMethodRepJsonFormat
   private val theBuilder = new IFDSTaintFlowSummaryBuilderImpl (None)
 
   describe("An IFDS method graph"){
+
+    it("should correctly squash identity statements") {
+      val graph = getMethodSummariesFromFixture("NoTaints.class", Set("doNothing")).head
+
+      graph.print()
+
+      val rep = graph.toResultRepresentation(true)
+
+      Try(IFDSMethodGraph(rep)) match {
+        case Success(newGraph) =>
+          assert(newGraph.statementNodes.nonEmpty && newGraph.statementNodes.forall(s => graph.hasStatement(s.stmtPc)))
+        case Failure(ex) =>
+          fail("Failed to rebuild original graph", ex)
+      }
+    }
+
+    it("should correctly squash identity statements with loops") {
+      val graph = getMethodSummariesFromFixture("BranchingTaint.class", Set("main")).head
+
+      graph.print()
+
+      val rep = graph.toResultRepresentation(true)
+
+      Try(IFDSMethodGraph(rep)) match {
+        case Success(newGraph) =>
+          assert(newGraph.statementNodes.nonEmpty && newGraph.statementNodes.forall(s => graph.hasStatement(s.stmtPc)))
+        case Failure(ex) =>
+          fail("Failed to rebuild original graph", ex)
+      }
+    }
 
     it("should be correctly converted to generic results representation"){
 

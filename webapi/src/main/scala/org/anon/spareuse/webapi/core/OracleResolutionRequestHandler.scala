@@ -3,6 +3,7 @@ package org.anon.spareuse.webapi.core
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.execution.analyses.impl.cg.{InteractiveOracleAccessor, OracleCallGraphResolutionMode}
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{LookupRequestRepresentation, OracleInteractionError}
+import org.anon.spareuse.execution.analyses.impl.ifds.reachability.IFDSMethodRunner
 import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.OracleState.OracleState
 import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.{ClientOracleInteractionException, InvalidSessionException, OracleSessionState, OracleState}
 import org.anon.spareuse.webapi.model.Session
@@ -13,8 +14,6 @@ import scala.concurrent.{ExecutionContext, Future}
 import scala.util.{Failure, Success, Try}
 
 class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit context: ExecutionContext) extends SessionBasedRequestHandler[OracleSessionState] {
-
-  private[core] val sessionOracleAccessors: mutable.Map[String, InteractiveOracleAccessor] = mutable.Map.empty
 
   override protected[webapi] def initialSessionState: OracleSessionState = new OracleSessionState()
 
@@ -31,11 +30,11 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
   def startResolutionSession(initRequest: InitializeResolutionRequest): Session[OracleSessionState] = {
     val theSession = newSession()
     val accessor = new InteractiveOracleAccessor(dataAccessor)
-    sessionOracleAccessors.put(theSession.uid, accessor)
+    theSession.sessionState.accessor = Some(accessor)
 
     def invalidateSession(): Unit = {
       theSession.sessionState.isValid = false
-      sessionOracleAccessors.remove(theSession.uid)
+      theSession.sessionState.accessor = None
       super.invalidateSession(theSession.uid)
     }
 
@@ -61,13 +60,13 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
 
   def resolveFromEntrypoint(sessionUid: String, startRequest: StartResolutionRequest): Try[Unit] = ensureValidSession(sessionUid) { session =>
     Try {
-      if(!sessionOracleAccessors.contains(session.uid))
+      if(session.sessionState.accessor.isEmpty)
         throw new RuntimeException(s"Corrupt session state")
 
       if(session.getState.currentState != OracleState.Initialized)
         throw ClientOracleInteractionException(session, s"Accessor needs to be initialized and not busy to process entry points")
 
-      sessionOracleAccessors(session.uid).startResolution(toModel(startRequest.cc), startRequest.ccPC, startRequest.types) match {
+      session.sessionState.accessor.get.startResolution(toModel(startRequest.cc), startRequest.ccPC, startRequest.types) match {
         case Left(_) =>
         case Right(error) =>
           log.warn(s"[$sessionUid] Cannot resolve from entrypoint: ${error.toString}")
@@ -78,13 +77,13 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
 
   def pullLookupRequests(sessionUid: String): Future[PullLookupRequestsResponse] = ensureValidSessionF(sessionUid) { session =>
     Future {
-      if(!sessionOracleAccessors.contains(session.uid))
+      if(session.sessionState.accessor.isEmpty)
         throw new RuntimeException(s"Corrupt session state")
 
       if(session.getState.currentState != OracleState.Initialized)
         PullLookupRequestsResponse(isInitialized = false, isResolving = false, requests = Set.empty, hasFailed = false, fatalError = None)
       else {
-        val accessor = sessionOracleAccessors(session.uid)
+        val accessor = session.sessionState.accessor.get
 
         if (accessor.succeeded) {
           // We successfully processed the last entrypoint, so we are ready for another one (or finalization)
@@ -121,26 +120,38 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
   }
 
   def pushResponse(sessionUid: String, response: LookupResponse): Try[Unit] = ensureValidSession(sessionUid) { session =>
-    if (!sessionOracleAccessors.contains(session.uid))
+    if (session.sessionState.accessor.isEmpty)
       throw new RuntimeException(s"Corrupt session state")
 
     if (session.getState.currentState != OracleState.Initialized)
       throw ClientOracleInteractionException(session, s"Accessor must be initialized in order to push results")
 
     Try {
-      sessionOracleAccessors(session.uid).pushResponse(toModel(response))
+      session.sessionState.accessor.get.pushResponse(toModel(response))
     }
   }
 
   def finalize(sessionUid: String): Try[Any] = ensureValidSession(sessionUid){ session =>
+    if (session.sessionState.accessor.isEmpty)
+      throw new RuntimeException(s"Corrupt session state")
 
-    val accessor = sessionOracleAccessors(session.uid)
+    val accessor = session.sessionState.accessor.get
 
     Try(accessor.finalizeSummaries()) match {
       case Success(_) =>
         session.sessionState.currentState = OracleState.WaitingForQueries
-        log.info(s"Done building call graph and aggregating summaries - accessor is ready for queries.")
-        Success(())
+
+        Try(IFDSMethodRunner(accessor.getGraph.get, accessor.getSummaries)) match {
+          case Success(runner) =>
+            session.sessionState.ifdsRunner = Some(runner)
+            log.info(s"Done building call graph and aggregating summaries - accessor is ready for queries.")
+            Success(())
+          case Failure(ex) =>
+            log.error(s"Failed to initialize IFDS query runner", ex)
+            invalidateSession(sessionUid)
+            Failure(ex)
+        }
+
       case Failure(ex) =>
         log.error(s"Failed to finalize oracle session", ex)
         invalidateSession(sessionUid)
@@ -151,10 +162,9 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
   def close(sessionUid: String): Try[Unit] = ensureValidSession(sessionUid){ session =>
     log.info(s"Closing session $sessionUid due to client request")
 
-    if(sessionOracleAccessors.contains(session.uid))
-      sessionOracleAccessors.remove(session.uid)
-
     session.sessionState.currentState = OracleState.Closed
+    session.sessionState.accessor = None
+    session.sessionState.ifdsRunner = None
 
     Try(invalidateSession(sessionUid))
   }
@@ -195,9 +205,11 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
 }
 
 object OracleResolutionRequestHandler {
-  class OracleSessionState private[core]() {
+  class OracleSessionState private[core] {
 
     var currentState: OracleState = OracleState.NotInitialized
+    var accessor: Option[InteractiveOracleAccessor] = None
+    var ifdsRunner: Option[IFDSMethodRunner] = None
 
     var isValid: Boolean = true
 

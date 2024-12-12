@@ -2,7 +2,7 @@ package org.anon.spareuse.execution
 
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
 import org.anon.spareuse.core.model.entities.conversion.OPALJavaConverter
-import org.anon.spareuse.execution.analyses.impl.ifds.MethodTACProvider
+import org.anon.spareuse.execution.analyses.impl.ifds.{IFDSMethodGraph, IFDSTaintFlowSummaryBuilderImpl, MethodTACProvider}
 import org.opalj.ai.domain
 import org.opalj.ai.fpcf.properties.AIDomainFactoryKey
 import org.opalj.br.ClassFile
@@ -14,6 +14,22 @@ import java.io.File
 import java.net.URL
 
 package object analyses {
+
+  def getMethodSummariesFromFixture(fixtureName: String, methodNames: Set[String]): Set[IFDSMethodGraph] = {
+    val project = buildProject(loadFixture(fixtureName))
+    val tacProvider = getTACProvider(project)
+
+    val relevantMethods = if(methodNames.isEmpty) project.allMethodsWithBody else project.allMethodsWithBody.filter(m => methodNames.exists(s => m.name.startsWith(s)))
+
+    assert(relevantMethods.nonEmpty)
+
+    val ifdsBuilder = new IFDSTaintFlowSummaryBuilderImpl(None)
+    val graphs = relevantMethods.map(m => ifdsBuilder.analyzeMethod(m)(tacProvider)).toSet
+
+    assert(graphs.size == relevantMethods.size)
+
+    graphs
+  }
 
   def loadFixture(resourceName: String): File = {
     val theFile = new File(getClass.getClassLoader.getResource(resourceName).toURI)

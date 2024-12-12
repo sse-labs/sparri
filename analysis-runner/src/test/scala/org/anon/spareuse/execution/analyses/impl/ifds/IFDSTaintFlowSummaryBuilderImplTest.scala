@@ -2,7 +2,7 @@ package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.TaintFunctionReturn
-import org.anon.spareuse.execution.analyses.{buildProject, getTACProvider, loadFixture}
+import org.anon.spareuse.execution.analyses.getMethodSummariesFromFixture
 import org.scalatest.funspec.AnyFunSpec
 
 class IFDSTaintFlowSummaryBuilderImplTest extends AnyFunSpec {
@@ -73,7 +73,7 @@ class IFDSTaintFlowSummaryBuilderImplTest extends AnyFunSpec {
 
       def yieldsTaintedReturn(initialFacts: Set[IFDSFact]):  Boolean = {
         var currFacts = initialFacts
-        concatGraph.statementNodes.foreach{ snode =>
+        concatGraph.relevantStatementNodes.foreach{ snode =>
           currFacts = snode.getFactsAfter(currFacts)
         }
 
@@ -167,22 +167,6 @@ class IFDSTaintFlowSummaryBuilderImplTest extends AnyFunSpec {
       assertSingleParamTaintsResults("StringConcatenation.class", "transitiveAlias")
     }
 
-  }
-
-  private def getMethodSummariesFromFixture(fixtureName: String, methodNames: Set[String]): Set[IFDSMethodGraph] = {
-    val project = buildProject(loadFixture(fixtureName))
-    val tacProvider = getTACProvider(project)
-
-    val relevantMethods = if(methodNames.isEmpty) project.allMethodsWithBody else project.allMethodsWithBody.filter(m => methodNames.exists(s => m.name.startsWith(s)))
-
-    assert(relevantMethods.nonEmpty)
-
-    val ifdsBuilder = new IFDSTaintFlowSummaryBuilderImpl(None)
-    val graphs = relevantMethods.map(m => ifdsBuilder.analyzeMethod(m)(tacProvider)).toSet
-
-    assert(graphs.size == relevantMethods.size)
-
-    graphs
   }
 
   private def assertSingleParamTaintsResults(fixtureName: String, methodName: String): Unit = {

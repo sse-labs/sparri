@@ -2,7 +2,7 @@ package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.{FactRep, InternalActivationRep, InternalVariableRep, MethodIFDSRep, StatementRep}
-import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.{ParameterTaintVariable, TaintFunctionReturn, TaintVariable}
+import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.{ParameterTaintVariable, TaintFunctionReturn}
 import org.opalj.br.{ArrayType, Method, ObjectType}
 import org.opalj.tac.{Call, FunctionCall, InstanceFunctionCall}
 import org.slf4j.{Logger, LoggerFactory}
@@ -77,17 +77,70 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
 
   def hasStatement(pc: Int): Boolean = pcToStmtMap.contains(pc)
 
-  def relevantStatementNodes: Seq[StatementNode] = {
-    // Returns only those statements that change any of the activations, or involve a call, or are return statements
-    pcToStmtMap
-      .values
-      .filter(stmtNode => stmtNode.isCallNode || stmtNode.hasActivations || stmtNode.isReturnValue)
-      .toSeq
-      .sortBy(_.stmtPc)
-  }
-
   def statementNodes: Seq[StatementNode] = {
     pcToStmtMap.values.toSeq.sortBy(_.stmtPc)
+  }
+
+  def relevantStatementNodes: Seq[VirtualStatementNode] = {
+
+    val visited = mutable.Set.empty[Int]
+    val pcToBBLookup = mutable.Map.empty[Int, StatementNode]
+    val workList = mutable.Stack(statementNodes.head)
+
+    def isRelevant(node: StatementNode): Boolean = node.isCallNode || node.hasActivations || node.isReturnValue
+    def isTrivial(node: StatementNode): Boolean =
+      node.getSuccessors.size == 1 && node.getPredecessors.size == 1 && !isRelevant(node)
+
+    def buildBasicBlock(entry: StatementNode): VirtualStatementNode = {
+      val theNode = new VirtualStatementNode(entry)
+      visited.add(entry.stmtPc)
+      pcToBBLookup.put(entry.stmtPc, theNode)
+
+      if(entry.getSuccessors.size != 1){
+        entry.getSuccessors.foreach(workList.push)
+        return theNode
+      }
+
+      var current = entry.getSuccessors.head
+      while(isTrivial(current)){
+        theNode.appendNode(current)
+        visited.add(current.stmtPc)
+        pcToBBLookup.put(current.stmtPc, theNode)
+        current = current.getSuccessors.head
+      }
+
+      if(isRelevant(current) || current.getPredecessors.size > 1){
+        // Means current node is either loop header or just relevant by definition -> make it a new basic block
+        workList.push(current)
+      } else {
+        // Means current node is not relevant by itself, but has not exactly one successor -> make it part of virtual node
+        theNode.appendNode(current)
+        visited.add(current.stmtPc)
+        pcToBBLookup.put(current.stmtPc, theNode)
+        theNode.getSuccessors.foreach(workList.push)
+      }
+
+      theNode
+    }
+
+    val bbList = mutable.ListBuffer.empty[VirtualStatementNode]
+
+    while(workList.nonEmpty){
+      val currentNode = workList.pop()
+
+      if(!visited.contains(currentNode.stmtPc)){
+        val basicBlock = buildBasicBlock(currentNode)
+        bbList.addOne(basicBlock)
+      }
+
+    }
+
+    // Re-set predecessor relation based on each basic blocks entry node
+    bbList.foreach{ bb =>
+      bb.setPredecessors(bb.entryNode.getPredecessors.map(pred => pcToBBLookup(pred.stmtPc)))
+    }
+
+    bbList.toSeq.sortBy(_.stmtPc)
   }
 
   def print(): Unit = {
@@ -250,7 +303,7 @@ class StatementNode(val stmtPc: Int, val stmtRep: String) {
   private val predecessors: mutable.Set[StatementNode] = new mutable.HashSet
   private val successors: mutable.Set[StatementNode] = new mutable.HashSet
 
-  private val activations: mutable.Map[IFDSFact, mutable.Set[IFDSFact]] = new mutable.HashMap
+  protected[ifds] val activations: mutable.Map[IFDSFact, mutable.Set[IFDSFact]] = new mutable.HashMap
 
   def setKillsFact(fact: IFDSFact): Unit = {
     assert(fact != IFDSZeroFact)
@@ -402,6 +455,41 @@ object StatementNode {
     } else new StatementNode(stmt.pc, stmt.toString)
   }
 
+}
+
+class VirtualStatementNode(entry: StatementNode) extends StatementNode(entry.stmtPc, entry.stmtRep) {
+  val entryNode: StatementNode = entry
+
+  private[this] var exitNode = entry
+  private[this] val innerNodes: mutable.ListBuffer[StatementNode] = mutable.ListBuffer(entry)
+  private[this] var predecessors: Set[StatementNode] = Set.empty
+
+  override def getPredecessors: Set[StatementNode] = predecessors
+  override def getSuccessors: Set[StatementNode] = exitNode.getSuccessors
+
+  // The entry node is the only non-trivial node of a basic block. No other node is allowed to have activations
+  override protected[ifds] val activations: mutable.Map[IFDSFact, mutable.Set[IFDSFact]] = entryNode.activations
+
+  // The entry node also defines if this basic block is a call - or return node
+  override def isCallNode: Boolean = entry.isCallNode
+
+  override def asCallNode: CallStatementNode = entry.asCallNode
+
+  override def isReturnValue: Boolean = entry.isReturnValue
+
+  override def asReturnNode: ReturnValueStatementNode = entry.asReturnNode
+
+  def appendNode(node: StatementNode): Unit = {
+    assert(exitNode.getSuccessors.contains(node))
+
+    innerNodes.append(node)
+
+    exitNode = node
+  }
+
+  def setPredecessors(preds: Set[StatementNode]): Unit = predecessors = preds
+  def getInnerNodes: Seq[StatementNode] = innerNodes.toSeq
+  def getExitNode: StatementNode = exitNode
 }
 
 class CallStatementNode(stmtPc: Int, stmtRep: String, callMethodName: String, callDeclaringClass: String, callDescriptor: String, callParams: Seq[LocalVariable], callReceiver: Option[LocalVariable]) extends StatementNode(stmtPc, stmtRep){
