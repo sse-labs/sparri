@@ -65,7 +65,7 @@ object IndexAndAnalysisInitiator {
         val dependenciesMissingResults = dependencies
           .filter{ dep =>
             val eid = toEID(dep.identifier)
-            eval.getRunsForEntity(eid, IFDSTaintFlowSummaryBuilderImpl.analysisName, "0.0.2", eval.getApiBaseUrl, httpClient) match {
+            eval.getRunsForEntity(eid, IFDSTaintFlowSummaryBuilderImpl.analysisName, "0.0.4", eval.getApiBaseUrl, httpClient) match {
               case Success(allRuns) =>
                 !allRuns.exists(_.State == RunState.Finished.toString)
               case Failure(ex) =>
@@ -76,7 +76,7 @@ object IndexAndAnalysisInitiator {
 
         if(dependenciesMissingResults.nonEmpty){
           dependenciesMissingResults.foreach{ dep =>
-            eval.triggerAnalysisRun(Set(toEID(dep.identifier)), IFDSTaintFlowSummaryBuilderImpl.analysisName, "0.0.2", eval.getApiBaseUrl, httpClient) match {
+            eval.triggerAnalysisRun(Set(toEID(dep.identifier)), IFDSTaintFlowSummaryBuilderImpl.analysisName, "0.0.4", eval.getApiBaseUrl, httpClient) match {
               case Success(runId) =>
                 println(s"Successfully triggered analysis run $runId for entity ${dep.identifier.toString}")
               case Failure(ex) =>

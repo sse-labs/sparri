@@ -132,7 +132,7 @@ package object eval extends JsonSupport {
   }
 
   def getRunsForEntity(entityIdent: String, analysisName: String, analysisVersion: String, baseUrl: String, httpClient: CloseableHttpClient): Try[Set[AnalysisRunRepr]] = {
-    val request = new HttpGet(baseUrl + s"entities/$entityIdent/processedBy?analysis=$analysisName:$analysisVersion")
+    val request = new HttpGet(baseUrl + s"entities/$entityIdent/processedBy")
 
     Try {
       val response = httpClient.execute(request)
@@ -151,6 +151,7 @@ package object eval extends JsonSupport {
               case jobj: JsObject =>
                 jobj.convertTo[AnalysisRunRepr]
             }
+            .filter(run => run.AnalysisName == analysisName && run.AnalysisVersion == analysisVersion)
             .toSet
         case other@_ =>
           throw new IllegalStateException(s"Unexpected JSON body type: $other")

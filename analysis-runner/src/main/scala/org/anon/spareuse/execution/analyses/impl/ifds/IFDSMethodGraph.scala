@@ -90,11 +90,15 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
    * @return A set of virtual statement nodes corresponding to basic blocks - predecessors / successors are set correctly
    */
   def relevantStatementNodes: Seq[VirtualStatementNode] = {
+    val entryOpt = getStatement(0)
+
+    if(entryOpt.isEmpty)
+      return Seq.empty[VirtualStatementNode]
 
     val visited = mutable.Set.empty[Int]
     val pcToBBLookup = mutable.Map.empty[Int, StatementNode]
     val bbList = mutable.ListBuffer.empty[VirtualStatementNode]
-    val workList = mutable.Stack(statementNodes.head)
+    val workList = mutable.Stack(entryOpt.get)
 
     // Nodes can be relevant no matter what - based on their activations of statement type
     def isRelevant(node: StatementNode): Boolean = node.isCallNode || node.hasActivations || node.isReturnValue
