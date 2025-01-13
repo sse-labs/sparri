@@ -3,7 +3,7 @@ package org.anon.spareuse.execution.analyses.impl.cg
 import org.anon.spareuse.core.model.entities.JavaEntities
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaInvokeStatement, JavaMethod}
 import org.anon.spareuse.core.storage.IdentifiableDataBaseEntity
-import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.DefinedMethod
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.{DefinedMethod, MethodIdent}
 
 import java.util.Objects
 import scala.collection.mutable
@@ -83,12 +83,18 @@ trait CallGraphBuilder {
 
   class CallGraphView private[cg](){
 
+    private lazy val methodLookup: Map[MethodIdent, DefinedMethod] = reachableMethods().map(dm => (dm.methodIdentifier, dm)).toMap
+
     def reachableMethods(): Set[DefinedMethod] = calleeMap.keySet.toSet ++ callerMap.keySet.toSet
 
+
+    def calleesOf(ident: MethodIdent): Iterable[(Int, Set[DefinedMethod])] = calleesOf(methodLookup(ident))
     def calleesOf(dm: DefinedMethod): Iterable[(Int, Set[DefinedMethod])] = calleeMap.get(dm).map(_.map(t => (t._1, t._2.toSet)).toSeq).getOrElse(Seq.empty)
 
+    def calleesOf(ident: MethodIdent, pc: Int): Set[DefinedMethod] = calleesOf(methodLookup(ident), pc)
     def calleesOf(dm: DefinedMethod, pc: Int): Set[DefinedMethod] = calleeMap.get(dm).map( callSites => callSites.getOrElse(pc, throw new IllegalArgumentException(s"Not a callsite: $pc")).toSet).getOrElse(Set.empty[DefinedMethod])
 
+    def callersOf(ident: MethodIdent): Set[DefinedMethod] = callersOf(methodLookup(ident))
     def callersOf(dm: DefinedMethod): Set[DefinedMethod] = callerMap.get(dm).map(_.toSet).getOrElse(Set.empty)
 
   }

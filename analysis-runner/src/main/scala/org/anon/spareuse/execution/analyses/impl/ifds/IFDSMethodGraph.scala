@@ -17,6 +17,13 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
 
   val methodIdentifier: MethodIdent = methodIdent
 
+  lazy val allVariablesReturned: Set[IFDSFact] = statementNodes
+    .collect {
+      case rvsn: ReturnValueStatementNode if rvsn.variableReturned.isDefined =>
+        TaintVariableFacts.buildFact(rvsn.variableReturned.get)
+    }
+    .toSet
+
   private val pcToStmtMap: mutable.Map[Int, StatementNode] = new mutable.HashMap[Int, StatementNode]()
 
   def runWith(initialFacts: Set[IFDSFact])(implicit targetProvider: CallTargetProvider): Set[IFDSFact] = {
@@ -31,6 +38,8 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
   def parameterFacts: Set[ParameterTaintVariable] = allFacts.collect{ case x: ParameterTaintVariable => x }
 
   def isReturnNode(pc: Int): Boolean = pcToStmtMap.contains(pc) && pcToStmtMap(pc).isReturnValue
+
+
 
   def createStatement(stmt: TACStmt, predecessor: Option[StatementNode]): StatementNode = {
 
@@ -254,20 +263,20 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
           InternalActivationRep(sourceId, targetIds.toList)
         }.toList
 
-        s match {
-          case csn: CallStatementNode =>
-            val parameterReps = csn.parameterVariables.map{ v =>
-              InternalVariableRep(v.variableName, v.defSites.toList)
-            }.toList
-            val receiverOpt = csn.receiver.map(v => InternalVariableRep(v.variableName, v.defSites.toList))
-            StatementRep(csn.stmtPc, false, csn.stmtRep, predecessors, csn.functionName, csn.descriptor, csn.declaringClassFqn, parameterReps, receiverOpt.getOrElse(InternalVariableRep("", List.empty)), InternalVariableRep("", List.empty), activations)
-          case rvsn: ReturnValueStatementNode =>
-            val retVar = rvsn.variableReturned.map(r => InternalVariableRep(r.variableName, r.defSites.toList))
-            StatementRep(rvsn.stmtPc, true, rvsn.stmtRep, predecessors, "", "", "", List.empty, InternalVariableRep("", List.empty), retVar.getOrElse(InternalVariableRep("", List.empty)), activations)
-          case sn: StatementNode =>
-            StatementRep(sn.stmtPc, false, sn.stmtRep, predecessors, "", "", "", List.empty, InternalVariableRep("", List.empty), InternalVariableRep("", List.empty), activations)
+        if(s.isCallNode){
+          val csn = s.asCallNode
+          val parameterReps = csn.parameterVariables.map{ v =>
+            InternalVariableRep(v.variableName, v.defSites.toList)
+          }.toList
+          val receiverOpt = csn.receiver.map(v => InternalVariableRep(v.variableName, v.defSites.toList))
+          StatementRep(csn.stmtPc, false, csn.stmtRep, predecessors, csn.functionName, csn.descriptor, csn.declaringClassFqn, parameterReps, receiverOpt.getOrElse(InternalVariableRep("", List.empty)), InternalVariableRep("", List.empty), activations)
+        } else if(s.isReturnValue){
+          val rvsn = s.asReturnNode
+          val retVar = rvsn.variableReturned.map(r => InternalVariableRep(r.variableName, r.defSites.toList))
+          StatementRep(rvsn.stmtPc, true, rvsn.stmtRep, predecessors, "", "", "", List.empty, InternalVariableRep("", List.empty), retVar.getOrElse(InternalVariableRep("", List.empty)), activations)
+        } else {
+          StatementRep(s.stmtPc, false, s.stmtRep, predecessors, "", "", "", List.empty, InternalVariableRep("", List.empty), InternalVariableRep("", List.empty), activations)
         }
-
       }
       .toList
 
@@ -399,7 +408,7 @@ class StatementNode(val stmtPc: Int, val stmtRep: String) {
         val callResult = targetGraph.statementNodes.head.run(factsToPass, targetGraph.methodIdentifier)
 
         // Find all variables that may be returned by the callee graph
-        val returnVariables = targetGraph.statementNodes.filter(_.isReturnValue).flatMap(_.asReturnNode.variableReturned).map(TaintVariableFacts.buildFact)
+        val returnVariables = targetGraph.allVariablesReturned
 
         // Find out if we need to taint the variable that this call is assigned to - that is, if any of the returned variables
         // Is in the set of tainted variables.
@@ -521,6 +530,10 @@ class VirtualStatementNode(entry: StatementNode) extends StatementNode(entry.stm
 
   def setPredecessors(preds: Set[StatementNode]): Unit = predecessors = preds
   def setSuccessors(succs: Set[StatementNode]): Unit = successors = succs
+
+  override def addSuccessor(node: StatementNode): Unit = successors = successors ++ Set(node)
+  override def addPredecessor(node: StatementNode): Unit = predecessors = predecessors ++ Set(node)
+
   def getInnerNodes: Seq[StatementNode] = innerNodes.toSeq
   def getExitNode: StatementNode = exitNode
 }
