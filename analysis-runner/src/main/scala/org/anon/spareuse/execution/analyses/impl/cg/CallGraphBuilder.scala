@@ -3,7 +3,7 @@ package org.anon.spareuse.execution.analyses.impl.cg
 import org.anon.spareuse.core.model.entities.JavaEntities
 import org.anon.spareuse.core.model.entities.JavaEntities.{JavaClass, JavaInvokeStatement, JavaMethod}
 import org.anon.spareuse.core.storage.IdentifiableDataBaseEntity
-import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.{DefinedMethod, MethodIdent}
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.{DefinedMethod, JVMNative, MethodIdent}
 
 import java.util.Objects
 import scala.collection.mutable
@@ -37,6 +37,10 @@ trait CallGraphBuilder {
     callerMap(to).add(from)
   }
 
+  protected[cg] def putEntry(method: DefinedMethod): Unit = {
+    putCall(JVMNative, -1, method)
+  }
+
   protected[cg] val classLookup: Map[String, JavaClass]
 
 
@@ -53,7 +57,7 @@ trait CallGraphBuilder {
   }
 
   private def notifyReachable(dm: DefinedMethod): Unit = onReachableListenerOpt match {
-    case Some(listener) => listener(dm)
+    case Some(listener) if dm != JVMNative => listener(dm)
     case _ =>
   }
 
@@ -86,7 +90,6 @@ trait CallGraphBuilder {
     private lazy val methodLookup: Map[MethodIdent, DefinedMethod] = reachableMethods().map(dm => (dm.methodIdentifier, dm)).toMap
 
     def reachableMethods(): Set[DefinedMethod] = calleeMap.keySet.toSet ++ callerMap.keySet.toSet
-
 
     def calleesOf(ident: MethodIdent): Iterable[(Int, Set[DefinedMethod])] = calleesOf(methodLookup(ident))
     def calleesOf(dm: DefinedMethod): Iterable[(Int, Set[DefinedMethod])] = calleeMap.get(dm).map(_.map(t => (t._1, t._2.toSet)).toSeq).getOrElse(Seq.empty)
@@ -169,4 +172,6 @@ object CallGraphBuilder {
       new DefinedMethod(MethodIdent(mDeclaredType, mName, mDescriptor), mIsStatic, mTypesProvider, mInvocationProvider)
 
   }
+
+  object JVMNative extends DefinedMethod(MethodIdent("<native>", "<jvm-native>", "<none>"), mIsStatic = true, () => List.empty, () => List.empty)
 }

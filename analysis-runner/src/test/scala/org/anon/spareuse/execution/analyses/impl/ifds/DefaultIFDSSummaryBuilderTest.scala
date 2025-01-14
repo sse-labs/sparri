@@ -1,6 +1,7 @@
 package org.anon.spareuse.execution.analyses.impl.ifds
 
 import org.anon.spareuse.core.model.AnalysisRunData
+import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.ParameterTaintVariable
 import org.anon.spareuse.execution.analyses.{AnalysisImplementationDescriptor, buildProject, getTACProvider, loadFixture}
 import org.opalj.br.Method
 import org.opalj.tac.{If, Return}
@@ -28,8 +29,11 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
       // There are ten statements in three methods of this fixture
       assert(stmtCnt == 10)
 
-      // For an empty builder, no facts will be present in the graph (except the zero fact)
-      assert(graphs.forall(g => g.allFacts.size == 1 && g.allFacts.head == IFDSZeroFact))
+      // For an empty builder, only the zero fact and all parameter facts will be present
+      // Only the "main" method has invocations that involve parameters
+      assert(graphs.find(_.methodName == "main").exists(_.allFacts.size == 4))
+      assert(graphs.filter(_.methodName != "main").forall(_.allFacts.size == 1))
+      assert(graphs.forall(g => g.allFacts.contains(IFDSZeroFact)))
 
       // All graphs should at least contain a return statement
       assert(graphs.forall(g => g.statementNodes.nonEmpty))
@@ -173,7 +177,7 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
       val mainGraph = graphs.find(_.methodName == "main").get
       mainGraph.print()
 
-      assert(mainGraph.allFacts.size == 8)
+      assert(mainGraph.allFacts.size == 11)
       mainGraph
         .statementNodes
         .filter(_.stmtPc % 2 == 0)

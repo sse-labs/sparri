@@ -13,6 +13,8 @@ class DefaultRTACallGraphBuilder(programs: Set[JavaProgram], jreVersionToLoad: O
   override def buildFrom(dm: DefinedMethod): Try[CallGraphView] = {
     val types = if(dm.isStatic) Set.empty[String] else Set(dm.definingTypeName)
 
+    putEntry(dm)
+
     resolve(dm, types)
   }
 

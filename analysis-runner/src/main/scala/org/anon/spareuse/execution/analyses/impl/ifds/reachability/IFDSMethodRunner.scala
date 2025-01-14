@@ -10,7 +10,7 @@ import org.slf4j.{Logger, LoggerFactory}
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
-class IFDSMethodRunner private(environment: IFDSRunnerEnvironment){
+class IFDSMethodRunner private(private[ifds] val environment: IFDSRunnerEnvironment){
 
   private final val log: Logger = LoggerFactory.getLogger(getClass)
 
@@ -25,13 +25,13 @@ class IFDSMethodRunner private(environment: IFDSRunnerEnvironment){
     val methodIFDSGraph = environment.getSummary(methodIdent)
 
     // Report on methods having no statements - this is not an error
-    if(methodIFDSGraph.statementNodes.isEmpty || methodIFDSGraph.getStatement(0).isEmpty){
+    if(methodIFDSGraph.allBasicBlocks.isEmpty || methodIFDSGraph.getEntryBlock.isEmpty){
       log.info(s"Method summary without statements for ${methodIdent.toString}")
       return initialFacts
     }
 
     // We operate exclusively on basic blocks
-    val firstBasicBlockOpt = methodIFDSGraph.relevantStatementNodes.find(vsn => vsn.stmtPc == 0)
+    val firstBasicBlockOpt = methodIFDSGraph.getEntryBlock
 
     // We need to have the statement with PC 0 as an entry to our method
     if(firstBasicBlockOpt.isEmpty){
@@ -80,10 +80,10 @@ class IFDSMethodRunner private(environment: IFDSRunnerEnvironment){
           val factsToPass = initialFacts.filter(f => f == IFDSZeroFact || f.asTaintVariable.isField) ++ parametersToTaint
 
 
-          targetMethod.getStatement(0) match {
+          targetMethod.getEntryBlock match {
             case Some(targetEntryBlock) =>
               // Register the call node to be a jump-back-point
-              environment.setMethodReturnsTo(targetMethod.methodIdentifier, targetMethod.methodIdentifier, currentNode)
+              environment.setMethodReturnsTo(targetMethod.methodIdentifier, currentTask.method, currentNode)
 
               val targetRelevantActivations = environment.newActivationsAt(targetMethod.methodIdentifier, 0, factsToPass)
 

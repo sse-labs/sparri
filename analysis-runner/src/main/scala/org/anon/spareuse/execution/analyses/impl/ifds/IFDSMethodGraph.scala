@@ -17,6 +17,8 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
 
   val methodIdentifier: MethodIdent = methodIdent
 
+  lazy val allBasicBlocks: Seq[VirtualStatementNode] = relevantStatementNodes
+
   lazy val allVariablesReturned: Set[IFDSFact] = statementNodes
     .collect {
       case rvsn: ReturnValueStatementNode if rvsn.variableReturned.isDefined =>
@@ -82,6 +84,18 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
     pcToStmtMap.put(sn.stmtPc, sn)
   }
 
+  def getEntryNode: Option[StatementNode] = {
+    val positivePCs = pcToStmtMap.keys.filter(_ >= 0)
+    if(positivePCs.isEmpty) None
+    else Some(pcToStmtMap(positivePCs.min))
+  }
+
+  def getEntryBlock: Option[VirtualStatementNode] = {
+    val positivePCBlocks = allBasicBlocks.filter(_.stmtPc >= 0)
+    if(positivePCBlocks.isEmpty) None
+    else Some(positivePCBlocks.minBy(_.stmtPc))
+  }
+
   def getStatement(pc: Int): Option[StatementNode] = pcToStmtMap.get(pc)
 
   def hasStatement(pc: Int): Boolean = pcToStmtMap.contains(pc)
@@ -99,7 +113,7 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
    * @return A set of virtual statement nodes corresponding to basic blocks - predecessors / successors are set correctly
    */
   def relevantStatementNodes: Seq[VirtualStatementNode] = {
-    val entryOpt = getStatement(0)
+    val entryOpt = getEntryNode
 
     if(entryOpt.isEmpty)
       return Seq.empty[VirtualStatementNode]
@@ -185,7 +199,7 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
 
   def print(): Unit = {
     val facts = this.allFacts.toSeq
-    val stmts = this.relevantStatementNodes
+    val stmts = this.allBasicBlocks
 
     val zeroColumnOffset = 5 + 4
 
@@ -250,7 +264,7 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
       FactRep(currId, currFact.uniqueIdent, currFact.displayName)
     }.toList
 
-    val stmts = if(squashIdentityStmts) relevantStatementNodes else statementNodes
+    val stmts = if(squashIdentityStmts) allBasicBlocks else statementNodes
 
     val stmtReps = stmts
       .map { s =>
@@ -550,6 +564,10 @@ class CallStatementNode(stmtPc: Int, stmtRep: String, callMethodName: String, ca
   override def isCallNode: Boolean = true
 
   override def asCallNode: CallStatementNode = this
+
+  override def allFactsInvolved: Set[IFDSFact] = {
+    super.allFactsInvolved ++ callParams.map(TaintVariableFacts.buildFact)
+  }
 
 }
 

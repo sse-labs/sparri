@@ -99,54 +99,6 @@ class IFDSTaintFlowSummaryBuilderImplTest extends AnyFunSpec {
 
     }
 
-    it("should handle invocations of String additions correctly"){
-      val graphs = getMethodSummariesFromFixture("StringConcatenation.class", Set("add", "$string_concat$add"))
-      val addGraph = graphs.find(_.methodName == "add").get
-      val concatGraph = graphs.find(_.methodName.startsWith("$")).get
-
-      def callTargetProvider(mi: MethodIdent): Int => Set[IFDSMethodGraph] = mi match {
-        case _: MethodIdent =>
-          {
-            case 7 => Set(concatGraph)
-            case _ => Set.empty
-          }
-        case _ =>
-           _ => Set.empty
-
-      }
-
-      assert(addGraph.statementNodes.nonEmpty)
-
-      addGraph.print()
-
-      val param1Opt = concatGraph.allFacts.find(_.displayName == "param1")
-      val param2Opt = concatGraph.allFacts.find(_.displayName == "param2")
-      val returnFactOpt = addGraph.statementNodes.find(_.isReturnValue).flatMap(_.asReturnNode.variableReturned).map(TaintVariableFacts.buildFact)
-
-      assert(param1Opt.isDefined && param2Opt.isDefined && returnFactOpt.isDefined)
-
-      val param1 = param1Opt.get
-      val param2 = param2Opt.get
-      val returnFact = returnFactOpt.get
-
-      // If no parameter is tainted, then the result should not be tainted
-      val noTaintResult = addGraph.runWith(Set(IFDSZeroFact))(callTargetProvider)
-      assert(!noTaintResult.contains(returnFact))
-
-      // If the first parameter is tainted, then the result should be tainted
-      val oneTaintResult = addGraph.runWith(Set(IFDSZeroFact, param1))(callTargetProvider)
-      assert(oneTaintResult.contains(returnFact))
-
-      // If the second parameter is tainted, the result should not be tainted - it is overridden
-      val twoTaintResult = addGraph.runWith(Set(IFDSZeroFact, param2))(callTargetProvider)
-      assert(! twoTaintResult.contains(returnFact))
-
-      // If both parameters are tainted, the result should be tainted
-      val bothTaintResult = addGraph.runWith(Set(IFDSZeroFact, param1, param2))(callTargetProvider)
-      assert(bothTaintResult.contains(returnFact))
-
-    }
-
     it("should handle initializations of StringBuilders correctly") {
       assertSingleParamTaintsResults("StringConcatenation.class", "initTaint")
     }

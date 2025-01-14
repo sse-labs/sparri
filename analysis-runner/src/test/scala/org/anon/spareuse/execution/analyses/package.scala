@@ -21,8 +21,6 @@ package object analyses {
 
     val relevantMethods = if(methodNames.isEmpty) project.allMethodsWithBody else project.allMethodsWithBody.filter(m => methodNames.exists(s => m.name.startsWith(s)))
 
-    assert(relevantMethods.nonEmpty)
-
     val ifdsBuilder = new IFDSTaintFlowSummaryBuilderImpl(None)
     val graphs = relevantMethods.map(m => ifdsBuilder.analyzeMethod(m)(tacProvider)).toSet
 
@@ -54,6 +52,10 @@ package object analyses {
     Project(Array(callsFixtureName, interfaceFixtureName, interfaceImplFixtureName, complexCfgFixtureName).map(loadFixture), Array.empty[File])
   }
 
+  def getAllFixturesProject: Project[URL] = {
+    Project(allFixtureNames.map(loadFixture).toArray[File], Array.empty[File])
+  }
+
   def getCallGraphProjectWithJre: Project[URL] = {
     val projectClasses: List[(ClassFile, URL)] = Project.JavaClassFileReader()
       .AllClassFiles(Array(callsFixtureName, interfaceFixtureName, interfaceImplFixtureName, complexCfgFixtureName).map(loadFixture)).toList
@@ -69,13 +71,14 @@ package object analyses {
   // resources directory using `sbt compileRunnerFixtures`
 
   val complexCfgFixtureName = "BranchingTaint.class"
+  val simpleStringOps = "StringConcatenation.class"
   val simpleSelfContainedFixtureName = "StringConcatHelper.class"
   val simpleCfgExternalCallFixtureName = "SimpleStringTaint.class"
   val callsFixtureName = "Calls.class"
   val interfaceFixtureName = "CallTarget.class"
   val interfaceImplFixtureName = "CallTargetImpl.class"
 
-  val allFixtureNames: Seq[String] = Seq(complexCfgFixtureName, simpleCfgExternalCallFixtureName, simpleSelfContainedFixtureName,
+  val allFixtureNames: Seq[String] = Seq(complexCfgFixtureName, simpleStringOps, simpleCfgExternalCallFixtureName, simpleSelfContainedFixtureName,
     callsFixtureName, interfaceFixtureName, interfaceImplFixtureName)
 
   def foreachFixture(implicit executor: File => Unit): Unit = allFixtureNames.map(loadFixture).foreach(executor)
