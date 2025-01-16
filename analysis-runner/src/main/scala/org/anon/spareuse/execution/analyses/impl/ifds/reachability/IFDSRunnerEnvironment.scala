@@ -66,23 +66,13 @@ class IFDSRunnerEnvironment private(cg: CallGraph, summaryLookup: Map[MethodIden
   }
 
   def getTargetMethodSummaries(csn: CallStatementNode, caller: MethodIdent): Set[IFDSMethodGraph] = {
+
     cg
-      .calleesOf(caller)
-      .collect {
-        case (csn.stmtPc, callee) =>
-          callee
-      }
-      .flatten
+      .calleesOf(caller, csn.stmtPc)
       .flatMap { calleeMethod =>
         assert(calleeMethod.methodName == csn.functionName && calleeMethod.descriptor == csn.descriptor)
-        if(!hasSummary(calleeMethod.methodIdentifier)){
-          log.warn(s"No summary for target method of call: ${calleeMethod.methodIdentifier}")
-          None
-        } else {
-          Some(getSummary(calleeMethod.methodIdentifier))
-        }
+        summaryLookup.get(calleeMethod.methodIdentifier)
       }
-      .toSet
   }
 
 }

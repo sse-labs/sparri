@@ -16,6 +16,7 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
   val methodDeclaringClassFqn: String = methodIdent.declaredType
 
   val methodIdentifier: MethodIdent = methodIdent
+  lazy val entryBlock: Option[VirtualStatementNode] = getEntryBlock
 
   lazy val allBasicBlocks: Seq[VirtualStatementNode] = relevantStatementNodes
 
@@ -25,6 +26,9 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
         TaintVariableFacts.buildFact(rvsn.variableReturned.get)
     }
     .toSet
+
+  lazy val parameterFacts: Set[ParameterTaintVariable] = getParameterFacts
+  lazy val parameterMap: Map[Int, ParameterTaintVariable] = parameterFacts.map(pf => (pf.parameterIdx, pf)).toMap
 
   private val pcToStmtMap: mutable.Map[Int, StatementNode] = new mutable.HashMap[Int, StatementNode]()
 
@@ -37,7 +41,7 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
 
   def allFacts: Set[IFDSFact] = pcToStmtMap.values.flatMap(_.allFactsInvolved).toSet ++ Set(IFDSZeroFact)
 
-  def parameterFacts: Set[ParameterTaintVariable] = allFacts.collect{ case x: ParameterTaintVariable => x }
+  def getParameterFacts: Set[ParameterTaintVariable] = allFacts.collect{ case x: ParameterTaintVariable => x }
 
   def isReturnNode(pc: Int): Boolean = pcToStmtMap.contains(pc) && pcToStmtMap(pc).isReturnValue
 
@@ -189,7 +193,7 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
     // Now that all BBs are final, update the predecessor and successor relations so they point to other BBs, not their
     // individual regular nodes
     bbList.foreach{ bb =>
-      bb.setPredecessors(bb.entryNode.getPredecessors.map(pred => pcToBBLookup(pred.stmtPc)))
+      bb.setPredecessors(bb.entryNode.getPredecessors.filter(pred => pcToBBLookup.contains(pred.stmtPc)).map(pred => pcToBBLookup(pred.stmtPc)))
       bb.setSuccessors(bb.getExitNode.getSuccessors.map(succ => pcToBBLookup(succ.stmtPc)))
     }
 
@@ -265,7 +269,6 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
     }.toList
 
     val stmts = if(squashIdentityStmts) allBasicBlocks else statementNodes
-
     val stmtReps = stmts
       .map { s =>
 
@@ -489,7 +492,10 @@ class StatementNode(val stmtPc: Int, val stmtRep: String) {
   def getFactsActivatedBy(fact: IFDSFact): Set[IFDSFact] = activations.filter(t => t._2.contains(fact)).keys.toSet
 
   def getFactsAfter(currentFacts: Set[IFDSFact]): Set[IFDSFact] = {
-    (currentFacts.filter(f => !hasActivation(f)) ++ currentFacts.flatMap(f => getFactsActivatedBy(f))).diff(getFactsKilled)
+    if(this.activations.nonEmpty)
+      (currentFacts.filter(f => !hasActivation(f)) ++ currentFacts.flatMap(f => getFactsActivatedBy(f))).diff(getFactsKilled)
+    else
+      currentFacts
   }
 
 

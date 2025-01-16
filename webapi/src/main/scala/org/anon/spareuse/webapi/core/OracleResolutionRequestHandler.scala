@@ -3,11 +3,13 @@ package org.anon.spareuse.webapi.core
 import org.anon.spareuse.core.storage.DataAccessor
 import org.anon.spareuse.execution.analyses.impl.cg.{InteractiveOracleAccessor, OracleCallGraphResolutionMode}
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.{LookupRequestRepresentation, OracleInteractionError}
+import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.FactRep
+import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts
 import org.anon.spareuse.execution.analyses.impl.ifds.reachability.IFDSMethodRunner
 import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.OracleState.OracleState
 import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.{ClientOracleInteractionException, InvalidSessionException, OracleSessionState, OracleState}
 import org.anon.spareuse.webapi.model.Session
-import org.anon.spareuse.webapi.model.oracle.{InitializeResolutionRequest, LookupResponse, PullLookupRequestsResponse, StartResolutionRequest, toModel}
+import org.anon.spareuse.webapi.model.oracle.{IFDSQueryRequest, InitializeResolutionRequest, LookupResponse, PullLookupRequestsResponse, StartResolutionRequest, toModel}
 
 import scala.collection.mutable
 import scala.concurrent.{ExecutionContext, Future}
@@ -157,6 +159,26 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
         invalidateSession(sessionUid)
         Failure(ex)
     }
+  }
+
+  def performQuery(sessionUid: String, query: IFDSQueryRequest): Try[Set[FactRep]] = ensureValidSession(sessionUid){ session =>
+    if(session.sessionState.ifdsRunner.isEmpty || session.sessionState.currentState != OracleState.WaitingForQueries)
+      throw ClientOracleInteractionException(session, "Illegal state, session is not (yet) ready to perform IFDS queries")
+
+    val methodToQuery = toModel(query.entryMethod)
+    val factsToQueryWith = query.factsActive.map(factRep => TaintVariableFacts.parseFact(factRep.identifier))
+    val runner = session.sessionState.ifdsRunner.get
+
+    if(runner.hasMethod(methodToQuery)){
+      Try{
+        runner
+          .resolveFrom(methodToQuery, factsToQueryWith)
+          .map(f => FactRep(-1, f.uniqueIdent, f.displayName)) //TODO: Retain unique IDs for fact representations if possible
+      }
+    } else {
+      Failure(ClientOracleInteractionException(session, s"Client queried for an unknown method: $methodToQuery"))
+    }
+
   }
 
   def close(sessionUid: String): Try[Unit] = ensureValidSession(sessionUid){ session =>

@@ -1,22 +1,17 @@
 package org.anon.spareuse.client.analyses
 
 import org.anon.spareuse.client.http.SparriOracleApiClient
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.LookupRequestRepresentation
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphResolutionMode
-import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
-import org.anon.spareuse.execution.analyses.impl.ifds.{IFDSMethodGraph, IFDSTaintFlowSummaryBuilderImpl, MethodTACProvider}
+import org.anon.spareuse.execution.analyses.impl.ifds.{IFDSTaintFlowSummaryBuilderImpl, IFDSZeroFact, MethodTACProvider}
 import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodWithSummaryRepr, LookupResponse, TypeNodeRepr}
-import org.opalj.ai.Domain
-import org.opalj.ai.domain.RecordDefUse
-import org.opalj.ai.fpcf.properties.AIDomainFactoryKey
-import org.opalj.br.{ClassFile, Method, MethodDescriptor}
+import org.opalj.br.{ClassFile, Method}
 import org.opalj.br.analyses.Project
-import org.opalj.br.fpcf.properties.Context
 import org.opalj.br.instructions.NEW
 import org.opalj.tac.ComputeTACAIKey
-import org.opalj.tac.cg.{CFA_1_1_CallGraphKey, CHACallGraphKey, RTACallGraphKey, XTACallGraphKey}
+import org.opalj.tac.cg.RTACallGraphKey
 
-import java.io.File
 import java.net.URL
 import java.nio.file.Path
 import scala.collection.mutable
@@ -26,7 +21,7 @@ import scala.util.{Failure, Success, Try}
 class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnalysis[Int](mavenProjectDir) {
 
   private val remoteAnalysisName: String = IFDSTaintFlowSummaryBuilderImpl.analysisName
-  private val remoteAnalysisVersion: String = "0.0.4"
+  private val remoteAnalysisVersion: String = "0.0.5"
 
   private val oracleApiClient: SparriOracleApiClient = new SparriOracleApiClient
 
@@ -75,6 +70,8 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
 
     implicit val provider: MethodTACProvider = p.get(ComputeTACAIKey)
 
+    val libraryEntryPoints = mutable.HashSet.empty[MethodIdent]
+
     Try(oracleApiClient.startOracleSession(dependencies, projectTypeNodes, allTypesInitialized, OracleCallGraphResolutionMode.NaiveRTA.id, Some("17"))) match {
       case Success(_) =>
         log.info(s"Successfully started resolution session with server, session-id = ${oracleApiClient.getToken.getOrElse("<NONE>")}")
@@ -108,6 +105,7 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
             case Success(_) =>
               log.info(s"Successfully started resolution for entrypoint $currEntry / $entryCnt")
               handleOracleInteractionUntilFinished(currentEntry, projectTypeMap)
+              libraryEntryPoints.add(currentEntry.methodCalled)
             case Failure(ex) =>
               log.error(s"Failed to start resolution at entrypoint: ${currentEntry.callingContext.descriptor.toJava(currentEntry.callingContext.name)} , PC=${currentEntry.ccPC}", ex)
           }
@@ -126,7 +124,21 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
             log.error(s"Failure during session finalization", ex)
         }
 
-        //TODO: Query library entry points at oracle
+        log.info(s"Starting to query ${libraryEntryPoints.size} library entry points")
+
+        libraryEntryPoints.foreach{ libEntry =>
+          //TODO: Properly discover valid facts for each entry point
+          oracleApiClient.doQuery(libEntry, Set(IFDSZeroFact)) match {
+            case Success(facts) =>
+              log.info(s"Invoking $libEntry resulted in facts: ${facts.map(_.displayName).mkString(",")}")
+            case Failure(ex) =>
+              if(!ex.getMessage.contains("unknown method"))
+                log.error(s"Failed to query library entry point $libEntry", ex)
+              else
+                log.error(s"Server did not know summary for $libEntry")
+          }
+
+        }
 
         oracleApiClient.closeSession() match {
           case Success(_) =>
@@ -154,8 +166,8 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
         case (caller, _, callee) =>
           !project.isProjectType(callee.method.declaringClassType) && project.isProjectType(caller.method.declaringClassType) && !callee.method.declaringClassType.fqn.startsWith("java")
       }.map{
-      case (callerCtx, pc, _) =>
-        EntryPoint(callerCtx.method.definedMethod, pc, Set.empty)
+      case (callerCtx, pc, callee) =>
+        EntryPoint(callerCtx.method.definedMethod, pc, Set.empty, MethodIdent(callee.method.declaringClassType.fqn, callee.method.name, callee.method.descriptor.toJVMDescriptor))
     }
       .toSet
   }
@@ -234,5 +246,5 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
     LookupResponse(request.requestId, targetsFound.toSet, typesWithNoDef.toSet, hasFatalErrors = false)
   }
 
-  private case class EntryPoint(callingContext: Method, ccPC: Int, typesInitialized: Set[String])
+  private case class EntryPoint(callingContext: Method, ccPC: Int, typesInitialized: Set[String], methodCalled: MethodIdent)
 }

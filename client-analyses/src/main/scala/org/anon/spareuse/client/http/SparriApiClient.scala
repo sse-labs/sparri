@@ -16,7 +16,7 @@ import scala.util.{Failure, Success, Try}
 import spray.json.enrichString
 
 import scala.concurrent.{Await, ExecutionContext}
-import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.{Duration, DurationInt}
 
 class SparriApiClient extends AutoCloseable with JsonSupport {
 
@@ -64,10 +64,10 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
     }
   }
 
-  private[http] def executeWithHeaders(request: HttpRequest, rawHeaders: Map[String, String] = Map.empty): Try[HttpResponse] = Try {
+  private[http] def executeWithHeaders(request: HttpRequest, rawHeaders: Map[String, String] = Map.empty, timeout: Duration = 20.seconds): Try[HttpResponse] = Try {
     val headers = rawHeaders.map{ case (name, value) => RawHeader(name, value)}.toSeq
 
-    val response = Await.result(Http().singleRequest(request.withHeaders(headers)), 20.seconds)
+    val response = Await.result(Http().singleRequest(request.withHeaders(headers)), timeout)
 
     if(response.status.intValue() == 404)
       throw NotFoundException(s"Got 404: ${request.getUri()}")
@@ -85,7 +85,7 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
   }
 
 
-  protected[http] def postJsonRaw(relPath: String, jsonBody: Option[String], rawHeaders: Map[String, String] = Map.empty): Try[HttpResponse] = {
+  protected[http] def postJsonRaw(relPath: String, jsonBody: Option[String], rawHeaders: Map[String, String] = Map.empty, timeout: Duration = 20.seconds): Try[HttpResponse] = {
     val headers = rawHeaders.map{ case (key, value) => RawHeader(key, value)}.toSeq
     var request = Post(buildUri(relPath)).withHeaders(headers)
 
@@ -93,15 +93,15 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
       request = request.withEntity(HttpEntity(ContentTypes.`application/json`, jsonBody.get))
     }
 
-    executeWithHeaders(request, rawHeaders)
+    executeWithHeaders(request, rawHeaders, timeout)
   }
 
-  protected[http] def postJsonAndReturnString(relPath: String, jsonBody: String, rawHeader: Map[String, String] = Map.empty): Try[String] = {
-    postJsonRaw(relPath, Some(jsonBody), rawHeader)
+  protected[http] def postJsonAndReturnString(relPath: String, jsonBody: String, rawHeader: Map[String, String] = Map.empty, timeout: Duration = 20.seconds): Try[String] = {
+    postJsonRaw(relPath, Some(jsonBody), rawHeader, timeout)
       .map{ response =>
         val code = response.status.intValue()
 
-        getStringEntity(response) match {
+        getStringEntity(response, timeout) match {
           case Success(stringEntity) =>
             if (code / 100 != 2)
               throw HttpResponseException(code, stringEntity)
@@ -114,18 +114,18 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
       }
   }
 
-  private[http] def getRaw(relPath: String, queryParams: Map[String, String] = Map.empty, rawHeaders: Map[String, String] = Map.empty): Try[HttpResponse] = {
+  private[http] def getRaw(relPath: String, queryParams: Map[String, String] = Map.empty, rawHeaders: Map[String, String] = Map.empty, timeout: Duration = 20.seconds): Try[HttpResponse] = {
     val get = Get(buildUri(relPath, queryParams))
 
-    executeWithHeaders(get, rawHeaders)
+    executeWithHeaders(get, rawHeaders, timeout)
   }
 
-  def getAsString(relPath: String, queryParams: Map[String, String] = Map.empty, rawHeader: Map[String, String] = Map.empty): Try[String] = {
-    getRaw(relPath, queryParams, rawHeader)
+  def getAsString(relPath: String, queryParams: Map[String, String] = Map.empty, rawHeader: Map[String, String] = Map.empty, timeout: Duration = 20.seconds): Try[String] = {
+    getRaw(relPath, queryParams, rawHeader, timeout)
       .map{ response =>
         val code = response.status.intValue()
 
-        getStringEntity(response) match {
+        getStringEntity(response, timeout) match {
           case Success(stringEntity) =>
             if (code / 100 != 2)
               throw HttpResponseException(code, stringEntity)
@@ -138,8 +138,8 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
       }
   }
 
-  private[http] def getStringEntity(response: HttpResponse): Try[String] = Try {
-    Await.result(response.entity.dataBytes.runFold(ByteString.empty)(_ ++ _).map(_.utf8String), 20.seconds)
+  private[http] def getStringEntity(response: HttpResponse, timeout: Duration = 20.seconds): Try[String] = Try {
+    Await.result(response.entity.dataBytes.runFold(ByteString.empty)(_ ++ _).map(_.utf8String), timeout)
   }
 
   override def close(): Unit = {

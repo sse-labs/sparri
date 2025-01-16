@@ -95,7 +95,7 @@ trait CallGraphBuilder {
     def calleesOf(dm: DefinedMethod): Iterable[(Int, Set[DefinedMethod])] = calleeMap.get(dm).map(_.map(t => (t._1, t._2.toSet)).toSeq).getOrElse(Seq.empty)
 
     def calleesOf(ident: MethodIdent, pc: Int): Set[DefinedMethod] = calleesOf(methodLookup(ident), pc)
-    def calleesOf(dm: DefinedMethod, pc: Int): Set[DefinedMethod] = calleeMap.get(dm).map( callSites => callSites.getOrElse(pc, throw new IllegalArgumentException(s"Not a callsite: $pc")).toSet).getOrElse(Set.empty[DefinedMethod])
+    def calleesOf(dm: DefinedMethod, pc: Int): Set[DefinedMethod] = calleeMap.get(dm).map( callSites => callSites.getOrElse(pc, Set.empty[DefinedMethod]).toSet).getOrElse(Set.empty[DefinedMethod])
 
     def callersOf(ident: MethodIdent): Set[DefinedMethod] = callersOf(methodLookup(ident))
     def callersOf(dm: DefinedMethod): Set[DefinedMethod] = callerMap.get(dm).map(_.toSet).getOrElse(Set.empty)

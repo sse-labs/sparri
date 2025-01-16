@@ -2,12 +2,15 @@ package org.anon.spareuse.client.http
 
 import akka.http.scaladsl.model.StatusCodes.{BadRequest, InternalServerError}
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaInvocationType
-import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
-import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodRepr, ApplicationMethodWithSummaryRepr, InitializeResolutionRequest, InvokeStmtRepr, LookupResponse, MethodIdentifierRepr, OracleJsonSupport, PullLookupRequestsResponse, StartResolutionRequest, TypeNodeRepr}
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
+import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.{FactRep, MethodIFDSRep}
+import org.anon.spareuse.execution.analyses.impl.ifds.{IFDSFact, TaintVariableFacts}
+import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodRepr, ApplicationMethodWithSummaryRepr, IFDSQueryRequest, InitializeResolutionRequest, InvokeStmtRepr, LookupResponse, MethodIdentifierRepr, OracleJsonSupport, PullLookupRequestsResponse, StartResolutionRequest, TypeNodeRepr}
 import org.opalj.br.instructions.{INVOKEDYNAMIC, INVOKEINTERFACE, INVOKESPECIAL, INVOKESTATIC, INVOKEVIRTUAL, NEW}
 import org.opalj.br.{Code, Method}
 import spray.json.{JsString, enrichAny, enrichString}
 
+import scala.concurrent.duration.DurationInt
 import scala.util.{Failure, Success, Try}
 
 class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
@@ -105,9 +108,31 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
     log.debug(s"Session finalized: ${sessionToken.get}")
   }
 
+  def doQuery(methodToQuery: MethodIdent, facts: Set[IFDSFact]): Try[Set[IFDSFact]] = {
+    val factRepresentations = facts.map(f => FactRep(-1, f.uniqueIdent, f.displayName))
+    val methodIdentRep = opalToApiModel(methodToQuery)
+
+    val request = IFDSQueryRequest(methodIdentRep, factRepresentations).toJson.compactPrint
+
+    Try {
+      val responseString = postJsonAndReturnString("/api/oracle/query",
+        request,
+        rawHeader = Map("session-id" -> sessionToken.get),
+        timeout = 60.seconds).get
+
+      responseString
+        .parseJson
+        .convertTo[Set[FactRep]]
+        .map(factRep => TaintVariableFacts.parseFact(factRep.identifier))
+    }
+  }
 
 
   def getToken: Option[String] = sessionToken
+
+  def opalToApiModel(methodIdent: MethodIdent): MethodIdentifierRepr = {
+    MethodIdentifierRepr(methodIdent.declaredType, methodIdent.methodName, methodIdent.methodDescriptor)
+  }
 
   def opalToApiModel(opalMethod: Method): ApplicationMethodRepr = {
     val ident = MethodIdentifierRepr(opalMethod.classFile.fqn, opalMethod.name, opalMethod.descriptor.toJVMDescriptor)

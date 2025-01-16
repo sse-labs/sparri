@@ -5,3 +5,4 @@ trait OracleJsonSupport extends ApplicationMethodReprJsonSupport
   with InitializeResolutionRequestJsonSupport
   with PullLookupRequestsResponseJsonSupport
   with LookupResponseJsonSupport
+  with IFDSQueryRequestJsonSupport

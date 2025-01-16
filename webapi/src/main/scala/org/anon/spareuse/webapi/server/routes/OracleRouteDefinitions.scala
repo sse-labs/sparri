@@ -6,7 +6,7 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler
 import org.anon.spareuse.webapi.core.OracleResolutionRequestHandler.{ClientOracleInteractionException, InvalidSessionException}
-import org.anon.spareuse.webapi.model.oracle.{InitializeResolutionRequest, LookupResponse, OracleJsonSupport, StartResolutionRequest}
+import org.anon.spareuse.webapi.model.oracle.{IFDSQueryRequest, InitializeResolutionRequest, LookupResponse, OracleJsonSupport, StartResolutionRequest}
 import org.slf4j.Logger
 import spray.json.{JsObject, enrichAny}
 
@@ -26,6 +26,7 @@ trait OracleRouteDefinitions extends OracleJsonSupport {
       path("pull-status"){ headerValueByName("session-id"){ sessionId => get { pullStatus(sessionId) }}} ~
       path("push-update"){ headerValueByName("session-id"){ sessionId => post { pushUpdate(sessionId) }}} ~
       path("finalize"){ headerValueByName("session-id"){ sessionId => post { finalize(sessionId) }}} ~
+      path("query"){ headerValueByName("session-id"){ sessionId => post { ifdsQuery(sessionId) }}} ~
       path("close"){ headerValueByName("session-id"){ sessionId => post { close(sessionId) }}}
     }
   }
@@ -118,6 +119,25 @@ trait OracleRouteDefinitions extends OracleJsonSupport {
         complete(BadRequest, coix.getMessage)
       case Failure(ex) =>
         log.error(s"Failed to finalize session $sessionId due to unknown server error", ex)
+        complete(InternalServerError)
+    }
+  }
+
+  private def ifdsQuery(sessionId: String): Route = entity(as[JsObject]){ e =>
+    log.debug(s"Client wants to query IFDS graph with session-id $sessionId")
+    val queryEntity = e.convertTo[IFDSQueryRequest]
+
+    oracleRequestHandler.performQuery(sessionId, queryEntity) match {
+      case Success(resultingFacts) =>
+        complete(resultingFacts.toJson.compactPrint)
+      case Failure(isx: InvalidSessionException) =>
+        log.warn(s"Invalid session Id provided: $sessionId", isx)
+        complete(BadRequest, "Invalid session ID")
+      case Failure(coix: ClientOracleInteractionException) =>
+        log.warn(s"Failed to query IFDS runner for $sessionId due to bad request(s) by client: ${coix.getMessage}")
+        complete(BadRequest, coix.getMessage)
+      case Failure(ex) =>
+        log.error("Failed to perform IFDS query", ex)
         complete(InternalServerError)
     }
   }
