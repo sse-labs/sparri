@@ -1,15 +1,12 @@
 package org.anon.spareuse.execution.analyses.impl.ifds.reachability
 
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraph
 import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.ifds.{CallStatementNode, IFDSFact, IFDSMethodGraph, StatementNode}
-import org.anon.spareuse.execution.analyses.impl.ifds.reachability.IFDSMethodRunner.CallGraph
-import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.mutable
 
 class IFDSRunnerEnvironment private(cg: CallGraph, summaryLookup: Map[MethodIdent, IFDSMethodGraph]) {
-
-  private final val log: Logger = LoggerFactory.getLogger(getClass)
 
   private val methodStatementsToFactMap: mutable.Map[MethodIdent, mutable.Map[Int, Set[IFDSFact]]] = mutable.Map.empty
   private val methodReturnFacts: mutable.Map[MethodIdent, mutable.Set[IFDSFact]] = mutable.Map.empty
@@ -28,7 +25,7 @@ class IFDSRunnerEnvironment private(cg: CallGraph, summaryLookup: Map[MethodIden
       methodStatementsToFactMap(method)(stmtIdx) = methodStatementsToFactMap(method)(stmtIdx).union(activations)
   }
 
-  def wasVisited(method: MethodIdent): Boolean = methodStatementsToFactMap.contains(method)
+  private def wasVisited(method: MethodIdent): Boolean = methodStatementsToFactMap.contains(method)
 
   def newActivationsAt(method: MethodIdent, stmtIdx: Int, activations: Set[IFDSFact]): Set[IFDSFact] = {
     val prevFacts = methodStatementsToFactMap.get(method).flatMap(_.get(stmtIdx)).getOrElse(Set.empty)

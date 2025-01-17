@@ -1,16 +1,16 @@
 package org.anon.spareuse.execution.analyses.impl.ifds.reachability
 
-import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder
+import org.anon.spareuse.execution.analyses.impl.cg.CallGraph
 import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.ifds.DefaultIFDSSummaryBuilder.MethodIFDSRep
-import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.{ParameterTaintVariable, TaintFunctionReturn}
+import org.anon.spareuse.execution.analyses.impl.ifds.TaintVariableFacts.TaintFunctionReturn
 import org.anon.spareuse.execution.analyses.impl.ifds.{IFDSFact, IFDSMethodGraph, IFDSZeroFact, StatementNode, TaintVariableFacts}
 import org.slf4j.{Logger, LoggerFactory}
 
 import scala.collection.mutable
 import scala.util.{Failure, Success, Try}
 
-class IFDSMethodRunner private(private[ifds] val environment: IFDSRunnerEnvironment){
+class IFDSMethodRunner (private[ifds] val environment: IFDSRunnerEnvironment){
 
   private final val log: Logger = LoggerFactory.getLogger(getClass)
 
@@ -180,7 +180,6 @@ class IFDSMethodRunner private(private[ifds] val environment: IFDSRunnerEnvironm
 }
 
 object IFDSMethodRunner {
-  private[reachability] type CallGraph = CallGraphBuilder#CallGraphView
 
   def apply(cg: CallGraph, summaryLookup: Map[MethodIdent, MethodIFDSRep]): IFDSMethodRunner = {
     val convertedLookup = Try( summaryLookup.view.mapValues(IFDSMethodGraph.apply).toMap )
