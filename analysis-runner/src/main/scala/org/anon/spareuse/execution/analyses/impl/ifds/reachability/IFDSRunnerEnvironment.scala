@@ -6,7 +6,7 @@ import org.anon.spareuse.execution.analyses.impl.ifds.{CallStatementNode, IFDSFa
 
 import scala.collection.mutable
 
-class IFDSRunnerEnvironment private(cg: CallGraph, summaryLookup: Map[MethodIdent, IFDSMethodGraph]) {
+class IFDSRunnerEnvironment private(cg: CallGraph, summaryLookup: Map[MethodIdent, IFDSMethodGraph], analyzeJRE: Boolean = false) {
 
   private val methodStatementsToFactMap: mutable.Map[MethodIdent, mutable.Map[Int, Set[IFDSFact]]] = mutable.Map.empty
   private val methodReturnFacts: mutable.Map[MethodIdent, mutable.Set[IFDSFact]] = mutable.Map.empty
@@ -67,9 +67,13 @@ class IFDSRunnerEnvironment private(cg: CallGraph, summaryLookup: Map[MethodIden
     cg
       .calleesOf(caller, csn.stmtPc)
       .flatMap { calleeMethod =>
-        assert(calleeMethod.methodName == csn.functionName && calleeMethod.descriptor == csn.descriptor)
         summaryLookup.get(calleeMethod.methodIdentifier)
       }
+      .filter{ graph => analyzeJRE || !isJavaType(graph.methodDeclaringClassFqn)}
+  }
+
+  private def isJavaType(typeName: String): Boolean = {
+    typeName.startsWith("java") || typeName.startsWith("sun") || typeName.startsWith("jdk")
   }
 
 }

@@ -17,7 +17,7 @@ lazy val dockerSettings = docker / dockerfile := {
 	new Dockerfile {
 		from("openjdk:16-jdk")
 		add(artifact, artifactTargetPath)
-		entryPoint("java", "-jar", "-Xmx8G", "-Xss128m", artifactTargetPath)
+		entryPoint("java", "-jar", "-Xmx12G", "-Xss64m", artifactTargetPath)
 	}
 }
 
