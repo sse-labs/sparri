@@ -2,9 +2,10 @@ package org.anon.spareuse.eval.lisi.rq3.wpa
 
 import org.anon.spareuse.client.analyses.LocalMavenClientAnalysis
 import org.anon.spareuse.core.maven.MavenJarDownloader
+import org.anon.spareuse.core.model.entities.conversion.OPALJavaConverter
 import org.anon.spareuse.core.opal.OPALProjectHelper
 import org.anon.spareuse.execution.analyses.impl.cg
-import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder
+import org.anon.spareuse.execution.analyses.impl.cg.{CallGraphBuilder, DefaultRTACallGraphBuilder, JreModelLoader}
 import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.{DefinedMethod, MethodIdent}
 import org.anon.spareuse.execution.analyses.impl.ifds.reachability.{IFDSMethodRunner, IFDSRunnerEnvironment}
 import org.anon.spareuse.execution.analyses.impl.ifds.{IFDSTaintFlowSummaryBuilderImpl, IFDSZeroFact, MethodTACProvider}
@@ -12,6 +13,7 @@ import org.opalj.ai.domain
 import org.opalj.ai.fpcf.properties.AIDomainFactoryKey
 import org.opalj.br.DeclaredMethod
 import org.opalj.br.analyses.Project
+import org.opalj.br.analyses.cg.ApplicationEntryPointsFinder
 import org.opalj.bytecode.RTJar
 import org.opalj.tac.ComputeTACAIKey
 import org.opalj.tac.cg.{CallGraph, RTACallGraphKey}
@@ -26,6 +28,8 @@ class WholeProgramIFDSAnalysis(mavenDir: Path) extends LocalMavenClientAnalysis[
 
   private val ifdsSummaryBuilder = new IFDSTaintFlowSummaryBuilderImpl(None)
 
+  private val jreDir: String = if(Files.exists(Paths.get("..", "jre-data"))) "../jre-data" else "jre-data"
+
   override def execute(): Try[Int] = {
     log.info(s"Analyzing Maven project at ${mavenDir.toAbsolutePath.toString}")
     log.info(s"Downloading project dependencies...")
@@ -36,115 +40,50 @@ class WholeProgramIFDSAnalysis(mavenDir: Path) extends LocalMavenClientAnalysis[
         log.info(s"Successfully obtained OPAL project instance.")
 
         log.info(s"Building RTA call graph for whole program...")
-        val theCg = opalProject.get(RTACallGraphKey)
-        log.info(s"Successfully obtained RTA call graph with ${theCg.reachableMethods().size} reachable methods.")
+        JreModelLoader.indexJreData(jreDir)
+        val projectRepresentation = OPALJavaConverter.convertProgram("local.project:1.0.0", "<default>",
+          opalProject.allClassFiles.toList, "<NONE>")
+        val cgBuilder = new DefaultRTACallGraphBuilder(Set(projectRepresentation), JreModelLoader.getDefaultJre.map(_.version).toOption)
+        val entryPoints = ApplicationEntryPointsFinder
+          .collectEntryPoints(opalProject)
+          .filter(m => opalProject.isProjectType(m.classFile.thisType))
+          .flatMap( epM => projectRepresentation.allMethods.find(m => m.name == epM.name && m.enclosingClass.get.thisType == epM.classFile.fqn && m.descriptor == epM.descriptor.toJVMDescriptor) )
+          .map(cgBuilder.asDefinedMethod)
+
+
+
+        entryPoints.zipWithIndex.foreach{ case (epM, idx) =>
+          log.info(s"Processing entrypoint ${epM.methodIdentifier} ($idx/${entryPoints.size})")
+          cgBuilder.buildFrom(epM)
+        }
+
+        val callGraph = cgBuilder.getGraph
+
+        log.info(s"Successfully obtained RTA call graph with ${callGraph.reachableMethods().size} reachable methods.")
+
 
         log.info(s"Building IFDS summaries ...")
         // Mapping of methods to their TAC
         implicit val TACAIProvider: MethodTACProvider = opalProject.get(ComputeTACAIKey)
-
-        val summaryDict = theCg
-          .reachableMethods()
-          .flatMap { ctx =>
-            if(ctx.method.hasSingleDefinedMethod){
-              val definedMethod = ctx.method.asDefinedMethod.definedMethod
-              Some(ifdsSummaryBuilder.analyzeMethod(definedMethod))
-            } else {
-              None
-            }
+        val summaryDict = opalProject
+          .allClassFiles
+          .flatMap(_.methods)
+          .map{ m =>
+            val ident = MethodIdent(m.classFile.fqn, m.name, m.descriptor.toJVMDescriptor)
+            (ident, ifdsSummaryBuilder.analyzeMethod(m))
           }
-          .map(graph => (graph.methodIdentifier, graph))
           .toMap
 
-        log.info(s"Done building IFDS summaries for ${summaryDict.size} reachable methods with body.")
+        log.info(s"Done building ${summaryDict.size} IFDS summaries")
+        val ifdsRunner = new IFDSMethodRunner(IFDSRunnerEnvironment(callGraph, summaryDict))
 
-        // We need to convert the OPAL CG into our internal representation so the IFDS solver can work with it
-        val cgInternal = new cg.CallGraph{
+        log.info(s"Running IFDS Queries...")
 
-          private val opalMethodLookup: Map[MethodIdent, DeclaredMethod] = theCg
-            .reachableMethods()
-            .map{ ctx =>
-              val ident = MethodIdent(ctx.method.declaringClassType.fqn, ctx.method.name, ctx.method.descriptor.toJVMDescriptor)
-              (ident, ctx.method)
-            }
-            .toMap
-
-          private val identLookup: Map[DeclaredMethod, MethodIdent] = opalMethodLookup.map{ case (key, value) => (value, key) }
-
-          private val methodLookup: Map[MethodIdent, CallGraphBuilder.DefinedMethod] = opalMethodLookup
-            .keys
-            .map{ ident =>
-              val opalMethod = opalMethodLookup(ident)
-              val isStatic = if(opalMethod.hasSingleDefinedMethod) opalMethod.asDefinedMethod.definedMethod.isStatic else false
-              val defM = new CallGraphBuilder.DefinedMethod(ident, isStatic, () => List.empty, () => List.empty)
-              (ident, defM)
-            }
-            .toMap
-
-          override def lookupMethod(ident: MethodIdent): CallGraphBuilder.DefinedMethod = methodLookup(ident)
-
-          override def reachableMethods(): Set[CallGraphBuilder.DefinedMethod] = methodLookup.values.toSet
-
-          override def calleesOf(dm: CallGraphBuilder.DefinedMethod): Iterable[(Int, Set[CallGraphBuilder.DefinedMethod])] = {
-            if(!opalMethodLookup.contains(dm.methodIdentifier)){
-              Iterable.empty
-            } else {
-              val opalMethod = opalMethodLookup(dm.methodIdentifier)
-              theCg
-                .calleesOf(opalMethod)
-                .map{ case (pc, targetIt) =>
-                  val internalTargets = targetIt.map(ctx => methodLookup(identLookup(ctx.method))).toSet
-                  (pc, internalTargets)
-                }.toSet
-            }
-          }
-
-          override def calleesOf(dm: CallGraphBuilder.DefinedMethod, pc: Int): Set[CallGraphBuilder.DefinedMethod] = {
-            if(!opalMethodLookup.contains(dm.methodIdentifier)){
-              Set.empty
-            } else {
-              val opalMethod = opalMethodLookup(dm.methodIdentifier)
-              theCg
-                .calleesOf(opalMethod, pc)
-                .map { ctx =>
-                  methodLookup(identLookup(ctx.method))
-                }
-                .toSet
-            }
-          }
-
-          override def callersOf(dm: CallGraphBuilder.DefinedMethod): Set[CallGraphBuilder.DefinedMethod] = {
-            if(!opalMethodLookup.contains(dm.methodIdentifier)){
-              Set.empty
-            } else {
-              val opalMethod = opalMethodLookup(dm.methodIdentifier)
-              theCg
-                .callersOf(opalMethod)
-                .iterator
-                .map { case (caller, _, _) =>
-                  methodLookup(identLookup(caller))
-                }
-                .toSet
-            }
-          }
+        entryPoints.zipWithIndex.foreach{ case (epM, idx) =>
+          log.info(s"Running IFDS solver for method ${epM.methodIdentifier.toString} ($idx / ${entryPoints.size})")
+          val resultingFacts = ifdsRunner.resolveFrom(epM.methodIdentifier, Set(IFDSZeroFact))
+          log.info(s"Running entry ${epM.methodIdentifier.toString} got fact: ${resultingFacts.map(_.displayName).mkString}")
         }
-
-        val ifdsRunner = new IFDSMethodRunner(IFDSRunnerEnvironment(cgInternal, summaryDict))
-
-        var entryCnt = 0
-
-        getLibraryEntryPoints(theCg, opalProject)
-          .foreach{ libEntry =>
-            log.info(s"Processing entry point #$entryCnt: ${libEntry.toJava}")
-            if(libEntry.hasSingleDefinedMethod){
-              val entryMethod = libEntry.asDefinedMethod.definedMethod
-              val ident = MethodIdent(entryMethod.classFile.fqn, entryMethod.name, entryMethod.descriptor.toJVMDescriptor)
-
-              val resultingFacts = ifdsRunner.resolveFrom(ident, Set(IFDSZeroFact))
-              log.info(s"Running entry ${ident.toString} got fact: ${resultingFacts.map(_.displayName).mkString}")
-            }
-            entryCnt += 1
-          }
         0
       }
 
@@ -155,7 +94,7 @@ class WholeProgramIFDSAnalysis(mavenDir: Path) extends LocalMavenClientAnalysis[
 
   private def initOPALProject(libDir: Path): Project[URL] = {
     val projectCfs = Project.JavaClassFileReader.AllClassFiles(Seq(classFilesDirectory))
-    val libCfs = Project.JavaClassFileReader.AllClassFiles(Seq(libDir.toFile, RTJar))
+    val libCfs = Project.JavaClassFileReader.AllClassFiles(Seq(libDir.toFile))
 
     log.info(s"Loaded ${projectCfs.size} project class files and ${libCfs.size} library class files")
 
@@ -170,20 +109,6 @@ class WholeProgramIFDSAnalysis(mavenDir: Path) extends LocalMavenClientAnalysis[
     project
   }
 
-  private def getLibraryEntryPoints(cg: CallGraph, project: Project[URL]): Set[DeclaredMethod] = {
-
-    cg
-      .reachableMethods()
-      .flatMap(ctx => cg.calleesOf(ctx.method).flatMap(t => t._2.map(t2 => (ctx, t._1, t2))))
-      .filter{
-        case (caller, _, callee) =>
-          !project.isProjectType(callee.method.declaringClassType) && project.isProjectType(caller.method.declaringClassType) && !callee.method.declaringClassType.fqn.startsWith("java")
-      }.map{
-        case (_, _, callee) =>
-          callee.method
-      }
-      .toSet
-  }
 
   private def buildLibDir(): Try[Path] = {
     val downloader = new MavenJarDownloader()
