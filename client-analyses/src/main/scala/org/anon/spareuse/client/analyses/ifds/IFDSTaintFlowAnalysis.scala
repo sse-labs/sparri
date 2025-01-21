@@ -1,16 +1,19 @@
-package org.anon.spareuse.client.analyses
+package org.anon.spareuse.client.analyses.ifds
 
+import org.anon.spareuse.client.analyses.LocalMavenClientAnalysis
 import org.anon.spareuse.client.http.SparriOracleApiClient
 import org.anon.spareuse.execution.analyses.impl.cg.CallGraphBuilder.MethodIdent
 import org.anon.spareuse.execution.analyses.impl.cg.InteractiveOracleAccessor.LookupRequestRepresentation
 import org.anon.spareuse.execution.analyses.impl.cg.OracleCallGraphResolutionMode
-import org.anon.spareuse.execution.analyses.impl.ifds.{IFDSTaintFlowSummaryBuilderImpl, IFDSZeroFact, MethodTACProvider}
+import org.anon.spareuse.execution.analyses.impl.ifds.reachability.IFDSMethodRunner
+import org.anon.spareuse.execution.analyses.impl.ifds.{IFDSFact, IFDSTaintFlowSummaryBuilderImpl, IFDSZeroFact, MethodTACProvider}
 import org.anon.spareuse.webapi.model.oracle.{ApplicationMethodWithSummaryRepr, LookupResponse, TypeNodeRepr}
-import org.opalj.br.{ClassFile, Method}
 import org.opalj.br.analyses.Project
+import org.opalj.br.analyses.cg.ApplicationEntryPointsFinder
 import org.opalj.br.instructions.NEW
+import org.opalj.br.{ClassFile, Method}
 import org.opalj.tac.ComputeTACAIKey
-import org.opalj.tac.cg.RTACallGraphKey
+import org.opalj.tac.cg.{CallGraph, RTACallGraphKey}
 
 import java.net.URL
 import java.nio.file.Path
@@ -47,6 +50,8 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
 
   override def execute(): Try[Int] = Try {
     val p = getOpalProject(loadJre = false)
+
+    val cg = p.get(RTACallGraphKey)
 
     val dependencies = mavenDependenciesTry.get.map(_.identifier.toString)
 
@@ -86,7 +91,7 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
         log.info(s"Oracle ready for interaction.")
 
         // Add all library entry points to a work stack
-        val entryPointsToProcess = mutable.Stack.from(getLibraryEntryPoints(p))
+        val entryPointsToProcess = mutable.Stack.from(getLibraryEntryPoints(p, cg))
 
         val entryCnt = entryPointsToProcess.size
         var currEntry = 0
@@ -124,18 +129,19 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
             log.error(s"Failure during session finalization", ex)
         }
 
-        log.info(s"Starting to query ${libraryEntryPoints.size} library entry points")
+        val allQueries = getFactsAtLibraryEntryPoints(p, cg, libraryEntryPoints.toSet)
 
-        libraryEntryPoints.foreach{ libEntry =>
-          //TODO: Properly discover valid facts for each entry point
-          oracleApiClient.doQuery(libEntry, Set(IFDSZeroFact)) match {
+        log.info(s"Starting to query ${allQueries.size} library entry points")
+
+        allQueries.foreach{ libEntryQuery =>
+          oracleApiClient.doQuery(libEntryQuery.ident, libEntryQuery.factsAtEntry) match {
             case Success(facts) =>
-              log.info(s"Invoking $libEntry resulted in facts: ${facts.map(_.displayName).mkString(",")}")
+              log.info(s"Invoking ${libEntryQuery.ident} resulted in facts: ${facts.map(_.displayName).mkString(",")}")
             case Failure(ex) =>
               if(!ex.getMessage.contains("unknown method"))
-                log.error(s"Failed to query library entry point $libEntry", ex)
+                log.error(s"Failed to query library entry point ${libEntryQuery.ident}", ex)
               else
-                log.error(s"Server did not know summary for $libEntry")
+                log.error(s"Server did not know summary for ${libEntryQuery.ident}")
           }
 
         }
@@ -155,10 +161,7 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
 
   }
 
-  private def getLibraryEntryPoints(project: Project[URL]): Set[EntryPoint] = {
-
-    val cg = project.get(RTACallGraphKey)
-
+  private def getLibraryEntryPoints(project: Project[URL], cg: CallGraph): Set[EntryPoint] = {
     cg
       .reachableMethods()
       .flatMap(ctx => cg.calleesOf(ctx.method).flatMap(t => t._2.map(t2 => (ctx, t._1, t2))))
@@ -244,6 +247,37 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
     noOfTargetsSent += targetsFound.size
 
     LookupResponse(request.requestId, targetsFound.toSet, typesWithNoDef.toSet, hasFatalErrors = false)
+  }
+
+  private def getFactsAtLibraryEntryPoints(opalProject: Project[URL],
+                                           cg: CallGraph,
+                                           libraryEntryPoints: Set[MethodIdent])(implicit provider: MethodTACProvider): Set[IFDSQuery] = {
+    val programEntryPoints = ApplicationEntryPointsFinder
+      .collectEntryPoints(opalProject)
+      .map(m => MethodIdent(m.classFile.fqn, m.name, m.descriptor.toJVMDescriptor))
+
+    log.info(s"Found ${programEntryPoints.size} program entry points.")
+
+    log.info(s"Building remaining summaries...")
+    val summaryDict = opalProject
+      .allProjectClassFiles
+      .flatMap(_.methods)
+      .flatMap { method =>
+        val ident = MethodIdent(method.classFile.fqn, method.name, method.descriptor.toJVMDescriptor)
+        Some(ident, taintFlowSummaryBuilder.analyzeMethod(method))
+      }
+      .toMap
+
+    log.info("Detecting facts at library entry points ...")
+    val modularRunnerEnv = new ModularIFDSRunnerEnvironment(cg, summaryDict, libraryEntryPoints)
+    val modularIFDSRunner = new IFDSMethodRunner(modularRunnerEnv)
+    programEntryPoints
+      .foreach{ programEntry =>
+        modularIFDSRunner.resolveFrom(programEntry, Set(IFDSZeroFact))
+      }
+    log.info(s"Done detecting facts at library entry points.")
+
+    modularRunnerEnv.getAllQueries
   }
 
   private case class EntryPoint(callingContext: Method, ccPC: Int, typesInitialized: Set[String], methodCalled: MethodIdent)

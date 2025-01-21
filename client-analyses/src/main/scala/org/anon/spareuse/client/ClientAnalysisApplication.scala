@@ -1,6 +1,6 @@
 package org.anon.spareuse.client
 
-import org.anon.spareuse.client.analyses.IFDSTaintFlowAnalysis
+import org.anon.spareuse.client.analyses.ifds.IFDSTaintFlowAnalysis
 import org.slf4j.{Logger, LoggerFactory}
 
 import java.io.File

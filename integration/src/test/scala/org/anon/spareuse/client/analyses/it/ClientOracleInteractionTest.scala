@@ -6,7 +6,7 @@ import com.dimafeng.testcontainers.{GenericContainer, PostgreSQLContainer, Rabbi
 import org.scalatest.flatspec.AnyFlatSpec
 import org.slf4j.{Logger, LoggerFactory}
 import com.dimafeng.testcontainers.scalatest.TestContainersForAll
-import org.anon.spareuse.client.analyses.IFDSTaintFlowAnalysis
+import org.anon.spareuse.client.analyses.ifds.IFDSTaintFlowAnalysis
 import org.testcontainers.Testcontainers
 import org.testcontainers.containers.wait.strategy.LogMessageWaitStrategy
 
