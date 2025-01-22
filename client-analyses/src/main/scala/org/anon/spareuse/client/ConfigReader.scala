@@ -9,6 +9,20 @@ object ConfigReader {
 
   private[client] lazy val baseConfig = ConfigFactory.load()
 
+  def getMavenHome: String = {
+    val homeProp = System.getProperty("SPARRI_MVN_HOME")
+    if(homeProp != null) homeProp
+    else {
+      val homeEnv = System.getenv("maven.home")
+      if(homeEnv != null) homeEnv
+      else {
+        val path = prefix + "mvn-home"
+        if(baseConfig.hasPath(path)) baseConfig.getString(path)
+        else throw new IllegalArgumentException(s"Maven home not set. Use System property (SPARRI_MVN_HOME), environment variable (maven.home) or config ($path) to set Maven home directory")
+      }
+    }
+  }
+
   def getSparriHost: String = {
     val hostProp = System.getProperty("SPARRI_API_HOST")
     if(hostProp != null) hostProp

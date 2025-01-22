@@ -1,5 +1,6 @@
 package org.anon.spareuse.client.analyses
 
+import org.anon.spareuse.client.ConfigReader
 import org.anon.spareuse.client.http.SparriApiClient
 import org.anon.spareuse.core.maven.{MavenDependencyIdentifier, MavenIdentifier}
 import org.anon.spareuse.core.model.entities.JavaEntities.JavaProgram
@@ -52,7 +53,7 @@ abstract class ClientAnalysis[T](protected val classFilesDirectory: File, protec
       request.setProperties(props)
 
       val invoker = new DefaultInvoker
-      invoker.setMavenHome(new File("C:\\Program Files\\Java\\apache-maven-3.8.1")) //TODO: Make this configurable
+      invoker.setMavenHome(new File(ConfigReader.getMavenHome))
       invoker.setOutputHandler(null)
       val result = invoker.execute(request)
 
