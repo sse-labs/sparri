@@ -125,7 +125,17 @@ lazy val `client-analyses` = (project in file("client-analyses"))
 		assembly / mainClass := Some("org.anon.spareuse.client.ClientAnalysisApplication"),
 		assembly / assemblyJarName := "client-analyses.jar",
 		mergeStrategySettings,
-		dockerSettings,
+		docker / dockerfile := {
+
+			val artifact: File = assembly.value
+			val artifactTargetPath = s"/app/${artifact.name}"
+
+			new Dockerfile {
+				from("maven:3.8.3-openjdk-16")
+				add(artifact, artifactTargetPath)
+				entryPoint("java", "-DSPARRI_MVN_HOME=\"/usr/share/maven\"", "-jar", "-Xmx12G", "-Xss64m", artifactTargetPath)
+			}
+		},
 
 		docker / imageNames := Seq(ImageName("spar-analyses"))
 	)
