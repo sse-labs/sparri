@@ -17,7 +17,7 @@ lazy val dockerSettings = docker / dockerfile := {
 	new Dockerfile {
 		from("openjdk:16-jdk")
 		add(artifact, artifactTargetPath)
-		entryPoint("java", "-jar", "-Xmx12G", "-Xss64m", artifactTargetPath)
+		entryPoint("java", "-jar", "-Xmx24G", "-Xss128m", artifactTargetPath)
 	}
 }
 
@@ -133,7 +133,7 @@ lazy val `client-analyses` = (project in file("client-analyses"))
 			new Dockerfile {
 				from("maven:3.8.3-openjdk-16")
 				add(artifact, artifactTargetPath)
-				entryPoint("java", "-DSPARRI_MVN_HOME=\"/usr/share/maven\"", "-jar", "-Xmx12G", "-Xss64m", artifactTargetPath)
+				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-jar", "-Xmx12G", "-Xss64m", artifactTargetPath)
 			}
 		},
 
