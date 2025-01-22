@@ -133,7 +133,7 @@ lazy val `client-analyses` = (project in file("client-analyses"))
 			new Dockerfile {
 				from("maven:3.8.3-openjdk-16")
 				add(artifact, artifactTargetPath)
-				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-jar", "-Xmx12G", "-Xss64m", artifactTargetPath)
+				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-jar", "-Xmx8G", "-Xss64m", artifactTargetPath)
 			}
 		},
 
@@ -165,7 +165,7 @@ lazy val webapi = (project in file("webapi"))
 				from("openjdk:16-jdk")
 				add(artifact, artifactTargetPath)
 				add(jreData, "/jre-data/")
-				entryPoint("java", "-jar", "-Xmx8G", "-Xss128m", artifactTargetPath)
+				entryPoint("java", "-jar", "-Xmx24G", "-Xss128m", artifactTargetPath)
 			}
 		},
 
@@ -180,7 +180,7 @@ lazy val evaluation = (project in file("evaluation"))
 
 		publish / skip := true,
 
-		assembly / mainClass := Some ("org.anon.spareuse.eval.performance.PerformanceEvaluationApp"),
+		assembly / mainClass := Some ("org.anon.spareuse.eval.lisi.rq3.wpa.WholeProgramIFDSAnalysisRunner"),
 		assembly / assemblyJarName := "spar-evaluation.jar",
 		mergeStrategySettings,
 
@@ -190,13 +190,14 @@ lazy val evaluation = (project in file("evaluation"))
 			val artifactTargetPath = s"/app/${artifact.name}"
 
 			new Dockerfile {
-				from("openjdk:16-jdk")
+				from("maven:3.8.3-openjdk-16")
 				add(artifact, artifactTargetPath)
-				entryPoint("java", "-jar", "-Xmx8G", "-Xss128m", artifactTargetPath)
+				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-jar", "-Xmx8G", "-Xss64m", artifactTargetPath)
 			}
 		},
 
-		docker / imageNames := Seq(ImageName(s"spar-evaluation:latest"))
+
+		docker / imageNames := Seq(ImageName(s"lisi-evaluation:latest"))
 
 	)
 
