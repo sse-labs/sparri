@@ -57,8 +57,10 @@ abstract class ClientAnalysis[T](protected val classFilesDirectory: File, protec
       invoker.setOutputHandler(null)
       val result = invoker.execute(request)
 
-      if(result.getExitCode != 0)
-        throw new IllegalStateException(s"Failed to invoke maven")
+      if(result.getExitCode != 0) {
+        val exception = if(result.getExecutionException != null) result.getExecutionException.getMessage else "UNKOWN"
+        throw new IllegalStateException(s"Failed to invoke maven: Status Code ${result.getExitCode}: $exception")
+      }
 
       val resultLines = Files.readAllLines(outFile)
 

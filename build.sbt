@@ -131,7 +131,7 @@ lazy val `client-analyses` = (project in file("client-analyses"))
 			new Dockerfile {
 				from("maven:3.8.3-openjdk-16")
 				add(artifact, artifactTargetPath)
-				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-jar", "-Xmx14G", "-Xss64m", artifactTargetPath)
+				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-Xlog:gc*:file=/app/stats/gc.log:time", "-jar", "-Xmx14G", "-Xss64m", artifactTargetPath)
 			}
 		},
 
@@ -192,7 +192,7 @@ lazy val evaluation = (project in file("evaluation"))
 				from("maven:3.8.3-openjdk-16")
 				add(artifact, artifactTargetPath)
 				add(jreData, "/jre-data/")
-				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-jar", "-Xmx14G", "-Xss64m", artifactTargetPath)
+				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-Xlog:gc*:file=/app/stats/gc.log:time", "-jar", "-Xmx14G", "-Xss64m", artifactTargetPath)
 			}
 		},
 
