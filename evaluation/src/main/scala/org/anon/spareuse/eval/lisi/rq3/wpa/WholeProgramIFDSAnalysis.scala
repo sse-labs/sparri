@@ -30,7 +30,7 @@ class WholeProgramIFDSAnalysis(mavenDir: Path) extends LocalMavenClientAnalysis[
 
   private val jreDir: String = if(Files.exists(Paths.get("..", "jre-data"))) "../jre-data" else "jre-data"
 
-  override def execute(): Try[Int] = {
+  override def execute(arguments: Array[String]): Try[Int] = {
     log.info(s"Analyzing Maven project at ${mavenDir.toAbsolutePath.toString}")
     log.info(s"Downloading project dependencies...")
     buildLibDir()
@@ -156,7 +156,7 @@ object WholeProgramIFDSAnalysisRunner  {
 
     val theAnalysis = new WholeProgramIFDSAnalysis(Paths.get(args(0)))
     theAnalysis.initialize()
-    theAnalysis.execute() match {
+    theAnalysis.execute(Array.empty[String]) match {
       case Success(result) =>
         log.info(s"Analysis finished successfully")
         System.exit(result)

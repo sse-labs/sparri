@@ -16,7 +16,7 @@ if [ ! -d "$OUTPUT_PATH" ]; then
 fi
 
 START=$(date +%s)
-docker run --rm -v "${PROJECT_PATH}:/app/input/" -v "${OUTPUT_PATH}:/app/stats" -v "${HOME}/.m2/:/root/.m2" --name sparri-modular-taint spar-analyses /app/input
+docker run --rm -v "${PROJECT_PATH}:/app/input/" -v "${OUTPUT_PATH}:/app/stats" -v "${HOME}/.m2/:/root/.m2" --name sparri-modular-taint spar-analyses /app/input /app/stats
 END=$(date +%s)
 
 # Extract real execution time in seconds

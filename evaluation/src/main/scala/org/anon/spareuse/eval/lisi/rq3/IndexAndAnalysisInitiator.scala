@@ -14,7 +14,7 @@ import scala.util.{Failure, Success, Try}
 object IndexAndAnalysisInitiator {
 
   class DependencyAnalysis(classDir: File, pomFile: File) extends ClientAnalysis[Set[MavenDependencyIdentifier]](classDir, pomFile){
-    override def execute(): Try[Set[MavenDependencyIdentifier]] = super.getAllDependencies
+    override def execute(arguments: Array[String]): Try[Set[MavenDependencyIdentifier]] = super.getAllDependencies
 
     override def requirements: Seq[AnalysisRequirement] = Seq.empty
   }
@@ -31,7 +31,7 @@ object IndexAndAnalysisInitiator {
 
     val analysis = new DependencyAnalysis(classDir, pomFile)
 
-    analysis.execute()
+    analysis.execute(Array.empty[String])
   }
 
   def main(args: Array[String]): Unit = {

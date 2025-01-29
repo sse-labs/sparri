@@ -38,7 +38,7 @@ abstract class ClientAnalysis[T](protected val classFilesDirectory: File, protec
     log.info(s"Successfully initialized.")
   }
 
-  def execute(): Try[T]
+  def execute(arguments: Array[String]): Try[T]
 
   protected[analyses] def getAllDependencies: Try[Set[MavenDependencyIdentifier]] = {
     val outFile = Files.createTempFile("dependencies", ".txt")

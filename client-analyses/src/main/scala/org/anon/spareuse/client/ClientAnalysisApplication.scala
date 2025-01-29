@@ -12,14 +12,17 @@ object ClientAnalysisApplication {
   private final val log: Logger = LoggerFactory.getLogger(getClass)
 
   def main(args: Array[String]): Unit = {
-    if(args.length != 1) throw new IllegalArgumentException(s"Usage: ClientAnalysisApplication <maven-project-root>")
+    if(args.length < 1) throw new IllegalArgumentException(s"Usage: ClientAnalysisApplication <maven-project-root> [<extra-args>*]")
 
     val theAnalysis = new IFDSTaintFlowAnalysis(Paths.get(args(0)))
 
     if(theAnalysis.checkRequirements()){
       log.info("Analysis requirements are met.")
+
+      val extraArgs = args.drop(1)
+
       theAnalysis.initialize()
-      theAnalysis.execute() match {
+      theAnalysis.execute(extraArgs) match {
         case Success(_) =>
           log.info(s"Successfully finished analysis execution")
         case Failure(ex) =>

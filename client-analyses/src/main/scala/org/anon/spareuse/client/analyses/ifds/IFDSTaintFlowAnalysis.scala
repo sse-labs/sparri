@@ -16,11 +16,11 @@ import org.opalj.tac.ComputeTACAIKey
 import org.opalj.tac.cg.{CallGraph, RTACallGraphKey}
 
 import java.net.URL
-import java.nio.file.Path
+import java.nio.file.{Files, Path, Paths}
 import scala.collection.mutable
+import scala.jdk.CollectionConverters.IterableHasAsJava
 import scala.util.{Failure, Success, Try}
 
-//TODO: Build a return type / warning
 class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnalysis[Int](mavenProjectDir) {
 
   private val remoteAnalysisName: String = IFDSTaintFlowSummaryBuilderImpl.analysisName
@@ -48,7 +48,7 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
       .map(dep => AnalysisRequirement(dep.identifier.toGA + "!" + dep.identifier.version, remoteAnalysisName, remoteAnalysisVersion))
       .toSeq
 
-  override def execute(): Try[Int] = Try {
+  override def execute(arguments: Array[String]): Try[Int] = Try {
     val p = getOpalProject(loadJre = false)
 
     val cg = p.get(RTACallGraphKey)
@@ -117,18 +117,20 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
           currEntry += 1
         }
 
+        var durationMainLoop = (System.currentTimeMillis() - startTime) / 1000
         oracleApiClient.finalizeSession() match {
           case Success(_) =>
-            val durationSeconds = (System.currentTimeMillis() - startTime) / 1000
+            durationMainLoop = (System.currentTimeMillis() - startTime) / 1000
             log.info(s"Successfully finalized resolution session. Stats:")
             log.info(s"\t - Number of lookup request by oracle: $noOfLookups")
             log.info(s"\t - Number of methods summarized: $noOfMethodsAnalyzed")
             log.info(s"\t - Number of method summaries sent to oracle: $noOfTargetsSent")
-            log.info(s"\t - Duration of main resolution loop: $durationSeconds sec")
+            log.info(s"\t - Duration of main resolution loop: $durationMainLoop sec")
           case Failure(ex) =>
             log.error(s"Failure during session finalization", ex)
         }
 
+        val queryStart = System.currentTimeMillis()
         val allQueries = getFactsAtLibraryEntryPoints(p, cg, libraryEntryPoints.toSet)
 
         log.info(s"Starting to query ${allQueries.size} library entry points")
@@ -145,6 +147,27 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
           }
 
         }
+
+        val queryDuration = (System.currentTimeMillis() - queryStart) / 1000
+
+        if(arguments.nonEmpty){
+          val outPath = Paths.get(arguments(0))
+          if(!outPath.toFile.exists() || !outPath.toFile.isDirectory){
+            log.error(s"Cannot write statistics to file, the given output directory is not valid: ${arguments(0)}")
+          } else {
+            val statistics = Map(
+              "lookup-requests-received" -> noOfLookups,
+              "methods-summarized-on-demand" -> noOfMethodsAnalyzed,
+              "methods-summaries-sent" -> noOfTargetsSent,
+              "duration-main-loop-seconds" -> durationMainLoop,
+              "duration-query-loop" -> queryDuration
+            )
+            val outFile = outPath.resolve("modular-stats.log")
+            Files.write(outFile, statistics.map{ case (k,v) => s"$k: $v"}.toSeq.asJava)
+          }
+        }
+
+
 
         oracleApiClient.closeSession() match {
           case Success(_) =>
