@@ -87,8 +87,6 @@ lazy val `analysis-runner` = (project in file("analysis-runner"))
 
 			val artifact: File = assembly.value
 			val jreData: File = baseDirectory.value / ".." / "jre-data"
-			println(artifact)
-			println(jreData)
 			val artifactTargetPath = s"/app/${artifact.name}"
 
 			new Dockerfile {
@@ -187,11 +185,13 @@ lazy val evaluation = (project in file("evaluation"))
 		docker / dockerfile := {
 
 			val artifact: File = assembly.value
+			val jreData: File = baseDirectory.value / ".." / "jre-data"
 			val artifactTargetPath = s"/app/${artifact.name}"
 
 			new Dockerfile {
 				from("maven:3.8.3-openjdk-16")
 				add(artifact, artifactTargetPath)
+				add(jreData, "/jre-data/")
 				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-jar", "-Xmx8G", "-Xss64m", artifactTargetPath)
 			}
 		},
