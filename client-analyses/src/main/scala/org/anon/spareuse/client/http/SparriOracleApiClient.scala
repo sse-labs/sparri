@@ -118,7 +118,7 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
       val responseString = postJsonAndReturnString("/api/oracle/query",
         request,
         rawHeader = Map("session-id" -> sessionToken.get),
-        timeout = 60.seconds).get
+        timeout = 180.seconds).get
 
       responseString
         .parseJson

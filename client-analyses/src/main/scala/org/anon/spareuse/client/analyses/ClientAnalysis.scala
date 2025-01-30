@@ -78,7 +78,7 @@ abstract class ClientAnalysis[T](protected val classFilesDirectory: File, protec
           val scope = matcher.group(4).substring(1)
           val gav = s"$groupId:$artifactId:$version".trim
           log.info(s"Found project dependency: $gav")
-          Some(MavenDependencyIdentifier(MavenIdentifier.fromGAV(gav).get, scope))
+          MavenIdentifier.fromGAV(gav).map(ident => MavenDependencyIdentifier(ident, scope))
         } else None
       }
         .filter(_.isDefined)
