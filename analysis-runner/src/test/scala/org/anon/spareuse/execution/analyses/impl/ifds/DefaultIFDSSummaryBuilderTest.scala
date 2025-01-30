@@ -19,8 +19,7 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
       assert(allMethods.size == 3)
       var stmtCnt = 0
 
-      val ifdsBuilder = createDummyBuilder(None){ (node, _, _) =>
-        println(node.stmtRep)
+      val ifdsBuilder = createDummyBuilder(None){ (_, _, _) =>
         stmtCnt += 1
       }
 
@@ -47,13 +46,11 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
       assert(mainGraph.statementNodes.size == 7)
       assert(mainGraph.hasStatement(0))
 
-      // First statement of this fixture's main method is a assignment
       val firstStmt = mainGraph.getStatement(0).get
-      assert(firstStmt.stmtRep.startsWith("Assignment("))
 
       // The main method has no branches at all, so all statements have exactly one successor and one / zero predecessors
       var currNode = firstStmt
-      while(!currNode.stmtRep.startsWith("Return(")){
+      while(!currNode.isReturnValue && currNode.getSuccessors.nonEmpty){
         assert(currNode.getSuccessors.size == 1)
         assert(currNode.getPredecessors.size <= 1)
         currNode = currNode.getSuccessors.head
@@ -96,13 +93,12 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
       assert(allMethods.size == 3)
 
       val ifdsBuilder = createDummyBuilder(None) { (node, _, _) =>
-        println(node.stmtRep)
+        println(node.stmtPc)
       }
 
       val mainGraph = ifdsBuilder.analyzeMethod(allMethods.find(_.name == "main").get)(tacProvider)
       assert(mainGraph.hasStatement(0))
       val firstStmt = mainGraph.getStatement(0).get
-      assert(firstStmt.stmtRep.startsWith("Assignment("))
 
       var currNode = firstStmt
       while(currNode.stmtPc != 14){
@@ -111,8 +107,6 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
         currNode = currNode.getSuccessors.head
       }
 
-      // Make sure there is an if statement at PC 14
-      assert(currNode.stmtRep.startsWith("If("))
       // An IF must have two successors
       assert(currNode.getSuccessors.size == 2)
       assert(currNode.getSuccessors.exists(_.stmtPc == 17))
@@ -136,8 +130,6 @@ class DefaultIFDSSummaryBuilderTest extends AnyFunSpec {
         currNode = currNode.getSuccessors.head
       }
 
-      // Make sure there is an if statement at PC 31, ie start of the loop
-      assert(currNode.stmtRep.startsWith("If("))
       // An IF must have two successors
       assert(currNode.getSuccessors.size == 2)
       assert(currNode.getPredecessors.head.getPredecessors.size == 2) // Two statements lead to the loop head

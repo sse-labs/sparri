@@ -41,7 +41,7 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
 
   def allFacts: Set[IFDSFact] = pcToStmtMap.values.flatMap(_.allFactsInvolved).toSet ++ Set(IFDSZeroFact)
 
-  def getParameterFacts: Set[ParameterTaintVariable] = allFacts.collect{ case x: ParameterTaintVariable => x }
+  private[ifds] def getParameterFacts: Set[ParameterTaintVariable] = allFacts.collect{ case x: ParameterTaintVariable => x }
 
   def isReturnNode(pc: Int): Boolean = pcToStmtMap.contains(pc) && pcToStmtMap(pc).isReturnValue
 
@@ -88,7 +88,7 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
     pcToStmtMap.put(sn.stmtPc, sn)
   }
 
-  def getEntryNode: Option[StatementNode] = {
+  private[ifds] def getEntryNode: Option[StatementNode] = {
     val positivePCs = pcToStmtMap.keys.filter(_ >= 0)
     if(positivePCs.isEmpty) None
     else Some(pcToStmtMap(positivePCs.min))
@@ -286,13 +286,13 @@ class IFDSMethodGraph(methodIdent: MethodIdent) {
             InternalVariableRep(v.variableName, v.defSites.toList)
           }.toList
           val receiverOpt = csn.receiver.map(v => InternalVariableRep(v.variableName, v.defSites.toList))
-          StatementRep(csn.stmtPc, false, csn.stmtRep, predecessors, csn.functionName, csn.descriptor, csn.declaringClassFqn, parameterReps, receiverOpt.getOrElse(InternalVariableRep("", List.empty)), InternalVariableRep("", List.empty), activations)
+          StatementRep(csn.stmtPc, false, "<NONE>", predecessors, csn.functionName, csn.descriptor, csn.declaringClassFqn, parameterReps, receiverOpt.getOrElse(InternalVariableRep("", List.empty)), InternalVariableRep("", List.empty), activations)
         } else if(s.isReturnValue){
           val rvsn = s.asReturnNode
           val retVar = rvsn.variableReturned.map(r => InternalVariableRep(r.variableName, r.defSites.toList))
-          StatementRep(rvsn.stmtPc, true, rvsn.stmtRep, predecessors, "", "", "", List.empty, InternalVariableRep("", List.empty), retVar.getOrElse(InternalVariableRep("", List.empty)), activations)
+          StatementRep(rvsn.stmtPc, true, "<NONE>", predecessors, "", "", "", List.empty, InternalVariableRep("", List.empty), retVar.getOrElse(InternalVariableRep("", List.empty)), activations)
         } else {
-          StatementRep(s.stmtPc, false, s.stmtRep, predecessors, "", "", "", List.empty, InternalVariableRep("", List.empty), InternalVariableRep("", List.empty), activations)
+          StatementRep(s.stmtPc, false, "<NONE>", predecessors, "", "", "", List.empty, InternalVariableRep("", List.empty), InternalVariableRep("", List.empty), activations)
         }
       }
       .toList
@@ -320,16 +320,16 @@ object IFDSMethodGraph {
           Some(new LocalVariable(stmt.returnVariable.variableName, stmt.returnVariable.defSites.toSet))
         }
 
-        (stmt.pc, new ReturnValueStatementNode(stmt.pc, stmt.TACRepresentation, returnVariableOpt))
+        (stmt.pc, new ReturnValueStatementNode(stmt.pc, returnVariableOpt))
       } else {
 
         if(stmt.calleeMethodName.nonEmpty){
           val params = stmt.calleeParameterVariables.map(p => new LocalVariable(p.variableName, p.defSites.toSet))
           val receiverOpt = if(stmt.callReceiverVar.variableName.isEmpty) None else Some(new LocalVariable(stmt.callReceiverVar.variableName, stmt.callReceiverVar.defSites.toSet))
-          val callNode = new CallStatementNode(stmt.pc, stmt.TACRepresentation, stmt.calleeMethodName, stmt.calleeClassName, stmt.calleeDescriptor, params, receiverOpt)
+          val callNode = new CallStatementNode(stmt.pc, stmt.calleeMethodName, stmt.calleeClassName, stmt.calleeDescriptor, params, receiverOpt)
           (stmt.pc, callNode)
         } else {
-          (stmt.pc, new StatementNode(stmt.pc, stmt.TACRepresentation))
+          (stmt.pc, new StatementNode(stmt.pc))
         }
       }
     }.toMap
@@ -355,7 +355,7 @@ object IFDSMethodGraph {
 
 }
 
-class StatementNode(val stmtPc: Int, val stmtRep: String) {
+class StatementNode(val stmtPc: Int) {
 
   private val predecessors: mutable.Set[StatementNode] = new mutable.HashSet
   private val successors: mutable.Set[StatementNode] = new mutable.HashSet
@@ -487,7 +487,7 @@ class StatementNode(val stmtPc: Int, val stmtRep: String) {
 
   def activatesOn(fact: IFDSFact): Set[IFDSFact] = activations.get(fact).map(_.toSet).getOrElse(Set.empty)
 
-  def getFactsKilled: Set[IFDSFact] = activations.filter(t => t._2.isEmpty).keys.toSet
+  private[ifds] def getFactsKilled: Set[IFDSFact] = activations.filter(t => t._2.isEmpty).keys.toSet
 
   def getFactsActivatedBy(fact: IFDSFact): Set[IFDSFact] = activations.filter(t => t._2.contains(fact)).keys.toSet
 
@@ -499,7 +499,7 @@ class StatementNode(val stmtPc: Int, val stmtRep: String) {
   }
 
 
-  type Activation = (IFDSFact, Set[IFDSFact])
+  private type Activation = (IFDSFact, Set[IFDSFact])
   def allActivations: Seq[Activation] = activations.toSeq.map(t => (t._1, t._2.toSet))
 }
 
@@ -511,17 +511,16 @@ object StatementNode {
 
     if(stmt.isReturnValue){
       val returnedVariableOpt = if(stmt.asReturnValue.expr.isVar) Some(LocalVariable(stmt.asReturnValue.expr.asVar)) else None
-      new ReturnValueStatementNode(stmt.pc, stmt.toString, returnedVariableOpt)
-    } else new StatementNode(stmt.pc, stmt.toString)
+      new ReturnValueStatementNode(stmt.pc,  returnedVariableOpt)
+    } else new StatementNode(stmt.pc)
   }
 
 }
 
-class VirtualStatementNode(entry: StatementNode) extends StatementNode(entry.stmtPc, entry.stmtRep) {
+class VirtualStatementNode(entry: StatementNode) extends StatementNode(entry.stmtPc) {
   val entryNode: StatementNode = entry
 
   private[this] var exitNode = entry
-  private[this] val innerNodes: mutable.ListBuffer[StatementNode] = mutable.ListBuffer(entry)
   private[this] var predecessors: Set[StatementNode] = Set.empty
   private[this] var successors: Set[StatementNode] = Set.empty
 
@@ -543,8 +542,6 @@ class VirtualStatementNode(entry: StatementNode) extends StatementNode(entry.stm
   def appendNode(node: StatementNode): Unit = {
     assert(exitNode.getSuccessors.contains(node))
 
-    innerNodes.append(node)
-
     exitNode = node
   }
 
@@ -554,11 +551,10 @@ class VirtualStatementNode(entry: StatementNode) extends StatementNode(entry.stm
   override def addSuccessor(node: StatementNode): Unit = successors = successors ++ Set(node)
   override def addPredecessor(node: StatementNode): Unit = predecessors = predecessors ++ Set(node)
 
-  def getInnerNodes: Seq[StatementNode] = innerNodes.toSeq
   def getExitNode: StatementNode = exitNode
 }
 
-class CallStatementNode(stmtPc: Int, stmtRep: String, callMethodName: String, callDeclaringClass: String, callDescriptor: String, callParams: Seq[LocalVariable], callReceiver: Option[LocalVariable]) extends StatementNode(stmtPc, stmtRep){
+class CallStatementNode(stmtPc: Int, callMethodName: String, callDeclaringClass: String, callDescriptor: String, callParams: Seq[LocalVariable], callReceiver: Option[LocalVariable]) extends StatementNode(stmtPc){
 
   val parameterVariables: Seq[LocalVariable] = callParams
 
@@ -584,11 +580,11 @@ object CallStatementNode{
       case at: ArrayType => at.toJava
     }
     val callParams = call.params.filter(_.isVar).map(v => LocalVariable(v.asVar))
-    new CallStatementNode(tacStmt.pc, tacStmt.toString, call.name, callDeclaringClass, call.descriptor.toJVMDescriptor, callParams, callReceiver.map(LocalVariable.apply))
+    new CallStatementNode(tacStmt.pc,  call.name, callDeclaringClass, call.descriptor.toJVMDescriptor, callParams, callReceiver.map(LocalVariable.apply))
   }
 }
 
-class ReturnValueStatementNode(stmtPc: Int, stmtRep: String, returnVariable: Option[LocalVariable]) extends StatementNode(stmtPc, stmtRep) {
+class ReturnValueStatementNode(stmtPc: Int, returnVariable: Option[LocalVariable]) extends StatementNode(stmtPc) {
   val variableReturned: Option[LocalVariable] = returnVariable
 
   override def isReturnValue: Boolean = true
