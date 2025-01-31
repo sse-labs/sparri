@@ -20,7 +20,7 @@ class ApiServer(override val requestHandler: RequestHandler, override val oracle
   def startServer(host: String, port: Integer): Future[ServerBinding] = {
     http
       .newServerAt(host, port)
-      .adaptSettings(s => s.withTimeouts(s.withRequestTimeout(60.seconds)))
+      .adaptSettings(s => s.withTimeouts(s.withRequestTimeout(180.seconds)))
       .bind(allApiRoutes)
   }
 
