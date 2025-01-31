@@ -31,7 +31,7 @@ class Session[T] private(ident: String, createdAt: DateTime, state: T) {
 
 object Session {
 
-  val DefaultSessionTimeout: FiniteDuration = 60.seconds
+  val DefaultSessionTimeout: FiniteDuration = 240.seconds
 
   def newSession[T](uid: String, sessionState: T, createdAt: DateTime = DateTime.now): Session[T] =
     new Session(uid, createdAt, sessionState)
