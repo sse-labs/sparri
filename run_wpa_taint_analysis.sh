@@ -17,7 +17,7 @@ fi
 
 START=$(date +%s)
 # Execute the docker command with the supplied path
-docker run --rm -v "${PROJECT_PATH}:/app/input" -v "${OUTPUT_PATH}:/app/stats" -v "${HOME}/.m2/:/root/.m2" --name sparri-wpa-taint lisi-evaluation /app/input
+docker run --rm -v "${PROJECT_PATH}:/app/input" -v "${OUTPUT_PATH}:/app/stats" --name sparri-wpa-taint lisi-evaluation /app/input
 END=$(date +%s)
 
 # Extract real execution time in seconds
