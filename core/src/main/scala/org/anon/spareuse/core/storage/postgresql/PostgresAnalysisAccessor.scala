@@ -353,11 +353,11 @@ trait PostgresAnalysisAccessor {
 
     val query = analysisResultsTable.filter(r => r.uid inSet uuids).exists
 
-    var uuidsFoundInDB = Await.result(db.run(query.result), simpleQueryTimeout)
+    var uuidsFoundInDB = Await.result(db.run(query.result), longActionTimeout)
 
     while (uuids.size < noOfUuids || uuidsFoundInDB) {
       newUuids()
-      uuidsFoundInDB = Await.result(db.run(query.result), simpleQueryTimeout)
+      uuidsFoundInDB = Await.result(db.run(query.result), longActionTimeout)
     }
 
     uuids
