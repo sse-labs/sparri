@@ -112,7 +112,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
                 log.info(s"Start building index model for ${identifier.toString} ... ")
                 val representation = transform(jarFile)
                 log.info(s"Done building index model for ${identifier.toString}.")
-                Await.result(storageAdapter.storeJavaProgram(representation), 15.minutes)
+                Await.result(storageAdapter.storeJavaProgram(representation), 45.minutes)
               case None =>
                 log.info(s"No JAR present for $identifier")
             }
