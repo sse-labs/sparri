@@ -57,6 +57,7 @@ trait OracleRouteDefinitions extends OracleJsonSupport {
 
     result match {
       case Success(_) =>
+        log.info(s"Sending OK to client $sessionId")
         complete(OK)
       case Failure(isx: InvalidSessionException) =>
         log.warn(s"Invalid session Id provided: $sessionId", isx)

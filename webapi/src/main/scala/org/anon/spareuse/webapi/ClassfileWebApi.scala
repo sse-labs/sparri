@@ -20,11 +20,13 @@ class ClassfileWebApi(private val configuration: WebapiConfig) {
   private final val log: Logger = LoggerFactory.getLogger(getClass)
 
   private final val theSystem: ActorSystem = ActorSystem("cf-webapi-system")
-  private final val materializer: Materializer = Materializer(theSystem)
 
-  private[webapi] lazy val dataAccessor: DataAccessor = new PostgresDataAccessor()(materializer.executionContext)
-  private[webapi] lazy val requestHandler: RequestHandler = new RequestHandler(configuration, dataAccessor)(materializer.executionContext)
-  private[webapi] lazy val oracleRequestHandler: OracleResolutionRequestHandler = new OracleResolutionRequestHandler(dataAccessor)(materializer.executionContext)
+  theSystem.logConfiguration()
+
+
+  private[webapi] lazy val dataAccessor: DataAccessor = new PostgresDataAccessor()(ExecutionContext.global)
+  private[webapi] lazy val requestHandler: RequestHandler = new RequestHandler(configuration, dataAccessor)(ExecutionContext.global)
+  private[webapi] lazy val oracleRequestHandler: OracleResolutionRequestHandler = new OracleResolutionRequestHandler(dataAccessor)(ExecutionContext.global)
   private[webapi] lazy val server: ApiServer = new ApiServer(requestHandler, oracleRequestHandler)(theSystem)
 
   private var dbInitialized = false
@@ -100,8 +102,6 @@ class ClassfileWebApi(private val configuration: WebapiConfig) {
 
     // Shutdown JDBC connection
     if(dbInitialized) dataAccessor.shutdown()
-
-    materializer.shutdown()
 
     // Shutdown actor system
     Await.ready(theSystem.terminate(), 10.seconds)
