@@ -67,9 +67,7 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
 
   private[http] def executeWithHeaders(request: HttpRequest, rawHeaders: Map[String, String] = Map.empty, timeout: Duration = 20.seconds): Try[HttpResponse] = Try {
     val headers = rawHeaders.map{ case (name, value) => RawHeader(name, value)}.toSeq
-    log.info("Triggering request...")
     val response = Await.result(http.singleRequest(request.withHeaders(headers)), timeout)
-    log.info("Got a response.")
     if(response.status.intValue() == 404)
       throw NotFoundException(s"Got 404: ${request.getUri()}")
 
