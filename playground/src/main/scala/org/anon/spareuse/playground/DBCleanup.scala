@@ -1,6 +1,7 @@
 package org.anon.spareuse.playground
 
 import org.anon.spareuse.core.storage.postgresql.PostgresDataAccessor
+import org.anon.spareuse.mvnem.storage.impl.PostgresStorageAdapter
 
 import scala.concurrent.ExecutionContext
 import scala.util.{Failure, Success}
@@ -27,6 +28,12 @@ object DBCleanup extends App {
     }
   }
 
-  removeAllAnalysisRuns("TaintFlowSummaryBuilder", "0.0.1")
+  def removeEntity(): Unit = {
+    val adapter = new PostgresStorageAdapter()(ExecutionContext.global)
+
+    adapter.ensureProgramNotPresent("org.bouncycastle:bcprov-jdk15on:1.70")
+  }
+
+  removeEntity()
 
 }

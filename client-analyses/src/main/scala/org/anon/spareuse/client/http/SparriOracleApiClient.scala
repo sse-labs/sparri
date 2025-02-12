@@ -99,7 +99,7 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
 
     postJsonRaw("/api/oracle/push-update", Some(json), Map("session-id" -> sessionToken.get)).get
 
-    log.debug(s"Successfully pushed update to oracle")
+    log.info(s"Successfully pushed update to oracle (${response.requestId}")
   }
 
   def finalizeSession(): Try[Unit] = Try {

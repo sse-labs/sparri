@@ -1,7 +1,7 @@
 package org.anon.spareuse.client.http
 
 import akka.actor.ActorSystem
-import akka.http.scaladsl.Http
+import akka.http.scaladsl.{Http, HttpExt}
 import akka.http.scaladsl.client.RequestBuilding.{Get, Post}
 import akka.http.scaladsl.model.Uri.Query
 import akka.http.scaladsl.model.headers.RawHeader
@@ -24,6 +24,7 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
 
   protected[http] implicit val system: ActorSystem = ActorSystem("sparri-client")
   protected[http] implicit val ec: ExecutionContext = system.dispatcher
+  private[http] val http: HttpExt = Http()
 
 
   def getAnalysisResultFor(analysisName: String, analysisVersion: String, input: String): Option[AnalysisResultRepr] = {
@@ -66,9 +67,9 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
 
   private[http] def executeWithHeaders(request: HttpRequest, rawHeaders: Map[String, String] = Map.empty, timeout: Duration = 20.seconds): Try[HttpResponse] = Try {
     val headers = rawHeaders.map{ case (name, value) => RawHeader(name, value)}.toSeq
-
-    val response = Await.result(Http().singleRequest(request.withHeaders(headers)), timeout)
-
+    log.info("Triggering request...")
+    val response = Await.result(http.singleRequest(request.withHeaders(headers)), timeout)
+    log.info("Got a response.")
     if(response.status.intValue() == 404)
       throw NotFoundException(s"Got 404: ${request.getUri()}")
 

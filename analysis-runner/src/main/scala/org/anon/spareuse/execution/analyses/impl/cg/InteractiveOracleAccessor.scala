@@ -153,10 +153,10 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) extends DefaultIFDSM
       Left(())
     } else {
       BackgroundSummaryLoader.queueExtra(callingContext.method.methodIdentifier, callingContext.ifdsSummary)
-      log.info(s"Starting resolution at new entrypoint: ${callingContext.method.definingTypeName}.${callingContext.method.methodName} [PC=$ccPC]")
       BackgroundSummaryLoader.startLoadingSummaries()
       isRunning.set(true)
       resolverLoopFuture = Some(Future(runBuilderLoop(callingContext.method, ccPC, typesInstantiated)))
+      log.info(s"Starting resolution at new entrypoint: ${callingContext.method.definingTypeName}.${callingContext.method.methodName} [PC=$ccPC]")
       Left(())
     }
   }
@@ -204,8 +204,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) extends DefaultIFDSM
 
         oracleCGBuilderOpt.get.processResponse(response)
       } else {
-        log.info(s"Waiting for responses on ${unansweredRequestIds.size} requests from client")
-        Thread.sleep(200)
+        Thread.sleep(400)
 
         if(System.currentTimeMillis() - lastResponseTime > clientResponseTimeoutMillis){
           val error = OracleInteractionError(s"Timed out while waiting for client response (timeout $clientResponseTimeoutMillis ms)", isFatal = true, isUserError = true, MethodRequest)
@@ -347,7 +346,6 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) extends DefaultIFDSM
         worklist.synchronized {
           worklist.append(MethodLoaderTask(dm.methodIdentifier, if(dm.hasDataBaseId) Some(dm.getDataBaseId) else None))
         }
-        this.synchronized { this.notify() }
       }
     }
 
@@ -365,14 +363,12 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) extends DefaultIFDSM
 
     private[this] def requestStop(): Unit = {
       stopRequested.set(true)
-      this.synchronized { this.notify() }
     }
 
     def setWorkloadIsFinal(): Unit = {
       val queueLength = worklist.synchronized{ worklist.length }
       log.info(s"Workload is now final, queue length: $queueLength")
       workloadFinal.set(true)
-      this.synchronized { this.notify() }
     }
 
     def queueExtra(ident: MethodIdent, summary: MethodIFDSRep): Unit = {
@@ -400,9 +396,11 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) extends DefaultIFDSM
           if(workloadFinal.get()){
             log.info(s"Worklist empty, no more work to be scheduled - stopping background work.")
             requestStop()
-          } else this.synchronized(this.wait(1000))
+          } else Thread.sleep(300)
         } else {
-          val summariesToLoad = summaryLookup.synchronized( taskBatch.filterNot(t => summaryLookup.contains(t.methodIdent)) )
+          val summariesToLoad = summaryLookup.synchronized{
+            taskBatch.filterNot(t => summaryLookup.contains(t.methodIdent))
+          }
 
           val eidMethodMap = summariesToLoad
             .filter { task =>

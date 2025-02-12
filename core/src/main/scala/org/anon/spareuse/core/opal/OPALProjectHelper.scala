@@ -13,6 +13,7 @@ import java.io.{ByteArrayInputStream, ByteArrayOutputStream, DataInputStream, Fi
 import java.net.URL
 import java.util.jar.JarInputStream
 import java.util.zip.ZipFile
+import scala.collection.mutable
 import scala.collection.mutable.ListBuffer
 import scala.util.{Failure, Try}
 
@@ -124,7 +125,7 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
    * @param loadImplementation Switch indicating whether or not the actual implementation of the classes should be loaded.
    * @return Try object holding the list of classfiles, or a Failure with additional information.
    */
-  def readClassesFromJarStream(jarStream: InputStream, source:URL, loadImplementation: Boolean): Try[ClassList] = Try {
+  def readClassesFromJarStream(jarStream: InputStream, source:URL, loadImplementation: Boolean, forceUniqueFQNs: Boolean = false): Try[ClassList] = Try {
 
     val entries = new ListBuffer[(ClassFile, URL)]()
     val jarInputStream = new JarInputStream(jarStream)
@@ -147,7 +148,26 @@ class OPALProjectHelper(projectLogger: OPALLogger = new WarnOnlyLogger(OPALProje
       currentEntry = jarInputStream.getNextJarEntry
     }
 
-    entries.toList
+    if(forceUniqueFQNs){
+      // If classes are defined twice, we want to select those not contained in META-INF (happens sometimes on maven central)
+      val uniqueClasses = mutable.HashMap.empty[String, (ClassFile, URL)]
+
+      entries.foreach{ case (cf, url) =>
+        val fqn = cf.thisType.fqn
+
+        if(!uniqueClasses.contains(fqn)){
+          uniqueClasses.put(fqn, (cf, url))
+        } else {
+          val otherUrl = uniqueClasses(fqn)._2
+          if(otherUrl.toString.contains("META-INF"))
+            uniqueClasses.put(fqn, (cf, url))
+        }
+      }
+
+      uniqueClasses.values.toList
+    } else {
+      entries.toList
+    }
   }
 
   /**

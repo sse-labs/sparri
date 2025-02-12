@@ -83,7 +83,7 @@ abstract class DefaultIFDSSummaryBuilder(baselineRunOpt: Option[AnalysisRunData]
           log.info(s"Obtaining OPAL project instance for input ${input.name} ...")
 
           val jarUrl = MavenIdentifier.fromGAV(input.name).map(_.toJarLocation.toURL).get
-          val classes = opalHelper.readClassesFromJarStream(inputStream, jarUrl, loadImplementation = true).get
+          val classes = opalHelper.readClassesFromJarStream(inputStream, jarUrl, loadImplementation = true, forceUniqueFQNs = true).get
           val project = opalHelper.buildOPALProject(classes, List.empty, loadJre = false, setLibraryMode = true)
 
           log.info("Project initialized.")

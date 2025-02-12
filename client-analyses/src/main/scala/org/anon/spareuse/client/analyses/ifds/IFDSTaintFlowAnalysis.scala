@@ -105,7 +105,7 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
             // IMPROVE: Use summary cache here, entrypoint might have been reached before!
             val summary = taintFlowSummaryBuilder.analyzeMethod(currentEntry.callingContext).toResultRepresentation(true)
             log.info(s"Starting resolution for entrypoint ${currentEntry.callingContext.descriptor.toJava(currentEntry.callingContext.name)}")
-            oracleApiClient.startResolutionAt(currentEntry.callingContext, summary, currentEntry.ccPC, currentEntry.typesInitialized)
+            oracleApiClient.startResolutionAt(currentEntry.callingContext, summary, currentEntry.ccPC, currentEntry.typesInitialized).get
           } match {
             case Success(_) =>
               log.info(s"Successfully started resolution for entrypoint $currEntry / $entryCnt")
@@ -160,7 +160,10 @@ class IFDSTaintFlowAnalysis(mavenProjectDir: Path) extends LocalMavenClientAnaly
               "methods-summarized-on-demand" -> noOfMethodsAnalyzed,
               "methods-summaries-sent" -> noOfTargetsSent,
               "duration-main-loop-seconds" -> durationMainLoop,
-              "duration-query-loop" -> queryDuration
+              "duration-query-loop" -> queryDuration,
+              "lib-entry-points" -> libraryEntryPoints.size,
+              "dependencies" -> dependencies.size,
+              "project-classes" -> p.projectClassFilesCount
             )
             val outFile = outPath.resolve("modular-stats.log")
             Files.write(outFile, statistics.map{ case (k,v) => s"$k: $v"}.toSeq.asJava)

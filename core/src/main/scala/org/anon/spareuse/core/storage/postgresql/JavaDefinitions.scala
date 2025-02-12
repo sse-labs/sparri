@@ -2,6 +2,7 @@ package org.anon.spareuse.core.storage.postgresql
 
 import slick.lifted.{ForeignKeyQuery, ProvenShape, Tag}
 import slick.jdbc.PostgresProfile.api._
+import slick.model.ForeignKeyAction.Cascade
 
 object JavaDefinitions {
 
@@ -36,7 +37,7 @@ object JavaDefinitions {
     override def * : ProvenShape[JavaProgramRepr] = (id, publicationDate)
 
     def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
-      foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
+      foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id, onDelete = Cascade)
   }
 
   case class JavaClassInterface(id: Long, classId: Long, interfaceId: Long)
@@ -52,7 +53,7 @@ object JavaDefinitions {
       ((JavaClassInterface.apply _).tupled, JavaClassInterface.unapply)
 
     def javaClass: ForeignKeyQuery[JavaClasses, JavaClassRepr] =
-      foreignKey("CLASS", classId, TableQuery[JavaClasses])(_.id)
+      foreignKey("CLASS", classId, TableQuery[JavaClasses])(_.id, onDelete = Cascade)
 
     def interfaceName: ForeignKeyQuery[JavaTypeNames, JavaTypeName] =
       foreignKey("INTERFACE", interfaceId, TableQuery[JavaTypeNames])(_.id)
@@ -78,7 +79,7 @@ object JavaDefinitions {
       ((JavaClassRepr.apply _ ).tupled, JavaClassRepr.unapply)
 
     def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
-      foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
+      foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id, onDelete = Cascade)
 
     def typeName: ForeignKeyQuery[JavaTypeNames, JavaTypeName] =
       foreignKey("FQN", thisType, TableQuery[JavaTypeNames])(_.id)
@@ -108,7 +109,7 @@ object JavaDefinitions {
       ((JavaMethodRepr.apply _).tupled, JavaMethodRepr.unapply)
 
     def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
-      foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
+      foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id, onDelete = Cascade)
 
     def descriptorValue: ForeignKeyQuery[JavaMethodDescriptors, JavaMethodDescriptor] =
       foreignKey("DESCRIPTOR", descriptor, TableQuery[JavaMethodDescriptors])(_.id)
@@ -131,7 +132,7 @@ object JavaDefinitions {
       ((JavaInvocationRepr.apply _).tupled, JavaInvocationRepr.unapply)
 
     def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
-      foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
+      foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id, onDelete = Cascade)
 
     def declaredTypeName: ForeignKeyQuery[JavaTypeNames, JavaTypeName] =
       foreignKey("DECLARED_TYPE", declaredType, TableQuery[JavaTypeNames])(_.id)
@@ -158,7 +159,7 @@ object JavaDefinitions {
       ((JavaFieldAccessRepr.apply _).tupled, JavaFieldAccessRepr.unapply)
 
     def entity: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
-      foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id)
+      foreignKey("ID", id, TableQuery[SoftwareEntities])(_.id, onDelete = Cascade)
 
     def fieldTypeName: ForeignKeyQuery[JavaTypeNames, JavaTypeName] =
       foreignKey("FIELD_TYPE", fieldType, TableQuery[JavaTypeNames])(_.id)

@@ -14,7 +14,10 @@ import org.anon.spareuse.core.utils.rabbitmq.{MqMessageWriter, MqStreamIntegrati
 import org.anon.spareuse.core.utils.streaming.AsyncStreamWorker
 import org.anon.spareuse.mvnem.storage.EntityMinerStorageAdapter
 import org.anon.spareuse.mvnem.storage.impl.PostgresStorageAdapter
+import org.opalj.br.ClassFile
 
+import java.net.URL
+import scala.collection.mutable
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.duration.DurationInt
 import scala.concurrent.{Await, Future}
@@ -306,7 +309,7 @@ class MavenEntityMiner(private[mvnem] val configuration: EntityMinerConfig)
   private def transform(jarFile: MavenOnlineJar): JavaProgram = {
 
     val start = System.currentTimeMillis()
-    val classesTry = opalProjectHelper.readClassesFromJarStream(jarFile.content, jarFile.url, loadImplementation = true)
+    val classesTry = opalProjectHelper.readClassesFromJarStream(jarFile.content, jarFile.url, loadImplementation = true, forceUniqueFQNs = true)
     val duration = System.currentTimeMillis() - start
 
     log.debug(s"OPAL init took $duration ms for ${jarFile.identifier.toString}")

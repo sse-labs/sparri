@@ -31,7 +31,11 @@ object IndexAndAnalysisInitiator {
 
     val analysis = new DependencyAnalysis(classDir, pomFile)
 
-    analysis.execute(Array.empty[String])
+    val result = analysis.execute(Array.empty[String])
+
+    analysis.close()
+
+    result
   }
 
   def main(args: Array[String]): Unit = {
@@ -57,6 +61,7 @@ object IndexAndAnalysisInitiator {
         if(dependenciesNotInIndex.nonEmpty){
           println(s"Not all entities are indexed yet, wait for ${dependenciesNotInIndex.size} index requests to complete and retry:")
           dependenciesNotInIndex.foreach(dep => println(s"\t - ${dep.identifier.toString}"))
+          httpClient.close()
           return
         }
 
@@ -85,9 +90,11 @@ object IndexAndAnalysisInitiator {
           }
 
           println(s"Partial results are missing for ${dependenciesMissingResults.size} dependencies. Analyses have been queued, wait for completion and retry.")
+          httpClient.close()
           return
         }
 
+        httpClient.close()
         println(s"All dependencies are indexed, all partial results are available.")
 
       case Failure(ex) =>

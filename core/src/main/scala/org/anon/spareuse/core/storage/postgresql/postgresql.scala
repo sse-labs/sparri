@@ -9,6 +9,7 @@ import org.anon.spareuse.core.model.entities.SoftwareEntityData
 import org.anon.spareuse.core.model.{AnalysisData, AnalysisResultData, AnalysisRunData, SoftwareEntityKind}
 import slick.lifted.{ForeignKeyQuery, ProvenShape, Tag}
 import slick.jdbc.PostgresProfile.api._
+import slick.model.ForeignKeyAction.Cascade
 
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -41,7 +42,7 @@ package object postgresql {
       (id, name, identifier, language, kind, repository, parentID, hash)<> ((SoftwareEntityRepr.apply _).tupled, SoftwareEntityRepr.unapply)
 
     def parent: ForeignKeyQuery[SoftwareEntities, SoftwareEntityRepr] =
-      foreignKey("PARENT_FK", parentID, TableQuery[SoftwareEntities])(_.id.?)
+      foreignKey("PARENT_FK", parentID, TableQuery[SoftwareEntities])(_.id.?, onDelete = Cascade)
 
     def idx = index("unique_ident", (parentID, identifier), unique = true)
   }

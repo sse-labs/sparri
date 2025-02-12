@@ -70,6 +70,7 @@ class OracleResolutionRequestHandler(dataAccessor: DataAccessor)(implicit contex
 
       session.sessionState.accessor.get.startResolution(toModel(startRequest.cc), startRequest.ccPC, startRequest.types) match {
         case Left(_) =>
+          log.info(s"Entrypoint resolution started for session $sessionUid")
         case Right(error) =>
           log.warn(s"[$sessionUid] Cannot resolve from entrypoint: ${error.toString}")
           throw ClientOracleInteractionException(session, error.toString)

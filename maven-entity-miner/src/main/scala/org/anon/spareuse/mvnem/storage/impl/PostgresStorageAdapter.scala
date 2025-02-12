@@ -10,7 +10,7 @@ import org.anon.spareuse.core.utils.toHex
 import org.anon.spareuse.mvnem.storage.EntityMinerStorageAdapter
 import slick.dbio.DBIO
 
-import scala.util.{Success, Try}
+import scala.util.{Failure, Success, Try}
 import slick.jdbc.PostgresProfile.api._
 import slick.jdbc.meta.MTable
 
@@ -40,42 +40,72 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
   private[mvnem] implicit def toHexOpt(byteOpt: Option[Array[Byte]]): Option[String] = byteOpt.map(toHex)
 
 
+  def ensureProgramNotPresent(programId: Long): Unit = {
+    Try{
+      val packageIds = Await.result(db.run(entitiesTable.filter(e => e.parentID === programId).map(_.id).result), 30.seconds).toSet
+      val classIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet packageIds).map(_.id).result), 60.seconds).toSet
+      val methodIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet classIds).map(_.id).result), 80.seconds).toSet
+      val statementIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet methodIds).map(_.id).result), 120.seconds).toSet
+
+      log.info(s"Got ${packageIds.size} packages, ${classIds.size} classes, ${methodIds.size} methods, ${statementIds.size} statements")
+
+      // First delete all extra tables, as they have an FK constraint on the entities table
+      var cnt = 0
+      statementIds.grouped(100).foreach { stmtIdBatch =>
+        val stmtDelete = DBIO.seq(javaInvocationsTable.filter(_.id inSet stmtIdBatch).delete,
+          javaFieldAccessesTable.filter(_.id inSet stmtIdBatch).delete)
+        Await.ready(db.run(stmtDelete), 7.seconds)
+        cnt += stmtIdBatch.size
+        if(cnt % 300 == 0) log.debug(s"Deleted $cnt statements so far ...")
+      }
+      cnt = 0
+      methodIds.grouped(50).foreach { mIdBatch =>
+        Await.ready(db.run(javaMethodsTable.filter(_.id inSet mIdBatch).delete), 4.seconds)
+        cnt += mIdBatch.size
+        if(cnt % 200 == 0) log.debug(s"Deleted $cnt methods so far ...")
+      }
+      cnt = 0
+      classIds.grouped(10).foreach{ cIdBatch =>
+        val classDelete = DBIO.seq(javaClassInterfacesTable.filter(_.classId inSet cIdBatch).delete, javaClassesTable.filter(_.id inSet cIdBatch).delete)
+        Await.ready(db.run(classDelete), 7.seconds)
+        cnt += cIdBatch.size
+        if(cnt % 100 == 0)log.info(s"Deleted $cnt classes so far...")
+      }
+
+      Await.ready(db.run(javaProgramsTable.filter(_.id === programId).delete), 2.seconds)
+      log.info(s"Deleted 1 program.")
+
+      // Make sure you delete children of the entity tree first, as they have FKs on their parent
+      val allEntityIds = statementIds.toSeq ++ methodIds.toSeq ++ classIds.toSeq ++ packageIds.toSeq ++ Seq(programId)
+      cnt = 0
+      allEntityIds.grouped(50).foreach { idBatch =>
+        Await.ready(db.run(entitiesTable.filter(_.id inSet idBatch).delete), 10.seconds).onComplete{
+          case Failure(ex) =>
+            log.error("", ex)
+          case _ =>
+        }
+        cnt += idBatch.size
+        if(cnt % 100 == 0)log.info(s"Deleted $cnt entities so far")
+      }
+    } match {
+      case Success(_) =>
+        log.info(s"Successfully removed program $programId")
+      case Failure(ex) =>
+        log.error(s"Failed to remove program $programId", ex)
+    }
+  }
+
   override def ensureProgramNotPresent(programGav: String): Unit = {
 
     def getProgramEntityId(gav: String): Option[Long] = {
       val queryF = db.run(entitiesTable.filter(e => e.kind === SoftwareEntityKind.Program.id).filter(e => e.name === gav).take(1).map(_.id).result)
-      Await.result(queryF, 10.seconds).headOption
+      Await.result(queryF, 30.seconds).headOption
     }
 
     val programIdOpt = getProgramEntityId(programGav)
 
     if(programIdOpt.isDefined){
-
-      Try{
-        val programId = programIdOpt.get
-        val packageIds = Await.result(db.run(entitiesTable.filter(e => e.parentID === programId).map(_.id).result), 30.seconds).toSet
-        val classIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet packageIds).map(_.id).result), 60.seconds).toSet
-        val methodIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet classIds).map(_.id).result), 80.seconds).toSet
-        val statementIds = Await.result(db.run(entitiesTable.filter(e => e.parentID inSet methodIds).map(_.id).result), 120.seconds).toSet
-
-
-        val deleteActions = DBIO.sequence(Seq(
-          javaInvocationsTable.filter(i => i.id inSet statementIds).delete,
-          javaFieldAccessesTable.filter(f => f.id inSet statementIds).delete,
-          javaMethodsTable.filter(m => m.id inSet methodIds).delete,
-          javaClassInterfacesTable.filter(i => i.classId inSet classIds).delete,
-          javaClassesTable.filter(c => c.id inSet classIds).delete,
-          javaProgramsTable.filter(p => p.id === programId).delete,
-          entitiesTable.filter(e => e.id inSet statementIds).delete,
-          entitiesTable.filter(e => e.id inSet methodIds).delete,
-          entitiesTable.filter(e => e.id inSet classIds).delete,
-          entitiesTable.filter(e => e.id inSet packageIds).delete,
-          entitiesTable.filter(e => e.id === programId).delete)
-
-        )
-
-        Await.ready(db.run(deleteActions), 300.seconds)
-      }
+      ensureProgramNotPresent(programIdOpt.get)
     }
   }
 
@@ -103,10 +133,14 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
         db.run(javaProgramsTable += (pId, jp.publishedAt)).map(_ => pId)
       }
 
-    val allPackages = jp.getChildren
-    val allClasses = jp.getChildren.flatMap(_.getChildren)
-    val allMethods = allClasses.flatMap(_.getChildren)
-    val allStatements = allMethods.flatMap(_.getChildren)
+    def assertUnique(entities: Set[SoftwareEntityData]): Set[PathIdentifiableJavaEntity] = {
+      entities.toSeq.map(_.asInstanceOf[PathIdentifiableJavaEntity]).distinctBy(_.uid).toSet
+    }
+
+    val allPackages = assertUnique(jp.getChildren)
+    val allClasses = assertUnique(jp.getChildren.flatMap(_.getChildren))
+    val allMethods = assertUnique(allClasses.flatMap(_.getChildren))
+    val allStatements = assertUnique(allMethods.flatMap(_.getChildren))
 
     def insertNamesBatchF(batch: Set[String]): Future[Set[(String, Long)]] = {
       Future.sequence(batch.map { name =>
@@ -188,7 +222,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
 
     log.debug(s"Successfully indexed ${descriptorLookup.size} descriptors for program ${jp.name}")
 
-    def batchSizeFor(set: Set[SoftwareEntityData], suggestedSize: Int): Int = {
+    def batchSizeFor(set: Set[_], suggestedSize: Int): Int = {
       var currSize = suggestedSize
       while (set.size / currSize > 300) {
         currSize = currSize * 15 / 10
@@ -228,7 +262,7 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
     insertionFuture.map(_ => jp.programName)
   }
 
-  private[storage] def insertEntitiesBatchedWithMapReturn(entities: Set[SoftwareEntityData],
+  private[storage] def insertEntitiesBatchedWithMapReturn[T <: SoftwareEntityData](entities: Set[T],
                                                           parentIdLookup: Map[String, Long],
                                                           batchSize: Int,
                                                           typeNameLookup: Map[String, Long],
@@ -274,6 +308,8 @@ class PostgresStorageAdapter(implicit executor: ExecutionContext) extends Entity
     Future
       .sequence(
         entityReprs
+          .toList
+          .distinctBy{ case (_, repr) => (repr.parentId, repr.identifier)}
           .grouped(batchSize)
           .map { batch => db.run(identifierAndParentAndIdReturningEntitiesTable ++= batch.map(_._2)).map(resultObj => resultObj.map(triple => (uidLookup((triple._2, triple._1)), triple._3)).toMap) }
       )
