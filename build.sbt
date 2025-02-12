@@ -139,7 +139,7 @@ lazy val `client-analyses` = (project in file("client-analyses"))
 	)
 
 lazy val playground = (project in file("playground"))
-	.dependsOn(core, evaluation)
+	.dependsOn(core, evaluation, `maven-entity-miner`)
 	.settings(libraryDependencies ++= Seq(dependencies.logback))
 
 lazy val webapi = (project in file("webapi"))
