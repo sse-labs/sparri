@@ -24,7 +24,7 @@ class SparriApiClient extends AutoCloseable with JsonSupport {
 
   protected[http] implicit val system: ActorSystem = ActorSystem("sparri-client")
   protected[http] implicit val ec: ExecutionContext = system.dispatcher
-  private[http] val http: HttpExt = Http()
+  private[http] val http: HttpExt = Http.apply()
 
 
   def getAnalysisResultFor(analysisName: String, analysisVersion: String, input: String): Option[AnalysisResultRepr] = {

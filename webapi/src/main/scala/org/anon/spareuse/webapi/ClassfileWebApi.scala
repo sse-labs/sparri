@@ -21,8 +21,6 @@ class ClassfileWebApi(private val configuration: WebapiConfig) {
 
   private final val theSystem: ActorSystem = ActorSystem("cf-webapi-system")
 
-  theSystem.logConfiguration()
-
 
   private[webapi] lazy val dataAccessor: DataAccessor = new PostgresDataAccessor()(ExecutionContext.global)
   private[webapi] lazy val requestHandler: RequestHandler = new RequestHandler(configuration, dataAccessor)(ExecutionContext.global)
