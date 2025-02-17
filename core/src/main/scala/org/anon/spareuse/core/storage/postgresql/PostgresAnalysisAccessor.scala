@@ -258,7 +258,7 @@ trait PostgresAnalysisAccessor {
 
       })
 
-    val freshResultUidToIdMap = Await.result(resultStorageFuture, 10.minutes).flatten.toMap
+    val freshResultUidToIdMap = Await.result(resultStorageFuture, 30.minutes).flatten.toMap
 
     val allValidities = freshResults.flatMap{ fResult =>
       val dbId = freshResultUidToIdMap(fResult.uid)
@@ -353,7 +353,7 @@ trait PostgresAnalysisAccessor {
 
     val query = analysisResultsTable.filter(r => r.uid inSet uuids).exists
 
-    var uuidsFoundInDB = Await.result(db.run(query.result), longActionTimeout)
+    var uuidsFoundInDB = Await.result(db.run(query.result), 15.minutes)
 
     while (uuids.size < noOfUuids || uuidsFoundInDB) {
       newUuids()
