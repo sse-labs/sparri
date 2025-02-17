@@ -270,19 +270,19 @@ trait PostgresAnalysisAccessor {
       db.run(resultValiditiesTable ++= validitiesBatch)
     })
 
-    Await.ready(allValiditiesFuture, longActionTimeout)
+    Await.result(allValiditiesFuture, 10.minutes)
 
     val resultDbIdsAction = db.run(analysisResultsTable.filter(r => r.uid inSet unchangedResultIds).map(_.id).result)
     val unchangedResultIdsInDb = Await.result(resultDbIdsAction, simpleQueryTimeout)
 
     val resultRelationFuture = Future.sequence((freshResultUidToIdMap.values ++ unchangedResultIdsInDb)
       .map(id => AnalysisRunResultRelation(-1, runRepr.id, id))
-      .grouped(100)
+      .grouped(500)
       .map { resultRelationBatch =>
         db.run(runResultsTable ++= resultRelationBatch)
       })
 
-    Await.ready(resultRelationFuture, longActionTimeout)
+    Await.result(resultRelationFuture, 10.minutes)
 
   }
 
