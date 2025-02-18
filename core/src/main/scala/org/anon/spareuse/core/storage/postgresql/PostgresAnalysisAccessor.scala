@@ -244,7 +244,7 @@ trait PostgresAnalysisAccessor {
     Await.ready(updateLogsAction, simpleQueryTimeout)
 
     val resultStorageFuture = Future.sequence(freshResults
-      .grouped(100)
+      .grouped(500)
       .map { runResultBatch =>
         Future {
           runResultBatch.map { runResult =>
@@ -266,7 +266,7 @@ trait PostgresAnalysisAccessor {
       fResult.affectedEntities.map { affectedEntity => AnalysisResultValidity(-1, dbId, affectedEntity.id) }
     }
 
-    val allValiditiesFuture = Future.sequence(allValidities.grouped(100).map{ validitiesBatch =>
+    val allValiditiesFuture = Future.sequence(allValidities.grouped(500).map{ validitiesBatch =>
       db.run(resultValiditiesTable ++= validitiesBatch)
     })
 
