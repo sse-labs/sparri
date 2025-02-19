@@ -101,7 +101,7 @@ class SparriOracleApiClient extends SparriApiClient with OracleJsonSupport {
   }
 
   def finalizeSession(): Try[Unit] = Try {
-    postJsonRaw("/api/oracle/finalize", None, Map("session-id" -> sessionToken.get), timeout = 60.seconds).get
+    postJsonRaw("/api/oracle/finalize", None, Map("session-id" -> sessionToken.get), timeout = 300.seconds).get
 
     log.debug(s"Session finalized: ${sessionToken.get}")
   }
