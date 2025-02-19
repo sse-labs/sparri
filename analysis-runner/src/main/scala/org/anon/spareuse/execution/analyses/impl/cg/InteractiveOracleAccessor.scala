@@ -396,7 +396,7 @@ class InteractiveOracleAccessor(dataAccessor: DataAccessor) extends DefaultIFDSM
           if(workloadFinal.get()){
             log.info(s"Worklist empty, no more work to be scheduled - stopping background work.")
             requestStop()
-          } else Thread.sleep(300)
+          } else Thread.sleep(200)
         } else {
           val summariesToLoad = summaryLookup.synchronized{
             taskBatch.filterNot(t => summaryLookup.contains(t.methodIdent))
