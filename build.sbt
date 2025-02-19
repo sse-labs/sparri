@@ -17,7 +17,7 @@ lazy val dockerSettings = docker / dockerfile := {
 	new Dockerfile {
 		from("openjdk:16-jdk")
 		add(artifact, artifactTargetPath)
-		entryPoint("java", "-jar", "-Xmx24G", "-Xss128m", artifactTargetPath)
+		entryPoint("java", "-Xmx24G", "-Xss128M","-jar", artifactTargetPath)
 	}
 }
 
@@ -93,7 +93,7 @@ lazy val `analysis-runner` = (project in file("analysis-runner"))
 				from("openjdk:16-jdk")
 				add(artifact, artifactTargetPath)
 				add(jreData, "/jre-data/")
-				entryPoint("java", "-jar", "-Xmx8G", "-Xss128m", artifactTargetPath)
+				entryPoint("java", "-Xmx8G", "-Xss128m", "-jar", artifactTargetPath)
 			}
 		},
 
@@ -131,7 +131,7 @@ lazy val `client-analyses` = (project in file("client-analyses"))
 			new Dockerfile {
 				from("maven:3.8.3-openjdk-16")
 				add(artifact, artifactTargetPath)
-				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-Xlog:gc*:file=/app/stats/gc.log:time", "-jar", "-Xmx14G", "-Xss64m", artifactTargetPath)
+				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-Xlog:gc*:file=/app/stats/gc.log:time", "-Xmx14G", "-Xss128M", "-jar", artifactTargetPath)
 			}
 		},
 
@@ -163,7 +163,7 @@ lazy val webapi = (project in file("webapi"))
 				from("openjdk:16-jdk")
 				add(artifact, artifactTargetPath)
 				add(jreData, "/jre-data/")
-				entryPoint("java", "-jar", "-Xmx24G", "-Xss128m", artifactTargetPath)
+				entryPoint("java", "-Xmx24G", "-jar", artifactTargetPath)
 			}
 		},
 
@@ -192,7 +192,7 @@ lazy val evaluation = (project in file("evaluation"))
 				from("maven:3.8.3-openjdk-16")
 				add(artifact, artifactTargetPath)
 				add(jreData, "/jre-data/")
-				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-Xlog:gc*:file=/app/stats/gc.log:time", "-jar", "-Xmx14G", "-Xss64m", artifactTargetPath)
+				entryPoint("java", "-DSPARRI_MVN_HOME=/usr/share/maven", "-Xlog:gc*:file=/app/stats/gc.log:time", "-Xmx8G", "-Xss128M", "-jar", artifactTargetPath)
 			}
 		},
 
